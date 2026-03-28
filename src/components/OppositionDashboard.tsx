@@ -1,0 +1,402 @@
+'use client';
+
+import { useState } from 'react';
+import { useGameStore } from '@/lib/store';
+import { getSocket } from '@/lib/socket';
+import { POLICIES } from '@/lib/engine/policies';
+import { VOTER_GROUPS } from '@/lib/engine/voters';
+import { OppositionAction, OppositionActionType, SimVarKey } from '@/lib/engine/types';
+
+const ACTION_DEFS: {
+  type: OppositionActionType;
+  name: string;
+  cost: number;
+  description: string;
+  emoji: string;
+  needsTarget: 'policy' | 'group' | 'simvar' | 'policy_value' | 'none';
+}[] = [
+  {
+    type: 'filibuster',
+    name: 'Filibuster',
+    cost: 2,
+    description: 'Block ONE policy change next turn',
+    emoji: '🚫',
+    needsTarget: 'policy',
+  },
+  {
+    type: 'campaign',
+    name: 'Campaign',
+    cost: 1,
+    description: 'Target a voter group: +5% support',
+    emoji: '📢',
+    needsTarget: 'group',
+  },
+  {
+    type: 'propose_alternative',
+    name: 'Propose Alternative',
+    cost: 2,
+    description: 'Propose policy position. If popular, ruling loses 3% approval',
+    emoji: '📋',
+    needsTarget: 'policy_value',
+  },
+  {
+    type: 'media_attack',
+    name: 'Media Attack',
+    cost: 1,
+    description: 'Amplify a negative stat for 2 turns',
+    emoji: '📺',
+    needsTarget: 'simvar',
+  },
+  {
+    type: 'coalition_building',
+    name: 'Coalition Building',
+    cost: 3,
+    description: 'Lock a voter group for 4 turns',
+    emoji: '🤝',
+    needsTarget: 'group',
+  },
+  {
+    type: 'vote_of_no_confidence',
+    name: 'Vote of No Confidence',
+    cost: 5,
+    description: 'If approval < 25%, trigger emergency election',
+    emoji: '⚡',
+    needsTarget: 'none',
+  },
+];
+
+const SIM_VARS: { key: SimVarKey; label: string }[] = [
+  { key: 'unemployment', label: 'Unemployment' },
+  { key: 'crime', label: 'Crime' },
+  { key: 'pollution', label: 'Pollution' },
+  { key: 'inflation', label: 'Inflation' },
+];
+
+export function OppositionDashboard() {
+  const { gameState, playerId, pendingOppositionActions, addOppositionAction, removeOppositionAction, clearOppositionActions, getPendingOppositionCost } = useGameStore();
+  const [selectedAction, setSelectedAction] = useState<typeof ACTION_DEFS[0] | null>(null);
+  const [targetPolicy, setTargetPolicy] = useState('');
+  const [targetGroup, setTargetGroup] = useState('');
+  const [targetSimVar, setTargetSimVar] = useState<SimVarKey>('unemployment');
+  const [proposedValue, setProposedValue] = useState(50);
+
+  if (!gameState) return null;
+
+  const myPlayer = gameState.players.find(p => p.id === playerId);
+  const pc = myPlayer?.politicalCapital ?? 0;
+  const pendingCost = getPendingOppositionCost();
+  const remainingPC = pc - pendingCost;
+
+  const handleAddAction = () => {
+    if (!selectedAction) return;
+
+    const action: OppositionAction = {
+      type: selectedAction.type,
+      cost: selectedAction.cost,
+    };
+
+    if (selectedAction.needsTarget === 'policy' && targetPolicy) {
+      action.targetPolicyId = targetPolicy;
+    }
+    if (selectedAction.needsTarget === 'group' && targetGroup) {
+      action.targetGroupId = targetGroup;
+    }
+    if (selectedAction.needsTarget === 'simvar') {
+      action.targetSimVar = targetSimVar;
+    }
+    if (selectedAction.needsTarget === 'policy_value' && targetPolicy) {
+      action.proposedPolicyId = targetPolicy;
+      action.proposedValue = proposedValue;
+    }
+
+    addOppositionAction(action);
+    setSelectedAction(null);
+    setTargetPolicy('');
+    setTargetGroup('');
+  };
+
+  const handleSubmit = () => {
+    const socket = getSocket();
+    socket.emit('submitOppositionActions', pendingOppositionActions);
+    clearOppositionActions();
+  };
+
+  const handlePass = () => {
+    const socket = getSocket();
+    socket.emit('endTurnPhase');
+    clearOppositionActions();
+  };
+
+  return (
+    <div className="flex gap-4 h-full">
+      {/* Left: Action Cards */}
+      <div className="w-72 flex-shrink-0 space-y-3">
+        <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Available Actions</h3>
+
+        {ACTION_DEFS.map(action => {
+          const canAfford = remainingPC >= action.cost;
+          return (
+            <button
+              key={action.type}
+              onClick={() => canAfford && setSelectedAction(action)}
+              disabled={!canAfford}
+              className={`game-card w-full text-left p-3 rounded-lg border transition-all ${
+                selectedAction?.type === action.type
+                  ? 'bg-red-900/30 border-red-700'
+                  : canAfford
+                  ? 'bg-slate-800/50 border-slate-700 hover:border-red-700'
+                  : 'bg-slate-800/20 border-slate-800 opacity-50 cursor-not-allowed'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-1">
+                <span className="font-medium text-sm">
+                  {action.emoji} {action.name}
+                </span>
+                <span className="text-xs bg-slate-700 px-2 py-0.5 rounded text-yellow-400">
+                  {action.cost} PC
+                </span>
+              </div>
+              <p className="text-xs text-slate-500">{action.description}</p>
+            </button>
+          );
+        })}
+
+        {/* Submit / Pass */}
+        <div className="mt-4 space-y-2 pt-4 border-t border-slate-700">
+          <div className="text-sm text-center">
+            <span className="text-slate-400">Remaining PC: </span>
+            <span className={`font-bold ${remainingPC < 0 ? 'text-red-400' : 'text-yellow-400'}`}>
+              ⚡{remainingPC}/{pc}
+            </span>
+          </div>
+          <button
+            onClick={handleSubmit}
+            disabled={pendingOppositionActions.length === 0}
+            className="w-full py-2 bg-red-600 hover:bg-red-500 disabled:bg-slate-700 disabled:text-slate-500 rounded-lg text-sm font-semibold transition-all"
+          >
+            Execute Actions ({pendingCost} PC)
+          </button>
+          <button
+            onClick={handlePass}
+            className="w-full py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm text-slate-300 transition-all"
+          >
+            Pass Turn
+          </button>
+        </div>
+      </div>
+
+      {/* Center: Action Config + Queue */}
+      <div className="flex-1 space-y-4">
+        {/* Target selection for current action */}
+        {selectedAction && (
+          <div className="p-4 bg-slate-800/50 border border-red-800 rounded-lg animate-fade-in">
+            <h4 className="font-medium mb-3">
+              {selectedAction.emoji} Configure: {selectedAction.name}
+            </h4>
+
+            {selectedAction.needsTarget === 'policy' && (
+              <div>
+                <label className="text-sm text-slate-400 mb-1 block">Target Policy</label>
+                <select
+                  value={targetPolicy}
+                  onChange={(e) => setTargetPolicy(e.target.value)}
+                  className="w-full p-2 bg-slate-700 border border-slate-600 rounded text-sm"
+                >
+                  <option value="">Select policy...</option>
+                  {POLICIES.map(p => (
+                    <option key={p.id} value={p.id}>{p.name} (current: {gameState.policies[p.id]})</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {selectedAction.needsTarget === 'group' && (
+              <div>
+                <label className="text-sm text-slate-400 mb-1 block">Target Voter Group</label>
+                <select
+                  value={targetGroup}
+                  onChange={(e) => setTargetGroup(e.target.value)}
+                  className="w-full p-2 bg-slate-700 border border-slate-600 rounded text-sm"
+                >
+                  <option value="">Select group...</option>
+                  {VOTER_GROUPS.map(g => (
+                    <option key={g.id} value={g.id}>
+                      {g.name} ({(g.populationShare * 100).toFixed(0)}% pop, {gameState.voterSatisfaction[g.id]}% satisfied)
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {selectedAction.needsTarget === 'simvar' && (
+              <div>
+                <label className="text-sm text-slate-400 mb-1 block">Stat to Attack</label>
+                <select
+                  value={targetSimVar}
+                  onChange={(e) => setTargetSimVar(e.target.value as SimVarKey)}
+                  className="w-full p-2 bg-slate-700 border border-slate-600 rounded text-sm"
+                >
+                  {SIM_VARS.map(v => (
+                    <option key={v.key} value={v.key}>
+                      {v.label} (current: {gameState.simulation[v.key].toFixed(1)})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {selectedAction.needsTarget === 'policy_value' && (
+              <div className="space-y-3">
+                <div>
+                  <label className="text-sm text-slate-400 mb-1 block">Policy</label>
+                  <select
+                    value={targetPolicy}
+                    onChange={(e) => setTargetPolicy(e.target.value)}
+                    className="w-full p-2 bg-slate-700 border border-slate-600 rounded text-sm"
+                  >
+                    <option value="">Select policy...</option>
+                    {POLICIES.map(p => (
+                      <option key={p.id} value={p.id}>{p.name} (current: {gameState.policies[p.id]})</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-sm text-slate-400 mb-1 block">Your Proposed Value: {proposedValue}</label>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    value={proposedValue}
+                    onChange={(e) => setProposedValue(parseInt(e.target.value))}
+                    className="w-full"
+                  />
+                </div>
+              </div>
+            )}
+
+            <button
+              onClick={handleAddAction}
+              disabled={
+                (selectedAction.needsTarget === 'policy' && !targetPolicy) ||
+                (selectedAction.needsTarget === 'group' && !targetGroup) ||
+                (selectedAction.needsTarget === 'policy_value' && !targetPolicy)
+              }
+              className="mt-3 w-full py-2 bg-red-600 hover:bg-red-500 disabled:bg-slate-700 rounded text-sm font-medium transition-all"
+            >
+              Add to Queue
+            </button>
+          </div>
+        )}
+
+        {/* Pending Actions Queue */}
+        <div>
+          <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Action Queue</h3>
+          {pendingOppositionActions.length === 0 ? (
+            <div className="p-8 text-center text-slate-500 border border-dashed border-slate-700 rounded-lg">
+              Select actions from the left to build your strategy
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {pendingOppositionActions.map((action, i) => {
+                const def = ACTION_DEFS.find(a => a.type === action.type);
+                return (
+                  <div key={i} className="flex items-center justify-between p-3 bg-slate-800/50 border border-slate-700 rounded-lg animate-slide-in">
+                    <div>
+                      <span className="text-sm font-medium">{def?.emoji} {def?.name}</span>
+                      {action.targetGroupId && (
+                        <span className="text-xs text-slate-400 ml-2">
+                          → {VOTER_GROUPS.find(g => g.id === action.targetGroupId)?.name}
+                        </span>
+                      )}
+                      {action.targetPolicyId && (
+                        <span className="text-xs text-slate-400 ml-2">
+                          → {POLICIES.find(p => p.id === action.targetPolicyId)?.name}
+                        </span>
+                      )}
+                      {action.targetSimVar && (
+                        <span className="text-xs text-slate-400 ml-2">
+                          → {action.targetSimVar}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-yellow-400">{action.cost} PC</span>
+                      <button
+                        onClick={() => removeOppositionAction(i)}
+                        className="text-red-400 hover:text-red-300 text-sm"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Intelligence: Stats Overview */}
+        <div>
+          <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Intelligence Report</h3>
+          <div className="grid grid-cols-2 gap-3">
+            <IntelCard label="Approval" value={`${gameState.approvalRating}%`} bad={gameState.approvalRating > 50} />
+            <IntelCard label="GDP Growth" value={`${gameState.simulation.gdpGrowth.toFixed(1)}%`} bad={gameState.simulation.gdpGrowth > 0} />
+            <IntelCard label="Unemployment" value={`${gameState.simulation.unemployment.toFixed(1)}%`} bad={gameState.simulation.unemployment < 8} />
+            <IntelCard label="Crime" value={gameState.simulation.crime.toFixed(0)} bad={gameState.simulation.crime < 40} />
+            <IntelCard label="Debt/GDP" value={`${gameState.budget.debtToGdp.toFixed(0)}%`} bad={gameState.budget.debtToGdp < 80} />
+            <IntelCard label="Deficit" value={gameState.budget.deficit.toFixed(0)} bad={gameState.budget.deficit < 0} />
+          </div>
+        </div>
+      </div>
+
+      {/* Right: Voter Groups */}
+      <div className="w-64 flex-shrink-0">
+        <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Voter Groups</h3>
+        <div className="space-y-3">
+          {VOTER_GROUPS.map(group => {
+            const satisfaction = gameState.voterSatisfaction[group.id] ?? 50;
+            const oppSupport = 100 - satisfaction;
+            const isLocked = gameState.activeEffects.some(
+              e => e.type === 'coalition' && e.data.groupId === group.id
+            );
+
+            return (
+              <div key={group.id} className="p-2 rounded border border-slate-700 bg-slate-800/30">
+                <div className="flex items-center justify-between text-sm mb-1">
+                  <span className="text-slate-300">
+                    {group.name}
+                    {isLocked && <span className="ml-1 text-green-400 text-xs">🔒</span>}
+                  </span>
+                  <span className="text-xs text-slate-500">{(group.populationShare * 100).toFixed(0)}%</span>
+                </div>
+                <div className="w-full h-3 bg-slate-700 rounded-full overflow-hidden flex">
+                  <div
+                    className="satisfaction-bar h-full bg-blue-500"
+                    style={{ width: `${satisfaction}%` }}
+                  />
+                  <div
+                    className="satisfaction-bar h-full bg-red-500"
+                    style={{ width: `${oppSupport}%` }}
+                  />
+                </div>
+                <div className="flex justify-between text-xs mt-0.5">
+                  <span className="text-blue-400">{satisfaction}% gov</span>
+                  <span className="text-red-400">{oppSupport}% opp</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function IntelCard({ label, value, bad }: { label: string; value: string; bad: boolean }) {
+  return (
+    <div className={`p-3 rounded-lg border ${bad ? 'bg-slate-800/30 border-slate-700' : 'bg-red-900/20 border-red-800'}`}>
+      <div className="text-xs text-slate-500">{label}</div>
+      <div className={`text-lg font-bold ${bad ? 'text-slate-300' : 'text-red-400'}`}>{value}</div>
+    </div>
+  );
+}
