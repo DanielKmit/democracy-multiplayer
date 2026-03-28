@@ -20,16 +20,19 @@ export function calculateBudget(
     }
   }
 
-  // GDP affects revenue (higher GDP = more tax base)
+  // GDP affects revenue
   const gdpMultiplier = 1 + (simulation.gdpGrowth / 100);
   revenue *= gdpMultiplier;
 
-  // Round
+  // Corruption leaks spending
+  const corruptionLeak = 1 + (simulation.corruption / 500);
+  spending *= corruptionLeak;
+
   revenue = Math.round(revenue * 10) / 10;
   spending = Math.round(spending * 10) / 10;
 
   const deficit = spending - revenue;
-  let debtToGdp = previousDebt + (deficit / 10); // simplified: deficit adds to debt
+  let debtToGdp = previousDebt + (deficit / 10);
   debtToGdp = Math.max(0, Math.round(debtToGdp * 10) / 10);
 
   const creditDowngrade = debtToGdp > 150;

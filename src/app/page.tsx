@@ -17,10 +17,7 @@ export default function Home() {
   const [errorMsg, setErrorMsg] = useState('');
 
   const handleCreate = async () => {
-    if (!name.trim()) {
-      setErrorMsg('Enter your name');
-      return;
-    }
+    if (!name.trim()) { setErrorMsg('Enter your name'); return; }
     setLoading(true);
     setErrorMsg('');
 
@@ -32,25 +29,19 @@ export default function Home() {
       setMode('host');
       setConnected(true);
 
-      // Init the game engine on host
       const state = initGame(roomCode, name.trim());
       setGameState(state);
 
-      // When host state changes, update store
       setOnStateChange((newState: GameState) => {
         useGameStore.getState().setGameState(newState);
       });
 
-      // Listen for client connecting
       onPeerConnect(() => {
         useGameStore.getState().setConnected(true);
       });
 
-      onPeerDisconnect(() => {
-        // Opponent left
-      });
+      onPeerDisconnect(() => {});
 
-      // Listen for messages from client
       onMessage((msg) => {
         if (msg.type === 'playerInfo') {
           handleClientJoin(msg.name);
@@ -60,21 +51,15 @@ export default function Home() {
       });
 
       router.push(`/game/${roomCode}`);
-    } catch (err) {
+    } catch {
       setErrorMsg('Failed to create room. Please try again.');
       setLoading(false);
     }
   };
 
   const handleJoin = async () => {
-    if (!name.trim()) {
-      setErrorMsg('Enter your name');
-      return;
-    }
-    if (!joinCode.trim()) {
-      setErrorMsg('Enter room code');
-      return;
-    }
+    if (!name.trim()) { setErrorMsg('Enter your name'); return; }
+    if (!joinCode.trim()) { setErrorMsg('Enter room code'); return; }
     setLoading(true);
     setErrorMsg('');
 
@@ -88,10 +73,8 @@ export default function Home() {
       setMode('client');
       setConnected(true);
 
-      // Send our player info to host
       sendMessage({ type: 'playerInfo', name: name.trim() });
 
-      // Listen for state updates from host
       onMessage((msg) => {
         if (msg.type === 'state') {
           useGameStore.getState().setGameState(msg.state as GameState);
@@ -100,9 +83,7 @@ export default function Home() {
         }
       });
 
-      onPeerDisconnect(() => {
-        // Host disconnected
-      });
+      onPeerDisconnect(() => {});
 
       router.push(`/game/${code}`);
     } catch (err) {
@@ -114,15 +95,16 @@ export default function Home() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-950">
       <div className="max-w-lg w-full mx-4">
-        {/* Logo / Title */}
+        {/* Title */}
         <div className="text-center mb-12 animate-fade-in">
-          <h1 className="text-5xl font-bold mb-2 bg-gradient-to-r from-blue-400 to-red-400 bg-clip-text text-transparent">
+          <div className="text-6xl mb-4">🏛️</div>
+          <h1 className="text-5xl font-bold mb-2 bg-gradient-to-r from-blue-400 via-purple-400 to-red-400 bg-clip-text text-transparent">
             Democracy
           </h1>
-          <p className="text-slate-400 text-lg">Multiplayer Political Simulation</p>
+          <p className="text-slate-400 text-lg">Republic of Novaria</p>
+          <p className="text-slate-600 text-sm mt-1">Multiplayer Political Simulation</p>
         </div>
 
-        {/* Error */}
         {errorMsg && (
           <div className="mb-4 p-3 bg-red-900/30 border border-red-800 rounded-lg text-red-300 text-sm text-center">
             {errorMsg}
@@ -143,9 +125,9 @@ export default function Home() {
             >
               🔗 Join Game
             </button>
-            <div className="text-center mt-8 text-slate-500 text-sm">
-              <p>Two players. One country. Every policy decision matters.</p>
-              <p className="mt-1">Govern wisely, or be voted out.</p>
+            <div className="text-center mt-8 space-y-2">
+              <p className="text-slate-500 text-sm">Create your party. Govern a fictional country. Win elections.</p>
+              <p className="text-slate-600 text-xs">Parliament • Ministers • Laws • Dilemmas • Regions • Situations</p>
             </div>
           </div>
         )}
@@ -155,28 +137,17 @@ export default function Home() {
             <div>
               <label className="block text-sm text-slate-400 mb-1">Your Name</label>
               <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Enter your name..."
+                type="text" value={name} onChange={(e) => setName(e.target.value)}
+                placeholder="Enter your name..." autoFocus maxLength={20}
                 className="w-full p-3 bg-slate-800 border border-slate-700 rounded-lg text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-blue-500"
-                maxLength={20}
-                autoFocus
               />
             </div>
-            <button
-              onClick={handleCreate}
-              disabled={loading}
-              className="w-full p-4 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 rounded-xl text-lg font-semibold transition-all"
-            >
+            <button onClick={handleCreate} disabled={loading}
+              className="w-full p-4 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 rounded-xl text-lg font-semibold transition-all">
               {loading ? 'Creating...' : '🏛️ Create Game Room'}
             </button>
-            <button
-              onClick={() => { setModeLocal('menu'); setErrorMsg(''); }}
-              className="w-full p-2 text-slate-400 hover:text-slate-300 text-sm"
-            >
-              ← Back
-            </button>
+            <button onClick={() => { setModeLocal('menu'); setErrorMsg(''); }}
+              className="w-full p-2 text-slate-400 hover:text-slate-300 text-sm">← Back</button>
           </div>
         )}
 
@@ -185,39 +156,25 @@ export default function Home() {
             <div>
               <label className="block text-sm text-slate-400 mb-1">Your Name</label>
               <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Enter your name..."
+                type="text" value={name} onChange={(e) => setName(e.target.value)}
+                placeholder="Enter your name..." autoFocus maxLength={20}
                 className="w-full p-3 bg-slate-800 border border-slate-700 rounded-lg text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-blue-500"
-                maxLength={20}
-                autoFocus
               />
             </div>
             <div>
               <label className="block text-sm text-slate-400 mb-1">Room Code</label>
               <input
-                type="text"
-                value={joinCode}
-                onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-                placeholder="ABCDEF"
+                type="text" value={joinCode} onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                placeholder="ABCDEF" maxLength={6}
                 className="w-full p-3 bg-slate-800 border border-slate-700 rounded-lg text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-blue-500 tracking-[0.3em] text-center text-xl font-mono"
-                maxLength={6}
               />
             </div>
-            <button
-              onClick={handleJoin}
-              disabled={loading}
-              className="w-full p-4 bg-red-600 hover:bg-red-500 disabled:bg-slate-700 rounded-xl text-lg font-semibold transition-all"
-            >
+            <button onClick={handleJoin} disabled={loading}
+              className="w-full p-4 bg-red-600 hover:bg-red-500 disabled:bg-slate-700 rounded-xl text-lg font-semibold transition-all">
               {loading ? 'Joining...' : '🔗 Join Game'}
             </button>
-            <button
-              onClick={() => { setModeLocal('menu'); setErrorMsg(''); }}
-              className="w-full p-2 text-slate-400 hover:text-slate-300 text-sm"
-            >
-              ← Back
-            </button>
+            <button onClick={() => { setModeLocal('menu'); setErrorMsg(''); }}
+              className="w-full p-2 text-slate-400 hover:text-slate-300 text-sm">← Back</button>
           </div>
         )}
       </div>

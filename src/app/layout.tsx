@@ -5,8 +5,8 @@ import './globals.css';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'Democracy Multiplayer',
-  description: 'A multiplayer political simulation game',
+  title: 'Democracy — Republic of Novaria',
+  description: 'Multiplayer political simulation — parliament, ministers, laws, dilemmas',
 };
 
 export default function RootLayout({

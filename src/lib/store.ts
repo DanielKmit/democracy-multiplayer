@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { GameState, PolicyChange, OppositionAction } from './engine/types';
+import { GameState, PolicyChange, OppositionAction, PartyConfig, MinistryId } from './engine/types';
 
 export type ConnectionMode = 'none' | 'host' | 'client';
 
@@ -11,13 +11,20 @@ interface GameStore {
   connected: boolean;
   mode: ConnectionMode;
 
+  // Party creation
+  partyConfig: PartyConfig | null;
+
   // Game
   gameState: GameState | null;
   error: string | null;
 
-  // Pending changes (client-side before submit)
+  // Pending changes
   pendingPolicyChanges: PolicyChange[];
   pendingOppositionActions: OppositionAction[];
+
+  // UI state
+  centerView: 'policy_web' | 'map';
+  selectedNode: string | null;
 
   // Actions
   setPlayerId: (id: string) => void;
@@ -25,8 +32,11 @@ interface GameStore {
   setRoomId: (id: string) => void;
   setConnected: (c: boolean) => void;
   setMode: (mode: ConnectionMode) => void;
+  setPartyConfig: (config: PartyConfig) => void;
   setGameState: (state: GameState) => void;
   setError: (error: string | null) => void;
+  setCenterView: (view: 'policy_web' | 'map') => void;
+  setSelectedNode: (id: string | null) => void;
   addPolicyChange: (change: PolicyChange) => void;
   removePolicyChange: (policyId: string) => void;
   clearPolicyChanges: () => void;
@@ -44,18 +54,24 @@ export const useGameStore = create<GameStore>((set, get) => ({
   roomId: null,
   connected: false,
   mode: 'none',
+  partyConfig: null,
   gameState: null,
   error: null,
   pendingPolicyChanges: [],
   pendingOppositionActions: [],
+  centerView: 'policy_web',
+  selectedNode: null,
 
   setPlayerId: (id) => set({ playerId: id }),
   setPlayerName: (name) => set({ playerName: name }),
   setRoomId: (id) => set({ roomId: id }),
   setConnected: (c) => set({ connected: c }),
   setMode: (mode) => set({ mode }),
+  setPartyConfig: (config) => set({ partyConfig: config }),
   setGameState: (state) => set({ gameState: state }),
   setError: (error) => set({ error }),
+  setCenterView: (view) => set({ centerView: view }),
+  setSelectedNode: (id) => set({ selectedNode: id }),
 
   addPolicyChange: (change) => set((s) => {
     const existing = s.pendingPolicyChanges.filter(c => c.policyId !== change.policyId);
@@ -97,9 +113,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
     roomId: null,
     connected: false,
     mode: 'none',
+    partyConfig: null,
     gameState: null,
     error: null,
     pendingPolicyChanges: [],
     pendingOppositionActions: [],
+    centerView: 'policy_web',
+    selectedNode: null,
   }),
 }));

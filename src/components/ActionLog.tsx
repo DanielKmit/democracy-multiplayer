@@ -8,6 +8,9 @@ const typeColors: Record<string, string> = {
   opposition: 'text-red-400',
   event: 'text-yellow-400',
   election: 'text-purple-400',
+  situation: 'text-orange-400',
+  dilemma: 'text-amber-400',
+  cabinet: 'text-cyan-400',
 };
 
 export function ActionLog() {

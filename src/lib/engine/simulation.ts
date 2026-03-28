@@ -9,11 +9,22 @@ import {
   TurnPhase,
   ActionLogEntry,
   Player,
+  PartyConfig,
+  CabinetState,
+  MinistryId,
+  TurnSnapshot,
+  NewsItem,
+  Bill,
 } from './types';
 import { POLICIES, POLICY_MAP } from './policies';
 import { VOTER_GROUPS } from './voters';
+import { REGIONS, REGION_MAP } from './regions';
 import { rollForEvent } from './events';
 import { calculateBudget } from './budget';
+import { getInitialPoliticianPool } from './politicians';
+import { createInitialParliament, allocateSeats } from './parliament';
+import { createInitialExtremism, updateExtremism } from './extremism';
+import { checkSituations, shouldResolveSituation } from './situations';
 
 // ---- Helpers ----
 
@@ -32,23 +43,22 @@ function generateRoomId(): string {
 
 export function computeSimulation(policyValues: Record<string, number>, activeEffects: ActiveEffect[]): SimulationState {
   const sim: SimulationState = {
-    gdpGrowth: 2,       // base 2%
-    unemployment: 8,     // base 8%
-    inflation: 3,        // base 3%
-    crime: 40,           // base 40
-    pollution: 50,       // base 50
-    equality: 50,        // base 50
-    healthIndex: 50,     // base 50
-    educationIndex: 50,  // base 50
-    freedomIndex: 50,    // base 50
-    nationalSecurity: 50,// base 50
+    gdpGrowth: 2,
+    unemployment: 8,
+    inflation: 3,
+    crime: 40,
+    pollution: 50,
+    equality: 50,
+    healthIndex: 50,
+    educationIndex: 50,
+    freedomIndex: 50,
+    nationalSecurity: 50,
+    corruption: 30,
   };
 
-  // Apply all policy effects
   for (const policy of POLICIES) {
     const value = policyValues[policy.id] ?? policy.defaultValue;
-    const deviation = value - 50; // how far from midpoint
-
+    const deviation = value - 50;
     for (const [key, effect] of Object.entries(policy.effects)) {
       sim[key as SimVarKey] += deviation * (effect as number);
     }
@@ -62,9 +72,15 @@ export function computeSimulation(policyValues: Record<string, number>, activeEf
         sim[key as SimVarKey] += val as number;
       }
     }
+    if (effect.type === 'dilemma' && effect.data.effects) {
+      const dilemmaEffects = effect.data.effects as Partial<Record<SimVarKey, number>>;
+      for (const [key, val] of Object.entries(dilemmaEffects)) {
+        sim[key as SimVarKey] += val as number;
+      }
+    }
   }
 
-  // Clamp all values
+  // Clamp
   sim.gdpGrowth = clamp(sim.gdpGrowth, -5, 8);
   sim.unemployment = clamp(sim.unemployment, 0, 30);
   sim.inflation = clamp(sim.inflation, 0, 20);
@@ -75,6 +91,7 @@ export function computeSimulation(policyValues: Record<string, number>, activeEf
   sim.educationIndex = clamp(sim.educationIndex, 0, 100);
   sim.freedomIndex = clamp(sim.freedomIndex, 0, 100);
   sim.nationalSecurity = clamp(sim.nationalSecurity, 0, 100);
+  sim.corruption = clamp(sim.corruption, 0, 100);
 
   return sim;
 }
@@ -89,48 +106,39 @@ export function computeVoterSatisfaction(
   const satisfaction: Record<string, number> = {};
 
   for (const group of VOTER_GROUPS) {
-    let score = 50; // baseline
+    let score = 50;
 
-    // Factor 1: Simulation variable concerns
+    // Simulation variable concerns
     for (const [varKey, weight] of Object.entries(group.concerns)) {
       const simVal = simulation[varKey as SimVarKey];
-      // Normalize: positive weight means they want high values
-      // For negative concerns (unemployment, crime, pollution), lower is better
       if (weight > 0) {
         score += (simVal - 50) * weight * 0.3;
       } else {
-        // They dislike high values of this variable
         score += (50 - simVal) * Math.abs(weight) * 0.3;
       }
     }
 
-    // Factor 2: Policy preferences (how close are policies to what they want)
+    // Policy preferences
     let policyScore = 0;
     let policyCount = 0;
     for (const [policyId, idealValue] of Object.entries(group.policyPreferences)) {
       const currentValue = policyValues[policyId] ?? 50;
       const distance = Math.abs(currentValue - idealValue);
-      policyScore += (100 - distance) / 100; // 1.0 = perfect match, 0.0 = opposite
+      policyScore += (100 - distance) / 100;
       policyCount++;
     }
     if (policyCount > 0) {
-      score += ((policyScore / policyCount) - 0.5) * 30; // -15 to +15
+      score += ((policyScore / policyCount) - 0.5) * 30;
     }
 
-    // Factor 3: Coalition building locks
+    // Effects
     for (const effect of activeEffects) {
       if (effect.type === 'coalition' && effect.data.groupId === group.id) {
-        // Coalition locked — opposition has locked this group
         score -= 10;
       }
-    }
-
-    // Factor 4: Campaign effects
-    for (const effect of activeEffects) {
       if (effect.type === 'media_attack') {
         const targetVar = effect.data.targetSimVar as SimVarKey;
         if (group.concerns[targetVar]) {
-          // Double the negative impact
           const simVal = simulation[targetVar];
           const weight = group.concerns[targetVar]!;
           if (weight < 0) {
@@ -146,6 +154,62 @@ export function computeVoterSatisfaction(
   return satisfaction;
 }
 
+// ---- Regional Satisfaction ----
+
+export function computeRegionalSatisfaction(
+  policyValues: Record<string, number>,
+  voterSatisfaction: Record<string, number>,
+  players: Player[]
+): Record<string, Record<string, number>> {
+  const regional: Record<string, Record<string, number>> = {};
+
+  for (const region of REGIONS) {
+    regional[region.id] = {};
+
+    for (const player of players) {
+      let regionScore = 0;
+      let totalWeight = 0;
+
+      // Base from voter groups present in region
+      for (const groupId of region.dominantGroups) {
+        const groupSat = voterSatisfaction[groupId] ?? 50;
+        regionScore += groupSat;
+        totalWeight += 1;
+      }
+
+      if (totalWeight > 0) {
+        regionScore /= totalWeight;
+      } else {
+        regionScore = 50;
+      }
+
+      // Ideological alignment bonus/penalty
+      const econDiff = Math.abs(region.economicLean - player.party.economicAxis);
+      const socialDiff = Math.abs(region.socialLean - player.party.socialAxis);
+      regionScore += (100 - econDiff) * 0.1;
+      regionScore += (100 - socialDiff) * 0.1;
+
+      // Policy weight modifiers for this region
+      for (const [policyId, weight] of Object.entries(region.policyWeights)) {
+        const group = VOTER_GROUPS.find(g =>
+          g.policyPreferences[policyId] !== undefined &&
+          region.dominantGroups.includes(g.id)
+        );
+        if (group) {
+          const ideal = group.policyPreferences[policyId];
+          const current = policyValues[policyId] ?? 50;
+          const alignment = 1 - Math.abs(current - ideal) / 100;
+          regionScore += alignment * (weight - 1) * 5;
+        }
+      }
+
+      regional[region.id][player.id] = clamp(Math.round(regionScore), 0, 100);
+    }
+  }
+
+  return regional;
+}
+
 // ---- Approval Rating ----
 
 export function computeApprovalRating(
@@ -157,7 +221,6 @@ export function computeApprovalRating(
     approval += (voterSatisfaction[group.id] ?? 50) * group.populationShare;
   }
 
-  // Campaign bonuses for opposition reduce approval
   for (const effect of activeEffects) {
     if (effect.type === 'event' && effect.data.approvalImpact) {
       approval += effect.data.approvalImpact as number;
@@ -169,11 +232,37 @@ export function computeApprovalRating(
 
 // ---- Political Capital ----
 
-export function computePoliticalCapital(player: Player, approvalRating: number, oppositionVoteShare: number): number {
+export function computePoliticalCapital(
+  player: Player,
+  approvalRating: number,
+  oppositionVoteShare: number,
+  cabinet?: CabinetState
+): number {
   if (player.role === 'ruling') {
     let pc = 6;
     if (approvalRating > 60) pc += 1;
     if (approvalRating < 30) pc -= 1;
+
+    // Cabinet competence bonus
+    if (cabinet) {
+      let totalCompetence = 0;
+      let filledCount = 0;
+      for (const polId of Object.values(cabinet.ministers)) {
+        if (polId) {
+          const pol = cabinet.availablePool.find(p => p.id === polId);
+          if (pol) {
+            totalCompetence += pol.competence;
+            filledCount++;
+          }
+        }
+      }
+      if (filledCount > 0) {
+        const avgComp = totalCompetence / filledCount;
+        if (avgComp > 7) pc += 1;
+        if (avgComp < 4) pc -= 1;
+      }
+    }
+
     return Math.max(1, pc);
   } else {
     let pc = 4;
@@ -186,64 +275,111 @@ export function computePoliticalCapital(player: Player, approvalRating: number, 
 // ---- Election ----
 
 export function runElection(
-  voterSatisfaction: Record<string, number>,
-  activeEffects: ActiveEffect[],
+  regionalSatisfaction: Record<string, Record<string, number>>,
+  players: Player[],
   turn: number,
+  activeEffects: ActiveEffect[],
   oppositionCampaignBonus: Record<string, number>
 ): ElectionResult {
-  const groupResults: Record<string, { ruling: number; opposition: number }> = {};
-  let totalRuling = 0;
-  let totalOpposition = 0;
+  const seatResults: Record<string, Record<string, number>> = {};
+  const voteShares: Record<string, Record<string, number>> = {};
+  const regionWinners: Record<string, string> = {};
+  const totalSeats: Record<string, number> = {};
 
-  for (const group of VOTER_GROUPS) {
-    const satisfaction = voterSatisfaction[group.id] ?? 50;
-    let rulingShare = satisfaction;
-    let oppositionShare = 100 - satisfaction;
-
-    // Campaign bonus
-    const campaignBonus = oppositionCampaignBonus[group.id] ?? 0;
-    oppositionShare += campaignBonus;
-    rulingShare -= campaignBonus;
-
-    // Coalition lock
-    const isLocked = activeEffects.some(
-      e => e.type === 'coalition' && e.data.groupId === group.id
-    );
-    if (isLocked) {
-      oppositionShare += 15;
-      rulingShare -= 15;
-    }
-
-    rulingShare = clamp(rulingShare, 5, 95);
-    oppositionShare = clamp(oppositionShare, 5, 95);
-
-    // Normalize
-    const total = rulingShare + oppositionShare;
-    rulingShare = (rulingShare / total) * 100;
-    oppositionShare = (oppositionShare / total) * 100;
-
-    groupResults[group.id] = {
-      ruling: Math.round(rulingShare * 10) / 10,
-      opposition: Math.round(oppositionShare * 10) / 10,
-    };
-
-    totalRuling += rulingShare * group.populationShare;
-    totalOpposition += oppositionShare * group.populationShare;
+  for (const player of players) {
+    totalSeats[player.id] = 0;
   }
 
-  const totalVotes = totalRuling + totalOpposition;
-  const rulingVoteShare = Math.round((totalRuling / totalVotes) * 1000) / 10;
-  const oppositionVoteShare = Math.round((totalOpposition / totalVotes) * 1000) / 10;
+  for (const region of REGIONS) {
+    const shares: Record<string, number> = {};
+    seatResults[region.id] = {};
 
-  const winner = rulingVoteShare >= 50 ? 'ruling' : 'opposition';
+    for (const player of players) {
+      let share = regionalSatisfaction[region.id]?.[player.id] ?? 50;
+
+      // Campaign bonus from opposition
+      if (player.role === 'opposition') {
+        for (const groupId of region.dominantGroups) {
+          share += (oppositionCampaignBonus[groupId] ?? 0) * 0.5;
+        }
+      }
+
+      // Coalition lock effects
+      for (const effect of activeEffects) {
+        if (effect.type === 'coalition') {
+          const lockedGroup = effect.data.groupId as string;
+          if (region.dominantGroups.includes(lockedGroup) && player.role === 'opposition') {
+            share += 5;
+          }
+        }
+      }
+
+      shares[player.id] = Math.max(5, share);
+    }
+
+    // Normalize shares to 100%
+    const totalShares = Object.values(shares).reduce((a, b) => a + b, 0);
+    const normalizedShares: Record<string, number> = {};
+    for (const [pid, s] of Object.entries(shares)) {
+      normalizedShares[pid] = (s / totalShares) * 100;
+    }
+    voteShares[region.id] = normalizedShares;
+
+    // Allocate seats proportionally
+    const regionSeats = allocateSeats(
+      { [region.id]: normalizedShares },
+      players
+    );
+
+    for (const seat of regionSeats.seats) {
+      seatResults[region.id][seat.partyId] = (seatResults[region.id][seat.partyId] ?? 0) + 1;
+      totalSeats[seat.partyId] = (totalSeats[seat.partyId] ?? 0) + 1;
+    }
+
+    // Region winner
+    let maxSeats = 0;
+    let winner = players[0]?.id ?? '';
+    for (const [pid, seats] of Object.entries(seatResults[region.id])) {
+      if (seats > maxSeats) {
+        maxSeats = seats;
+        winner = pid;
+      }
+    }
+    regionWinners[region.id] = winner;
+  }
+
+  // Overall vote share
+  const overallVoteShare: Record<string, number> = {};
+  for (const player of players) {
+    let totalWeightedShare = 0;
+    for (const region of REGIONS) {
+      totalWeightedShare += (voteShares[region.id]?.[player.id] ?? 0) * region.populationShare;
+    }
+    overallVoteShare[player.id] = Math.round(totalWeightedShare * 10) / 10;
+  }
+
+  // Winner by seats
+  let winnerPid = players[0]?.id ?? '';
+  let maxSeatsTotal = 0;
+  for (const [pid, seats] of Object.entries(totalSeats)) {
+    if (seats > maxSeatsTotal) {
+      maxSeatsTotal = seats;
+      winnerPid = pid;
+    }
+  }
+
+  const currentRuling = players.find(p => p.role === 'ruling');
+  const swapped = currentRuling ? currentRuling.id !== winnerPid : false;
 
   return {
     turn,
-    rulingVoteShare,
-    oppositionVoteShare,
-    groupResults,
-    winner,
-    swapped: winner === 'opposition',
+    seatResults,
+    totalSeats,
+    voteShares,
+    overallVoteShare,
+    winner: winnerPid,
+    swapped,
+    regionWinners,
   };
 }
 
@@ -265,26 +401,38 @@ export function createInitialGameState(roomId: string): GameState {
     players: [],
     turn: 1,
     phase: 'waiting',
+    date: { month: 1, year: 2025 },
     policies,
     simulation,
     budget,
     voterSatisfaction,
+    regionalSatisfaction: {},
     approvalRating,
     oppositionVoteShare: 100 - approvalRating,
+    parliament: { seats: [], seatsByParty: {}, coalitionPartner: null, speakerId: null },
+    cabinet: { ministers: { finance: null, interior: null, defense: null, health: null, education: null, foreign: null, environment: null, justice: null }, availablePool: getInitialPoliticianPool() },
+    activeBills: [],
+    activeSituations: [],
+    activeDilemma: null,
+    extremism: createInitialExtremism(),
     activeEffects: [],
     currentEvent: null,
     actionLog: [],
+    newsTicker: [],
     pendingPolicyChanges: [],
     pendingOppositionActions: [],
     filibusteredPolicies: [],
     electionHistory: [],
+    turnHistory: [],
     turnsUntilElection: 8,
+    consecutiveLowEnvRegulations: 0,
+    consecutiveHighSpending: 0,
   };
 }
 
 export { generateRoomId };
 
-// ---- Apply Policy Changes ----
+// ---- Apply Policy Changes (via Bills) ----
 
 export function applyPolicyChanges(state: GameState, changes: PolicyChange[]): string[] {
   const log: string[] = [];
@@ -344,7 +492,7 @@ export function applyOppositionActions(state: GameState, actions: OppositionActi
       case 'campaign': {
         if (action.targetGroupId) {
           state.activeEffects.push({
-            type: 'media_attack', // reuse for campaign tracking
+            type: 'media_attack',
             id: `campaign_${Date.now()}`,
             turnsRemaining: 1,
             data: { type: 'campaign', groupId: action.targetGroupId, bonus: 5 },
@@ -358,7 +506,6 @@ export function applyOppositionActions(state: GameState, actions: OppositionActi
         if (action.proposedPolicyId && action.proposedValue !== undefined) {
           const policy = POLICY_MAP.get(action.proposedPolicyId);
           if (policy) {
-            // Check if popular
             let approvalCount = 0;
             for (const group of VOTER_GROUPS) {
               const ideal = group.policyPreferences[action.proposedPolicyId];
@@ -409,13 +556,23 @@ export function applyOppositionActions(state: GameState, actions: OppositionActi
           state.turnsUntilElection = 0;
         } else {
           log.push('Vote of No Confidence FAILED. Opposition loses credibility.');
-          // Penalty — reduce opposition effectiveness
           state.activeEffects.push({
             type: 'media_attack',
             id: `vonc_fail_${Date.now()}`,
             turnsRemaining: 3,
             data: { type: 'vonc_penalty' },
           });
+        }
+        break;
+      }
+      case 'lobby_votes': {
+        // Reduce loyalty of ruling seats for next bill vote
+        log.push('Lobbying parliament members to rebel on next vote.');
+        break;
+      }
+      case 'propose_amendment': {
+        if (action.targetBillId) {
+          log.push(`Amendment proposed for bill ${action.targetBillId}`);
         }
         break;
       }
@@ -434,34 +591,111 @@ export function tickActiveEffects(state: GameState): void {
     .filter(e => e.turnsRemaining > 0);
 }
 
-// ---- Advance Turn ----
+// ---- Advance Date ----
+
+function advanceDate(state: GameState): void {
+  state.date.month++;
+  if (state.date.month > 12) {
+    state.date.month = 1;
+    state.date.year++;
+  }
+}
+
+// ---- Add News ----
+
+export function addNewsItem(state: GameState, text: string, type: NewsItem['type']): void {
+  state.newsTicker.unshift({
+    id: `news_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    turn: state.turn,
+    text,
+    type,
+    timestamp: Date.now(),
+  });
+  if (state.newsTicker.length > 30) {
+    state.newsTicker = state.newsTicker.slice(0, 30);
+  }
+}
+
+// ---- Record Turn Snapshot ----
+
+function recordSnapshot(state: GameState): void {
+  state.turnHistory.push({
+    turn: state.turn,
+    approval: state.approvalRating,
+    gdp: state.simulation.gdpGrowth,
+    unemployment: state.simulation.unemployment,
+    debtToGdp: state.budget.debtToGdp,
+  });
+}
+
+// ---- Advance Phase ----
 
 export function advancePhase(state: GameState): void {
-  const phaseOrder: TurnPhase[] = ['events', 'ruling', 'resolution', 'opposition', 'polling', 'election'];
+  const phaseOrder: TurnPhase[] = ['events', 'dilemma', 'ruling', 'bill_voting', 'resolution', 'opposition', 'polling', 'election'];
   const currentIndex = phaseOrder.indexOf(state.phase);
 
   if (state.phase === 'waiting') {
+    state.phase = 'party_creation';
+    return;
+  }
+
+  if (state.phase === 'party_creation') {
+    state.phase = 'events';
+    return;
+  }
+
+  if (state.phase === 'government_formation') {
     state.phase = 'events';
     return;
   }
 
   if (state.phase === 'polling') {
+    recordSnapshot(state);
+
     if (state.turnsUntilElection <= 0) {
       state.phase = 'election';
     } else {
       // Start new turn
       state.turn++;
       state.turnsUntilElection--;
+      advanceDate(state);
       state.filibusteredPolicies = [];
       state.pendingPolicyChanges = [];
       state.pendingOppositionActions = [];
+      state.activeBills = [];
 
-      // Tick effects
       tickActiveEffects(state);
+
+      // Track situation counters
+      if ((state.policies.env_regulations ?? 40) < 25) {
+        state.consecutiveLowEnvRegulations++;
+      } else {
+        state.consecutiveLowEnvRegulations = 0;
+      }
+
+      // Check/resolve situations
+      const activeSitIds = state.activeSituations.map(s => s.id);
+      const newSits = checkSituations(state.policies, state.simulation, activeSitIds, state.consecutiveLowEnvRegulations);
+      for (const sitId of newSits) {
+        state.activeSituations.push({ id: sitId, turnsActive: 0, acknowledged: false });
+      }
+      // Resolve situations whose conditions are no longer met
+      state.activeSituations = state.activeSituations.filter(s => {
+        if (shouldResolveSituation(s.id, state.policies, state.simulation, state.consecutiveLowEnvRegulations)) {
+          if (s.turnsActive >= 2) return false; // Must be active at least 2 turns to resolve
+        }
+        s.turnsActive++;
+        return true;
+      });
+
+      // Update extremism
+      state.extremism = updateExtremism(state.extremism, state.policies, state.simulation);
 
       // Give PC
       for (const player of state.players) {
-        player.politicalCapital += computePoliticalCapital(player, state.approvalRating, state.oppositionVoteShare);
+        player.politicalCapital += computePoliticalCapital(
+          player, state.approvalRating, state.oppositionVoteShare, state.cabinet
+        );
       }
 
       state.phase = 'events';
@@ -470,15 +704,27 @@ export function advancePhase(state: GameState): void {
   }
 
   if (state.phase === 'election') {
-    // After election, check game over
     if (state.electionHistory.length >= 3) {
       state.phase = 'game_over';
     } else {
       state.turn++;
       state.turnsUntilElection = 8;
       state.filibusteredPolicies = [];
-      state.phase = 'events';
+      advanceDate(state);
+      state.phase = 'government_formation';
     }
+    return;
+  }
+
+  // Skip dilemma if none active
+  if (state.phase === 'events' && !state.activeDilemma) {
+    state.phase = 'ruling';
+    return;
+  }
+
+  // Skip bill voting if no bills
+  if (state.phase === 'ruling') {
+    state.phase = 'resolution';
     return;
   }
 
@@ -495,7 +741,6 @@ export function addLogEntry(state: GameState, message: string, type: ActionLogEn
     type,
     timestamp: Date.now(),
   });
-  // Keep only last 50 entries
   if (state.actionLog.length > 50) {
     state.actionLog = state.actionLog.slice(-50);
   }

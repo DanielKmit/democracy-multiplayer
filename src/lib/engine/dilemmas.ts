@@ -1,0 +1,435 @@
+import { DilemmaDefinition } from './types';
+
+export const DILEMMAS: DilemmaDefinition[] = [
+  {
+    id: 'fracking_bergland',
+    title: 'Fracking Discovered in Bergland',
+    description: 'Geological surveys reveal massive natural gas reserves beneath Bergland. Fracking could bring economic windfall but devastate the pristine mountain environment.',
+    icon: '⛏️',
+    optionA: {
+      label: 'Allow Fracking',
+      description: 'Greenlight drilling operations. Jobs and revenue await.',
+      effects: { gdpGrowth: 2, pollution: 15 },
+      voterEffects: { business: 10, environmentalists: -20, rural: -5 },
+      regionEffects: { bergland: -15 },
+    },
+    optionB: {
+      label: 'Ban Fracking',
+      description: 'Protect the environment. The gas stays in the ground.',
+      effects: { gdpGrowth: -0.5 },
+      voterEffects: { environmentalists: 15, business: -10 },
+      regionEffects: { bergland: 5 },
+    },
+    defaultOption: 'b',
+    timeoutSeconds: 30,
+  },
+  {
+    id: 'whistleblower',
+    title: 'Whistleblower Leaks Military Secrets',
+    description: 'A government employee has leaked classified military documents to the press, revealing questionable surveillance programs.',
+    icon: '🔍',
+    optionA: {
+      label: 'Prosecute',
+      description: 'National security comes first. Leaking secrets is a crime.',
+      effects: { nationalSecurity: 5, freedomIndex: -10 },
+      voterEffects: { patriots: 10, liberals: -15, youth: -10 },
+    },
+    optionB: {
+      label: 'Protect Whistleblower',
+      description: 'Transparency matters. Investigate the surveillance instead.',
+      effects: { freedomIndex: 10, nationalSecurity: -5 },
+      voterEffects: { liberals: 15, youth: 10, patriots: -15 },
+    },
+    defaultOption: 'a',
+    timeoutSeconds: 30,
+  },
+  {
+    id: 'tech_hq',
+    title: 'Tech Giant Wants HQ in Capitalis',
+    description: 'MegaCorp wants to build its European headquarters in Capitalis. They\'re asking for significant tax breaks in exchange for 10,000 jobs.',
+    icon: '🏢',
+    optionA: {
+      label: 'Offer Tax Breaks',
+      description: 'Attract the company with favorable terms. Jobs now, revenue later.',
+      effects: { gdpGrowth: 1.5, unemployment: -2 },
+      policyEffects: { corporate_tax: -5 },
+      voterEffects: { business: 15, youth: 10, workers: -5 },
+      regionEffects: { capitalis: 10 },
+    },
+    optionB: {
+      label: 'Full Taxes Apply',
+      description: 'No special treatment. Fair taxation for all.',
+      effects: { gdpGrowth: -0.5 },
+      voterEffects: { workers: 10, business: -10 },
+    },
+    defaultOption: 'a',
+    timeoutSeconds: 30,
+  },
+  {
+    id: 'refugee_crisis',
+    title: 'Refugee Crisis at the Border',
+    description: 'Thousands of refugees from a neighboring conflict are gathering at Novaria\'s borders, seeking asylum.',
+    icon: '🚢',
+    optionA: {
+      label: 'Open the Borders',
+      description: 'Humanitarian duty. Welcome those in need.',
+      effects: { freedomIndex: 5, unemployment: 1 },
+      voterEffects: { liberals: 15, religious: 5, patriots: -20, rural: -10 },
+    },
+    optionB: {
+      label: 'Close the Borders',
+      description: 'Security first. Protect our resources and citizens.',
+      effects: { nationalSecurity: 5, freedomIndex: -5 },
+      voterEffects: { patriots: 15, rural: 5, liberals: -20, youth: -10 },
+    },
+    defaultOption: 'a',
+    timeoutSeconds: 30,
+  },
+  {
+    id: 'nuclear_plant',
+    title: 'Nuclear Power Plant Proposal',
+    description: 'Engineers propose a new nuclear power plant in Ostwald. Clean energy but safety concerns.',
+    icon: '☢️',
+    optionA: {
+      label: 'Build the Plant',
+      description: 'Nuclear is clean and reliable. Modern designs are safe.',
+      effects: { pollution: -10, gdpGrowth: 1 },
+      voterEffects: { business: 10, environmentalists: -15 },
+      regionEffects: { ostwald: -10 },
+    },
+    optionB: {
+      label: 'Reject the Proposal',
+      description: 'Too risky. Invest in renewables instead.',
+      effects: { pollution: 5 },
+      voterEffects: { environmentalists: 10 },
+      regionEffects: { ostwald: 5 },
+    },
+    defaultOption: 'b',
+    timeoutSeconds: 30,
+  },
+  {
+    id: 'teachers_strike',
+    title: 'National Teachers\' Strike',
+    description: 'Teachers across Novaria threaten a mass strike over low pay and overcrowded classrooms.',
+    icon: '📚',
+    optionA: {
+      label: 'Meet Their Demands',
+      description: 'Increase teacher pay and reduce class sizes. Expensive but right.',
+      effects: { educationIndex: 10 },
+      policyEffects: { education: 10 },
+      voterEffects: { youth: 10, workers: 5 },
+    },
+    optionB: {
+      label: 'Hold Firm',
+      description: 'The budget can\'t handle it. Negotiate modest improvements.',
+      effects: { educationIndex: -5 },
+      voterEffects: { youth: -15, workers: -10, business: 5 },
+    },
+    defaultOption: 'a',
+    timeoutSeconds: 30,
+  },
+  {
+    id: 'factory_pollution',
+    title: 'Factory Polluting Nordmark River',
+    description: 'A major employer in Nordmark is dumping chemicals into the river. Shutting it down means 2,000 job losses.',
+    icon: '🏭',
+    optionA: {
+      label: 'Shut It Down',
+      description: 'Public health comes first. Close the factory.',
+      effects: { pollution: -10, unemployment: 2 },
+      voterEffects: { environmentalists: 15, workers: -15 },
+      regionEffects: { nordmark: -15 },
+    },
+    optionB: {
+      label: 'Issue a Fine',
+      description: 'Fine the company and give them a deadline to clean up.',
+      effects: { pollution: -3, corruption: 5 },
+      voterEffects: { workers: 5, environmentalists: -10 },
+      regionEffects: { nordmark: 5 },
+    },
+    defaultOption: 'b',
+    timeoutSeconds: 30,
+  },
+  {
+    id: 'social_media_ban',
+    title: 'Social Media Misinformation Crisis',
+    description: 'Rampant misinformation on social media is destabilizing public discourse. Should the government intervene?',
+    icon: '📱',
+    optionA: {
+      label: 'Regulate Platforms',
+      description: 'Require platforms to remove misinformation. Protect the public.',
+      effects: { freedomIndex: -10, nationalSecurity: 5 },
+      voterEffects: { patriots: 5, retirees: 5, liberals: -15, youth: -15 },
+    },
+    optionB: {
+      label: 'Protect Free Speech',
+      description: 'The government has no business policing online discourse.',
+      effects: { freedomIndex: 5, nationalSecurity: -3 },
+      voterEffects: { liberals: 10, youth: 10, retirees: -10 },
+    },
+    defaultOption: 'b',
+    timeoutSeconds: 30,
+  },
+  {
+    id: 'medical_breakthrough',
+    title: 'Medical Research Funding Request',
+    description: 'Scientists at the Capitalis Institute request emergency funding for a promising cancer treatment breakthrough.',
+    icon: '🔬',
+    optionA: {
+      label: 'Fund the Research',
+      description: 'Invest heavily. This could save millions of lives.',
+      effects: { healthIndex: 10, gdpGrowth: -0.5 },
+      voterEffects: { retirees: 10, youth: 5 },
+      regionEffects: { capitalis: 5 },
+    },
+    optionB: {
+      label: 'Standard Process',
+      description: 'Follow normal funding channels. Can\'t play favorites.',
+      effects: {},
+      voterEffects: { business: 5, retirees: -5 },
+    },
+    defaultOption: 'a',
+    timeoutSeconds: 30,
+  },
+  {
+    id: 'port_expansion',
+    title: 'Westhafen Port Expansion',
+    description: 'The Westhafen port authority wants to triple capacity. Massive economic potential but will destroy coastal wetlands.',
+    icon: '🚢',
+    optionA: {
+      label: 'Approve Expansion',
+      description: 'Economic growth and trade are essential.',
+      effects: { gdpGrowth: 1.5, pollution: 10 },
+      voterEffects: { business: 15, environmentalists: -15 },
+      regionEffects: { westhafen: 10 },
+    },
+    optionB: {
+      label: 'Deny Expansion',
+      description: 'Protect the wetlands. Find sustainable alternatives.',
+      effects: { pollution: -5 },
+      voterEffects: { environmentalists: 10, business: -10 },
+      regionEffects: { westhafen: -10 },
+    },
+    defaultOption: 'a',
+    timeoutSeconds: 30,
+  },
+  {
+    id: 'drug_legalization',
+    title: 'Cannabis Legalization Vote',
+    description: 'A citizens\' initiative forces a vote on cannabis legalization. Public opinion is deeply divided.',
+    icon: '🌿',
+    optionA: {
+      label: 'Legalize It',
+      description: 'Tax revenue and reduced crime. Personal freedom wins.',
+      effects: { crime: -5, freedomIndex: 5 },
+      policyEffects: { drug_policy: 20 },
+      voterEffects: { youth: 15, liberals: 10, religious: -20, retirees: -10 },
+    },
+    optionB: {
+      label: 'Keep It Illegal',
+      description: 'Maintain current drug policy. Protect public health.',
+      effects: {},
+      voterEffects: { religious: 10, retirees: 5, youth: -10, liberals: -10 },
+    },
+    defaultOption: 'b',
+    timeoutSeconds: 30,
+  },
+  {
+    id: 'military_intervention',
+    title: 'Ally Requests Military Support',
+    description: 'A close ally is asking Novaria to deploy troops in a regional conflict. International reputation is at stake.',
+    icon: '🎖️',
+    optionA: {
+      label: 'Deploy Troops',
+      description: 'Stand with our allies. Show strength on the world stage.',
+      effects: { nationalSecurity: 5, gdpGrowth: -1 },
+      voterEffects: { patriots: 15, liberals: -15, youth: -10 },
+    },
+    optionB: {
+      label: 'Stay Neutral',
+      description: 'Novarian lives come first. No foreign entanglements.',
+      effects: { nationalSecurity: -5 },
+      voterEffects: { liberals: 10, youth: 5, patriots: -15 },
+    },
+    defaultOption: 'b',
+    timeoutSeconds: 30,
+  },
+  {
+    id: 'universal_basic_income',
+    title: 'Universal Basic Income Pilot',
+    description: 'Economists propose a UBI pilot program in Ostwald. Revolutionary but expensive.',
+    icon: '💵',
+    optionA: {
+      label: 'Launch UBI Pilot',
+      description: 'Bold policy for the future. Let\'s test it.',
+      effects: { equality: 10, gdpGrowth: -0.5, unemployment: -1 },
+      voterEffects: { youth: 15, workers: 10, business: -15 },
+      regionEffects: { ostwald: 10 },
+    },
+    optionB: {
+      label: 'Reject UBI',
+      description: 'Too risky and too expensive. Stick with proven policies.',
+      effects: {},
+      voterEffects: { business: 5, workers: -5 },
+    },
+    defaultOption: 'b',
+    timeoutSeconds: 30,
+  },
+  {
+    id: 'surveillance_system',
+    title: 'AI Surveillance System Proposal',
+    description: 'The Interior Ministry proposes an AI-powered surveillance system for all major cities. Crime could drop 30%, but at what cost to privacy?',
+    icon: '📷',
+    optionA: {
+      label: 'Deploy Surveillance',
+      description: 'Safety first. Crime reduction is worth the trade-off.',
+      effects: { crime: -15, freedomIndex: -15, nationalSecurity: 10 },
+      voterEffects: { patriots: 10, retirees: 5, liberals: -25, youth: -20 },
+    },
+    optionB: {
+      label: 'Reject Surveillance',
+      description: 'This is a dystopian nightmare. Privacy is sacred.',
+      effects: {},
+      voterEffects: { liberals: 15, youth: 10, patriots: -5 },
+    },
+    defaultOption: 'b',
+    timeoutSeconds: 30,
+  },
+  {
+    id: 'mining_bergland',
+    title: 'Rare Earth Mining in Bergland',
+    description: 'Rare earth minerals essential for tech are found in Bergland. Mining would scar the landscape but reduce import dependency.',
+    icon: '💎',
+    optionA: {
+      label: 'Approve Mining',
+      description: 'Strategic resources matter. Reduce dependency on imports.',
+      effects: { gdpGrowth: 1, pollution: 10, nationalSecurity: 5 },
+      voterEffects: { business: 10, patriots: 5, environmentalists: -15, rural: -5 },
+      regionEffects: { bergland: -10 },
+    },
+    optionB: {
+      label: 'Block Mining',
+      description: 'Preserve the mountains. Import what we need.',
+      effects: {},
+      voterEffects: { environmentalists: 10, rural: 5 },
+      regionEffects: { bergland: 5 },
+    },
+    defaultOption: 'b',
+    timeoutSeconds: 30,
+  },
+  {
+    id: 'constitutional_reform',
+    title: 'Constitutional Reform Debate',
+    description: 'A movement is pushing to modernize Novaria\'s constitution, expanding rights but potentially weakening traditional institutions.',
+    icon: '📜',
+    optionA: {
+      label: 'Support Reform',
+      description: 'The constitution should evolve with the times.',
+      effects: { freedomIndex: 10, equality: 5 },
+      voterEffects: { liberals: 15, youth: 10, religious: -15, patriots: -10 },
+    },
+    optionB: {
+      label: 'Preserve Tradition',
+      description: 'Our constitution has served us well. Don\'t fix what isn\'t broken.',
+      effects: {},
+      voterEffects: { religious: 10, patriots: 10, liberals: -10, youth: -10 },
+    },
+    defaultOption: 'b',
+    timeoutSeconds: 30,
+  },
+  {
+    id: 'sudfeld_drought',
+    title: 'Drought Devastates Sudfeld Farms',
+    description: 'A severe drought threatens Sudfeld\'s entire harvest. Farmers demand emergency aid.',
+    icon: '🌾',
+    optionA: {
+      label: 'Emergency Farm Aid',
+      description: 'Save the farms. Food security is national security.',
+      effects: { gdpGrowth: -0.5 },
+      policyEffects: { agriculture: 10 },
+      voterEffects: { rural: 15, religious: 5, business: -5 },
+      regionEffects: { sudfeld: 15 },
+    },
+    optionB: {
+      label: 'Market Solutions',
+      description: 'Let insurance and markets handle it. Government shouldn\'t intervene.',
+      effects: {},
+      voterEffects: { business: 5, rural: -20, religious: -5 },
+      regionEffects: { sudfeld: -15 },
+    },
+    defaultOption: 'a',
+    timeoutSeconds: 30,
+  },
+  {
+    id: 'offshore_wind',
+    title: 'Offshore Wind Farm Near Westhafen',
+    description: 'Plans for a massive offshore wind farm could power the region but fishermen oppose it.',
+    icon: '🌊',
+    optionA: {
+      label: 'Build Wind Farm',
+      description: 'Clean energy is the future. Compensate the fishermen.',
+      effects: { pollution: -10, gdpGrowth: 0.5 },
+      voterEffects: { environmentalists: 15, workers: -5 },
+      regionEffects: { westhafen: -5 },
+    },
+    optionB: {
+      label: 'Scrap the Plans',
+      description: 'Protect traditional livelihoods. Find another site.',
+      effects: {},
+      voterEffects: { workers: 5, environmentalists: -10 },
+      regionEffects: { westhafen: 5 },
+    },
+    defaultOption: 'a',
+    timeoutSeconds: 30,
+  },
+  {
+    id: 'ai_automation',
+    title: 'AI Automation Wave',
+    description: 'Major companies announce plans to automate 30% of factory jobs using AI. Progress or disaster?',
+    icon: '🤖',
+    optionA: {
+      label: 'Embrace Automation',
+      description: 'Progress can\'t be stopped. Retrain workers for the future.',
+      effects: { gdpGrowth: 1.5, unemployment: 3, educationIndex: 5 },
+      voterEffects: { business: 15, youth: 5, workers: -20 },
+      regionEffects: { nordmark: -15 },
+    },
+    optionB: {
+      label: 'Regulate Automation',
+      description: 'Slow down. Protect workers with transition policies.',
+      effects: { gdpGrowth: -0.5 },
+      voterEffects: { workers: 15, business: -10 },
+      regionEffects: { nordmark: 10 },
+    },
+    defaultOption: 'b',
+    timeoutSeconds: 30,
+  },
+];
+
+let dilemmaIndex = 0;
+const usedDilemmas: Set<string> = new Set();
+
+export function rollForDilemma(turn: number): DilemmaDefinition | null {
+  // 25% chance per turn, starting from turn 3
+  if (turn < 3) return null;
+  if (Math.random() > 0.25) return null;
+  
+  const available = DILEMMAS.filter(d => !usedDilemmas.has(d.id));
+  if (available.length === 0) {
+    usedDilemmas.clear();
+    return null;
+  }
+  
+  const dilemma = available[Math.floor(Math.random() * available.length)];
+  usedDilemmas.add(dilemma.id);
+  return dilemma;
+}
+
+export function getDilemmaById(id: string): DilemmaDefinition | undefined {
+  return DILEMMAS.find(d => d.id === id);
+}
+
+export function resetDilemmaTracker(): void {
+  usedDilemmas.clear();
+  dilemmaIndex = 0;
+}

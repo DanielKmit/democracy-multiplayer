@@ -3,7 +3,7 @@
 import { useGameStore } from './store';
 import { handleAction } from './gameHost';
 import { sendMessage } from './peer';
-import { PolicyChange, OppositionAction } from './engine/types';
+import { PolicyChange, OppositionAction, PartyConfig, MinistryId } from './engine/types';
 
 export function useGameActions() {
   const mode = useGameStore((s) => s.mode);
@@ -11,18 +11,21 @@ export function useGameActions() {
 
   function dispatch(action: string, payload?: unknown) {
     if (mode === 'host') {
-      // Host processes locally
       handleAction(playerId ?? 'host', action, payload);
     } else if (mode === 'client') {
-      // Client sends to host via PeerJS
       sendMessage({ type: 'action', action, payload });
     }
   }
 
   return {
+    submitPartyConfig: (config: PartyConfig) => dispatch('submitPartyConfig', config),
     acknowledgeEvent: () => dispatch('acknowledgeEvent'),
+    resolveDilemma: (option: 'a' | 'b') => dispatch('resolveDilemma', option),
     submitPolicyChanges: (changes: PolicyChange[]) => dispatch('submitPolicyChanges', changes),
     submitOppositionActions: (actions: OppositionAction[]) => dispatch('submitOppositionActions', actions),
+    appointMinister: (ministryId: MinistryId, politicianId: string) =>
+      dispatch('appointMinister', { ministryId, politicianId }),
+    fireMinister: (ministryId: MinistryId) => dispatch('fireMinister', { ministryId }),
     endTurnPhase: () => dispatch('endTurnPhase'),
   };
 }

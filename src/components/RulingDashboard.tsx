@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { useGameStore } from '@/lib/store';
 import { useGameActions } from '@/lib/useGameActions';
 import { POLICIES_BY_CATEGORY } from '@/lib/engine/policies';
-import { VOTER_GROUPS } from '@/lib/engine/voters';
 import { PolicyCategory } from '@/lib/engine/types';
 
 const categoryInfo: Record<PolicyCategory, { emoji: string; label: string }> = {
@@ -51,10 +50,10 @@ export function RulingDashboard() {
   const categories = Object.keys(POLICIES_BY_CATEGORY) as PolicyCategory[];
 
   return (
-    <div className="flex gap-4 h-full">
+    <div className="flex gap-4 h-full p-4">
       {/* Left: Category tabs */}
-      <div className="w-48 flex-shrink-0 space-y-1">
-        <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 px-2">Policy Categories</h3>
+      <div className="w-44 flex-shrink-0 space-y-1">
+        <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 px-2">Categories</h3>
         {categories.map(cat => (
           <button
             key={cat}
@@ -72,35 +71,20 @@ export function RulingDashboard() {
           </button>
         ))}
 
-        {/* Budget Summary */}
-        <div className="mt-4 p-3 bg-slate-800/50 rounded-lg border border-slate-700">
-          <h4 className="text-xs font-semibold text-slate-500 uppercase mb-2">Budget</h4>
-          <div className="space-y-1 text-xs">
-            <div className="flex justify-between">
-              <span className="text-slate-400">Revenue</span>
-              <span className="text-green-400">{gameState.budget.revenue.toFixed(0)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Spending</span>
-              <span className="text-red-400">{gameState.budget.spending.toFixed(0)}</span>
-            </div>
-            <div className="flex justify-between border-t border-slate-700 pt-1">
-              <span className="text-slate-400">Deficit</span>
-              <span className={gameState.budget.deficit > 0 ? 'text-red-400' : 'text-green-400'}>
-                {gameState.budget.deficit > 0 ? '-' : '+'}{Math.abs(gameState.budget.deficit).toFixed(0)}
-              </span>
-            </div>
-          </div>
-        </div>
-
         {/* Submit / Pass */}
-        <div className="mt-4 space-y-2">
+        <div className="mt-4 space-y-2 pt-4 border-t border-slate-700">
+          <div className="text-center text-sm">
+            <span className="text-slate-400">PC: </span>
+            <span className={`font-bold ${remainingPC < 0 ? 'text-red-400' : 'text-yellow-400'}`}>
+              ⚡{remainingPC}/{pc}
+            </span>
+          </div>
           <button
             onClick={handleSubmit}
-            disabled={pendingPolicyChanges.length === 0}
+            disabled={pendingPolicyChanges.length === 0 || remainingPC < 0}
             className="w-full py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:text-slate-500 rounded-lg text-sm font-semibold transition-all"
           >
-            Submit Changes ({pendingCost} PC)
+            Submit ({pendingCost} PC)
           </button>
           <button
             onClick={handlePass}
@@ -112,18 +96,10 @@ export function RulingDashboard() {
       </div>
 
       {/* Center: Policy Sliders */}
-      <div className="flex-1 space-y-3">
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="text-lg font-semibold">
-            {categoryInfo[activeCategory].emoji} {categoryInfo[activeCategory].label} Policies
-          </h2>
-          <div className="text-sm">
-            <span className="text-slate-400">Political Capital: </span>
-            <span className={`font-bold ${remainingPC < 0 ? 'text-red-400' : 'text-yellow-400'}`}>
-              ⚡{remainingPC}/{pc}
-            </span>
-          </div>
-        </div>
+      <div className="flex-1 space-y-3 overflow-y-auto">
+        <h2 className="text-lg font-semibold mb-2">
+          {categoryInfo[activeCategory].emoji} {categoryInfo[activeCategory].label} Policies
+        </h2>
 
         {POLICIES_BY_CATEGORY[activeCategory]?.map(policy => {
           const currentValue = gameState.policies[policy.id];
@@ -176,74 +152,6 @@ export function RulingDashboard() {
           );
         })}
       </div>
-
-      {/* Right: Voter Satisfaction */}
-      <div className="w-64 flex-shrink-0">
-        <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Voter Satisfaction</h3>
-        <div className="space-y-3">
-          {VOTER_GROUPS.map(group => {
-            const satisfaction = gameState.voterSatisfaction[group.id] ?? 50;
-            const isLocked = gameState.activeEffects.some(
-              e => e.type === 'coalition' && e.data.groupId === group.id
-            );
-
-            return (
-              <div key={group.id}>
-                <div className="flex items-center justify-between text-sm mb-1">
-                  <span className="text-slate-300">
-                    {group.name}
-                    {isLocked && <span className="ml-1 text-red-400 text-xs">🔒</span>}
-                  </span>
-                  <span className={`font-medium ${
-                    satisfaction > 60 ? 'text-green-400' : satisfaction < 40 ? 'text-red-400' : 'text-yellow-400'
-                  }`}>
-                    {satisfaction}%
-                  </span>
-                </div>
-                <div className="w-full h-2 bg-slate-700 rounded-full overflow-hidden">
-                  <div
-                    className={`satisfaction-bar h-full rounded-full ${
-                      satisfaction > 60 ? 'bg-green-500' : satisfaction < 40 ? 'bg-red-500' : 'bg-yellow-500'
-                    }`}
-                    style={{ width: `${satisfaction}%` }}
-                  />
-                </div>
-                <div className="text-xs text-slate-600 mt-0.5">
-                  {(group.populationShare * 100).toFixed(0)}% of voters
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Simulation Stats */}
-        <div className="mt-6">
-          <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Key Statistics</h3>
-          <div className="space-y-2 text-sm">
-            <StatRow label="Crime" value={gameState.simulation.crime} inverse />
-            <StatRow label="Pollution" value={gameState.simulation.pollution} inverse />
-            <StatRow label="Equality" value={gameState.simulation.equality} />
-            <StatRow label="Health" value={gameState.simulation.healthIndex} />
-            <StatRow label="Education" value={gameState.simulation.educationIndex} />
-            <StatRow label="Freedom" value={gameState.simulation.freedomIndex} />
-            <StatRow label="Security" value={gameState.simulation.nationalSecurity} />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function StatRow({ label, value, inverse }: { label: string; value: number; inverse?: boolean }) {
-  const good = inverse ? value < 40 : value > 60;
-  const bad = inverse ? value > 60 : value < 40;
-
-  return (
-    <div className="flex items-center justify-between">
-      <span className="text-slate-400">{label}</span>
-      <span className={`font-medium ${good ? 'text-green-400' : bad ? 'text-red-400' : 'text-yellow-400'}`}>
-        {value.toFixed(0)}
-      </span>
     </div>
   );
 }

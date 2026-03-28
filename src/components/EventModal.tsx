@@ -21,14 +21,13 @@ export function EventModal() {
           <h2 className="text-xl font-bold mb-2">{event.name}</h2>
           <p className="text-slate-400 mb-4">{event.description}</p>
 
-          {/* Effects */}
           <div className="bg-slate-900 rounded-lg p-3 mb-4 text-sm">
             <div className="text-xs text-slate-500 uppercase mb-2">Effects ({event.duration} turns)</div>
             {Object.entries(event.effects).map(([key, val]) => (
               <div key={key} className="flex justify-between">
                 <span className="text-slate-400">{key}</span>
-                <span className={val > 0 ? 'text-green-400' : 'text-red-400'}>
-                  {val > 0 ? '+' : ''}{val}
+                <span className={(val as number) > 0 ? 'text-green-400' : 'text-red-400'}>
+                  {(val as number) > 0 ? '+' : ''}{val}
                 </span>
               </div>
             ))}
