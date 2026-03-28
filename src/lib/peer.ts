@@ -60,7 +60,7 @@ function setupConnection(conn: DataConnection) {
     if (disconnectHandler) disconnectHandler();
   });
 
-  conn.on('error', (err) => {
+  conn.on('error', (err: any) => {
     console.error('[Peer] Connection error:', err);
   });
 }
@@ -113,13 +113,13 @@ export function joinRoom(roomCode: string): Promise<void> {
         resolve();
       });
 
-      conn.on('error', (err) => {
+      conn.on('error', (err: any) => {
         console.error('[Peer] Join connection error:', err);
         reject(err);
       });
     });
 
-    peer.on('error', (err) => {
+    peer.on('error', (err: any) => {
       console.error('[Peer] Client error:', err);
       reject(err);
     });
