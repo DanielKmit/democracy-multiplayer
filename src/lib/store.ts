@@ -1,12 +1,15 @@
 import { create } from 'zustand';
 import { GameState, PolicyChange, OppositionAction } from './engine/types';
 
+export type ConnectionMode = 'none' | 'host' | 'client';
+
 interface GameStore {
   // Connection
   playerId: string | null;
   playerName: string;
   roomId: string | null;
   connected: boolean;
+  mode: ConnectionMode;
 
   // Game
   gameState: GameState | null;
@@ -21,6 +24,7 @@ interface GameStore {
   setPlayerName: (name: string) => void;
   setRoomId: (id: string) => void;
   setConnected: (c: boolean) => void;
+  setMode: (mode: ConnectionMode) => void;
   setGameState: (state: GameState) => void;
   setError: (error: string | null) => void;
   addPolicyChange: (change: PolicyChange) => void;
@@ -31,6 +35,7 @@ interface GameStore {
   clearOppositionActions: () => void;
   getPendingPolicyCost: () => number;
   getPendingOppositionCost: () => number;
+  reset: () => void;
 }
 
 export const useGameStore = create<GameStore>((set, get) => ({
@@ -38,6 +43,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   playerName: '',
   roomId: null,
   connected: false,
+  mode: 'none',
   gameState: null,
   error: null,
   pendingPolicyChanges: [],
@@ -47,12 +53,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
   setPlayerName: (name) => set({ playerName: name }),
   setRoomId: (id) => set({ roomId: id }),
   setConnected: (c) => set({ connected: c }),
+  setMode: (mode) => set({ mode }),
   setGameState: (state) => set({ gameState: state }),
   setError: (error) => set({ error }),
 
   addPolicyChange: (change) => set((s) => {
     const existing = s.pendingPolicyChanges.filter(c => c.policyId !== change.policyId);
-    // Only add if value actually changed
     if (change.newValue !== change.oldValue) {
       return { pendingPolicyChanges: [...existing, change] };
     }
@@ -84,4 +90,16 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const actions = get().pendingOppositionActions;
     return actions.reduce((total, a) => total + a.cost, 0);
   },
+
+  reset: () => set({
+    playerId: null,
+    playerName: '',
+    roomId: null,
+    connected: false,
+    mode: 'none',
+    gameState: null,
+    error: null,
+    pendingPolicyChanges: [],
+    pendingOppositionActions: [],
+  }),
 }));
