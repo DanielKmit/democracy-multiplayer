@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useGameStore } from '@/lib/store';
-import { getSocket } from '@/lib/socket';
+import { useGameActions } from '@/lib/useGameActions';
 import { POLICIES } from '@/lib/engine/policies';
 import { VOTER_GROUPS } from '@/lib/engine/voters';
 import { OppositionAction, OppositionActionType, SimVarKey } from '@/lib/engine/types';
@@ -74,6 +74,7 @@ const SIM_VARS: { key: SimVarKey; label: string }[] = [
 
 export function OppositionDashboard() {
   const { gameState, playerId, pendingOppositionActions, addOppositionAction, removeOppositionAction, clearOppositionActions, getPendingOppositionCost } = useGameStore();
+  const { submitOppositionActions, endTurnPhase } = useGameActions();
   const [selectedAction, setSelectedAction] = useState<typeof ACTION_DEFS[0] | null>(null);
   const [targetPolicy, setTargetPolicy] = useState('');
   const [targetGroup, setTargetGroup] = useState('');
@@ -116,14 +117,12 @@ export function OppositionDashboard() {
   };
 
   const handleSubmit = () => {
-    const socket = getSocket();
-    socket.emit('submitOppositionActions', pendingOppositionActions);
+    submitOppositionActions(pendingOppositionActions);
     clearOppositionActions();
   };
 
   const handlePass = () => {
-    const socket = getSocket();
-    socket.emit('endTurnPhase');
+    endTurnPhase();
     clearOppositionActions();
   };
 

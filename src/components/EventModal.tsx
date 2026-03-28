@@ -1,10 +1,11 @@
 'use client';
 
 import { useGameStore } from '@/lib/store';
-import { getSocket } from '@/lib/socket';
+import { useGameActions } from '@/lib/useGameActions';
 
 export function EventModal() {
   const { gameState } = useGameStore();
+  const { acknowledgeEvent } = useGameActions();
   if (!gameState || !gameState.currentEvent) return null;
 
   const event = gameState.currentEvent;
@@ -42,7 +43,7 @@ export function EventModal() {
           </div>
 
           <button
-            onClick={() => getSocket().emit('acknowledgeEvent')}
+            onClick={acknowledgeEvent}
             className="w-full py-3 bg-blue-600 hover:bg-blue-500 rounded-lg font-semibold transition-all"
           >
             Acknowledged →

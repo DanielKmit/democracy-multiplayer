@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useGameStore } from '@/lib/store';
-import { getSocket } from '@/lib/socket';
+import { useGameActions } from '@/lib/useGameActions';
 import { POLICIES_BY_CATEGORY } from '@/lib/engine/policies';
 import { VOTER_GROUPS } from '@/lib/engine/voters';
 import { PolicyCategory } from '@/lib/engine/types';
@@ -18,6 +18,7 @@ const categoryInfo: Record<PolicyCategory, { emoji: string; label: string }> = {
 
 export function RulingDashboard() {
   const { gameState, playerId, pendingPolicyChanges, addPolicyChange, clearPolicyChanges, getPendingPolicyCost } = useGameStore();
+  const { submitPolicyChanges, endTurnPhase } = useGameActions();
   const [activeCategory, setActiveCategory] = useState<PolicyCategory>('economy');
 
   if (!gameState) return null;
@@ -38,14 +39,12 @@ export function RulingDashboard() {
   };
 
   const handleSubmit = () => {
-    const socket = getSocket();
-    socket.emit('submitPolicyChanges', pendingPolicyChanges);
+    submitPolicyChanges(pendingPolicyChanges);
     clearPolicyChanges();
   };
 
   const handlePass = () => {
-    const socket = getSocket();
-    socket.emit('endTurnPhase');
+    endTurnPhase();
     clearPolicyChanges();
   };
 

@@ -3,45 +3,70 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useGameStore } from '@/lib/store';
-import { connectSocket } from '@/lib/socket';
+import { createRoom, joinRoom, onMessage, onPeerConnect, onPeerDisconnect, sendMessage } from '@/lib/peer';
+import { initGame, handleClientJoin, handleAction, setOnStateChange } from '@/lib/gameHost';
+import { GameState } from '@/lib/engine/types';
 
 export default function Home() {
   const router = useRouter();
-  const { setPlayerName, setRoomId, setPlayerId, setGameState, setError } = useGameStore();
+  const { setPlayerName, setRoomId, setPlayerId, setGameState, setConnected, setMode } = useGameStore();
   const [name, setName] = useState('');
   const [joinCode, setJoinCode] = useState('');
-  const [mode, setMode] = useState<'menu' | 'create' | 'join'>('menu');
+  const [mode, setModeLocal] = useState<'menu' | 'create' | 'join'>('menu');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (!name.trim()) {
       setErrorMsg('Enter your name');
       return;
     }
     setLoading(true);
-    setPlayerName(name.trim());
+    setErrorMsg('');
 
-    const socket = connectSocket();
+    try {
+      const roomCode = await createRoom();
+      setPlayerName(name.trim());
+      setPlayerId('host');
+      setRoomId(roomCode);
+      setMode('host');
+      setConnected(true);
 
-    socket.on('connect', () => {
-      setPlayerId(socket.id!);
-      socket.emit('createRoom', name.trim());
-    });
-
-    socket.on('gameState', (state) => {
+      // Init the game engine on host
+      const state = initGame(roomCode, name.trim());
       setGameState(state);
-      setRoomId(state.roomId);
-      router.push(`/game/${state.roomId}`);
-    });
 
-    socket.on('error', (msg) => {
-      setErrorMsg(msg);
+      // When host state changes, update store
+      setOnStateChange((newState: GameState) => {
+        useGameStore.getState().setGameState(newState);
+      });
+
+      // Listen for client connecting
+      onPeerConnect(() => {
+        useGameStore.getState().setConnected(true);
+      });
+
+      onPeerDisconnect(() => {
+        // Opponent left
+      });
+
+      // Listen for messages from client
+      onMessage((msg) => {
+        if (msg.type === 'playerInfo') {
+          handleClientJoin(msg.name);
+        } else if (msg.type === 'action') {
+          handleAction('client', msg.action, msg.payload);
+        }
+      });
+
+      router.push(`/game/${roomCode}`);
+    } catch (err) {
+      setErrorMsg('Failed to create room. Please try again.');
       setLoading(false);
-    });
+    }
   };
 
-  const handleJoin = () => {
+  const handleJoin = async () => {
     if (!name.trim()) {
       setErrorMsg('Enter your name');
       return;
@@ -51,25 +76,39 @@ export default function Home() {
       return;
     }
     setLoading(true);
-    setPlayerName(name.trim());
+    setErrorMsg('');
 
-    const socket = connectSocket();
+    try {
+      const code = joinCode.trim().toUpperCase();
+      await joinRoom(code);
 
-    socket.on('connect', () => {
-      setPlayerId(socket.id!);
-      socket.emit('joinRoom', joinCode.trim().toUpperCase(), name.trim());
-    });
+      setPlayerName(name.trim());
+      setPlayerId('client');
+      setRoomId(code);
+      setMode('client');
+      setConnected(true);
 
-    socket.on('gameState', (state) => {
-      setGameState(state);
-      setRoomId(state.roomId);
-      router.push(`/game/${state.roomId}`);
-    });
+      // Send our player info to host
+      sendMessage({ type: 'playerInfo', name: name.trim() });
 
-    socket.on('error', (msg) => {
-      setErrorMsg(msg);
+      // Listen for state updates from host
+      onMessage((msg) => {
+        if (msg.type === 'state') {
+          useGameStore.getState().setGameState(msg.state as GameState);
+        } else if (msg.type === 'error') {
+          useGameStore.getState().setError(msg.message);
+        }
+      });
+
+      onPeerDisconnect(() => {
+        // Host disconnected
+      });
+
+      router.push(`/game/${code}`);
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : 'Failed to join room');
       setLoading(false);
-    });
+    }
   };
 
   return (
@@ -93,13 +132,13 @@ export default function Home() {
         {mode === 'menu' && (
           <div className="space-y-4 animate-fade-in">
             <button
-              onClick={() => setMode('create')}
+              onClick={() => setModeLocal('create')}
               className="w-full p-4 bg-blue-600 hover:bg-blue-500 rounded-xl text-lg font-semibold transition-all hover:scale-[1.02] active:scale-[0.98]"
             >
               🏛️ Create Game
             </button>
             <button
-              onClick={() => setMode('join')}
+              onClick={() => setModeLocal('join')}
               className="w-full p-4 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-lg font-semibold transition-all hover:scale-[1.02] active:scale-[0.98]"
             >
               🔗 Join Game
@@ -133,7 +172,7 @@ export default function Home() {
               {loading ? 'Creating...' : '🏛️ Create Game Room'}
             </button>
             <button
-              onClick={() => { setMode('menu'); setErrorMsg(''); }}
+              onClick={() => { setModeLocal('menu'); setErrorMsg(''); }}
               className="w-full p-2 text-slate-400 hover:text-slate-300 text-sm"
             >
               ← Back
@@ -174,7 +213,7 @@ export default function Home() {
               {loading ? 'Joining...' : '🔗 Join Game'}
             </button>
             <button
-              onClick={() => { setMode('menu'); setErrorMsg(''); }}
+              onClick={() => { setModeLocal('menu'); setErrorMsg(''); }}
               className="w-full p-2 text-slate-400 hover:text-slate-300 text-sm"
             >
               ← Back

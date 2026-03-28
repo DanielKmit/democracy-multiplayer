@@ -1,11 +1,12 @@
 'use client';
 
 import { useGameStore } from '@/lib/store';
-import { getSocket } from '@/lib/socket';
+import { useGameActions } from '@/lib/useGameActions';
 import { VOTER_GROUPS } from '@/lib/engine/voters';
 
 export function PollingSummary() {
   const { gameState } = useGameStore();
+  const { endTurnPhase } = useGameActions();
   if (!gameState) return null;
 
   return (
@@ -70,7 +71,7 @@ export function PollingSummary() {
               : '🗳️ Election next!'}
           </div>
           <button
-            onClick={() => getSocket().emit('endTurnPhase')}
+            onClick={endTurnPhase}
             className="px-8 py-3 bg-blue-600 hover:bg-blue-500 rounded-lg font-semibold transition-all"
           >
             {gameState.turnsUntilElection <= 0 ? 'Proceed to Election →' : 'Next Turn →'}

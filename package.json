@@ -3,20 +3,17 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "tsx server.ts",
+    "dev": "next dev",
     "build": "next build",
-    "start": "NODE_ENV=production tsx server.ts",
+    "start": "next start",
     "lint": "eslint"
   },
   "dependencies": {
     "next": "16.2.1",
-    "peerjs": "^1.5.5",
+    "peerjs": "^1.5.4",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "recharts": "^3.8.1",
-    "socket.io": "^4.8.3",
-    "socket.io-client": "^4.8.3",
-    "tsx": "^4.21.0",
     "zustand": "^5.0.12"
   },
   "devDependencies": {

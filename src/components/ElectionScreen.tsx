@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from 'react';
 import { useGameStore } from '@/lib/store';
-import { getSocket } from '@/lib/socket';
+import { useGameActions } from '@/lib/useGameActions';
 import { VOTER_GROUPS } from '@/lib/engine/voters';
 
 export function ElectionScreen() {
   const { gameState, playerId } = useGameStore();
+  const { endTurnPhase } = useGameActions();
   const [revealed, setRevealed] = useState(false);
   const [revealIndex, setRevealIndex] = useState(0);
 
@@ -94,7 +95,7 @@ export function ElectionScreen() {
           </div>
 
           <button
-            onClick={() => getSocket().emit('endTurnPhase')}
+            onClick={endTurnPhase}
             className="px-8 py-3 bg-blue-600 hover:bg-blue-500 rounded-lg font-semibold transition-all"
           >
             {gameState.electionHistory.length >= 3 ? 'See Final Results' : 'Continue to Next Term →'}
