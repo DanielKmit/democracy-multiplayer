@@ -1,6 +1,7 @@
 'use client';
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
-import Peer, { DataConnection } from 'peerjs';
+import type { DataConnection, Peer as PeerType } from 'peerjs';
 
 export type PeerMessage =
   | { type: 'action'; action: string; payload?: unknown }
@@ -13,7 +14,22 @@ type ConnectionHandler = () => void;
 
 const PEER_PREFIX = 'DEM-';
 
-let peer: Peer | null = null;
+const PEER_CONFIG = {
+  host: '0.peerjs.com',
+  port: 443,
+  secure: true,
+  path: '/',
+  debug: 1,
+  config: {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+    ],
+  },
+};
+
+let peer: PeerType | null = null;
 let connection: DataConnection | null = null;
 let messageHandler: MessageHandler | null = null;
 let connectHandler: ConnectionHandler | null = null;
@@ -49,22 +65,27 @@ function setupConnection(conn: DataConnection) {
   });
 }
 
+async function createPeer(id: string): Promise<PeerType> {
+  const { default: Peer } = await import('peerjs');
+  return new Peer(id, PEER_CONFIG) as unknown as PeerType;
+}
+
 export function createRoom(): Promise<string> {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     const roomCode = generateRoomCode();
     const peerId = PEER_PREFIX + roomCode;
 
-    peer = new Peer(peerId);
+    peer = await createPeer(peerId);
 
     peer.on('open', () => {
       resolve(roomCode);
     });
 
-    peer.on('connection', (conn) => {
+    peer.on('connection', (conn: any) => {
       setupConnection(conn);
     });
 
-    peer.on('error', (err) => {
+    peer.on('error', (err: any) => {
       console.error('[Peer] Host error:', err);
       if (err.type === 'unavailable-id') {
         // ID taken, try again
@@ -78,11 +99,11 @@ export function createRoom(): Promise<string> {
 }
 
 export function joinRoom(roomCode: string): Promise<void> {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     const peerId = PEER_PREFIX + roomCode.toUpperCase();
     const clientId = PEER_PREFIX + 'CLIENT-' + Math.random().toString(36).substring(2, 8);
 
-    peer = new Peer(clientId);
+    peer = await createPeer(clientId);
 
     peer.on('open', () => {
       const conn = peer!.connect(peerId, { reliable: true });
