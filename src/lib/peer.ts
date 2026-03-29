@@ -2,20 +2,20 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 /**
- * Multiplayer communication layer using Pusher (replaces PeerJS).
+ * Multiplayer communication layer using Socket.IO.
  *
  * Architecture:
- * - Host creates a room → subscribes to private-game-{ROOM_CODE}
- * - Client joins → subscribes to the same channel
- * - Messages are sent via server-side Pusher trigger (/api/pusher/send)
- *   to ensure reliable delivery (no client event limitations)
- * - Both sides listen for 'game-message' events on the channel
+ * - Host creates a room → server tracks room membership
+ * - Client joins → server notifies host
+ * - Messages sent directly via Socket.IO (bidirectional, real-time)
  *
- * The exported API is identical to the old PeerJS implementation so
+ * The exported API is identical to the old Pusher implementation so
  * no other files need to change.
  */
 
-import PusherClient from 'pusher-js';
+import { io, Socket } from 'socket.io-client';
+
+const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3001';
 
 export type PeerMessage =
   | { type: 'action'; action: string; payload?: unknown }
@@ -27,10 +27,8 @@ type MessageHandler = (msg: PeerMessage) => void;
 type ConnectionHandler = () => void;
 type ErrorHandler = (message: string) => void;
 
-let pusher: PusherClient | null = null;
-let channel: any = null;
-let channelName: string | null = null;
-let mySocketId: string | null = null;
+let socket: Socket | null = null;
+let currentRoom: string | null = null;
 
 let messageHandler: MessageHandler | null = null;
 let connectHandler: ConnectionHandler | null = null;
@@ -48,75 +46,64 @@ function generateRoomCode(): string {
   return code;
 }
 
-function initPusher(): PusherClient {
-  if (pusher) return pusher;
+function connectSocket(): Promise<Socket> {
+  return new Promise((resolve, reject) => {
+    if (socket?.connected) {
+      resolve(socket);
+      return;
+    }
 
-  const key = process.env.NEXT_PUBLIC_PUSHER_KEY;
-  const cluster = process.env.NEXT_PUBLIC_PUSHER_CLUSTER;
+    socket = io(SOCKET_URL, {
+      transports: ['websocket', 'polling'],
+      timeout: 10000,
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+    });
 
-  if (!key || !cluster) {
-    throw new Error('Pusher configuration missing. Set NEXT_PUBLIC_PUSHER_KEY and NEXT_PUBLIC_PUSHER_CLUSTER.');
-  }
+    const timeout = setTimeout(() => {
+      reject(new Error('Connection timed out. Please try again.'));
+    }, 15000);
 
-  pusher = new PusherClient(key, {
-    cluster,
-    authEndpoint: '/api/pusher/auth',
+    socket.on('connect', () => {
+      clearTimeout(timeout);
+      console.log('[Socket.IO] Connected:', socket!.id);
+      resolve(socket!);
+    });
+
+    socket.on('connect_error', (err) => {
+      clearTimeout(timeout);
+      console.error('[Socket.IO] Connection error:', err.message);
+      if (errorHandler) {
+        errorHandler('Connection error. Please check your internet and try again.');
+      }
+      reject(new Error('Failed to connect to server.'));
+    });
+
+    socket.on('disconnect', (reason) => {
+      console.warn('[Socket.IO] Disconnected:', reason);
+      if (disconnectHandler) disconnectHandler();
+    });
   });
+}
 
-  pusher.connection.bind('connected', () => {
-    mySocketId = pusher!.connection.socket_id;
-    console.log('[Pusher] Connected, socket_id:', mySocketId);
-  });
+function setupListeners() {
+  if (!socket) return;
 
-  pusher.connection.bind('error', (err: any) => {
-    console.error('[Pusher] Connection error:', err);
-    if (errorHandler) {
-      errorHandler('Connection error. Please check your internet and try again.');
+  socket.on('game-message', (message: any) => {
+    if (messageHandler) {
+      messageHandler(message as PeerMessage);
     }
   });
 
-  pusher.connection.bind('disconnected', () => {
-    console.warn('[Pusher] Disconnected');
-    if (disconnectHandler) disconnectHandler();
+  socket.on('player-joined', () => {
+    console.log('[Socket.IO] Player joined the room');
+    if (connectHandler) connectHandler();
   });
 
-  return pusher;
-}
-
-function subscribeToChannel(roomCode: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const p = initPusher();
-    // Use presence channel for member detection
-    channelName = `presence-game-${roomCode}`;
-
-    channel = p.subscribe(channelName);
-
-    channel.bind('pusher:subscription_succeeded', () => {
-      console.log(`[Pusher] Subscribed to ${channelName}`);
-      resolve();
-    });
-
-    channel.bind('pusher:subscription_error', (err: any) => {
-      console.error(`[Pusher] Subscription error for ${channelName}:`, err);
-      reject(new Error('Failed to join room. Please check the room code and try again.'));
-    });
-
-    // Listen for game messages
-    channel.bind('game-message', (data: any) => {
-      if (messageHandler) {
-        messageHandler(data as PeerMessage);
-      }
-    });
-
-    // Listen for member-added events (host detects when client joins)
-    channel.bind('pusher:member_added', () => {
-      if (connectHandler) connectHandler();
-    });
-
-    // Timeout for subscription
-    setTimeout(() => {
-      reject(new Error('Connection timed out. Please try again.'));
-    }, 15000);
+  socket.on('player-disconnected', () => {
+    console.log('[Socket.IO] Player disconnected');
+    if (disconnectHandler) disconnectHandler();
   });
 }
 
@@ -129,29 +116,25 @@ export async function createRoom(): Promise<string> {
   const roomCode = generateRoomCode();
 
   try {
-    await subscribeToChannel(roomCode);
-    console.log(`[Pusher] Room created: ${roomCode}`);
+    await connectSocket();
+    setupListeners();
 
-    // Use presence channel events to detect when client connects.
-    // Since we're using private channels (not presence), we detect the
-    // client connection when they send their first 'playerInfo' message.
-    // The connectHandler fires when we get the first message from a client.
-    const origMessageHandler = messageHandler;
-    let clientConnected = false;
+    return new Promise((resolve, reject) => {
+      socket!.emit('create-room', roomCode, (response: any) => {
+        if (response.success) {
+          currentRoom = roomCode;
+          console.log(`[Socket.IO] Room created: ${roomCode}`);
+          resolve(roomCode);
+        } else {
+          reject(new Error('Failed to create room. Please try again.'));
+        }
+      });
 
-    // Wrap the message handler to detect first client message
-    channel.unbind('game-message');
-    channel.bind('game-message', (data: any) => {
-      if (!clientConnected && data.type === 'playerInfo') {
-        clientConnected = true;
-        if (connectHandler) connectHandler();
-      }
-      if (messageHandler) {
-        messageHandler(data as PeerMessage);
-      }
+      // Timeout for room creation
+      setTimeout(() => {
+        reject(new Error('Room creation timed out. Please try again.'));
+      }, 10000);
     });
-
-    return roomCode;
   } catch (err: any) {
     destroyPeer();
     throw new Error(err?.message || 'Failed to create room. Please try again.');
@@ -167,12 +150,27 @@ export async function joinRoom(roomCode: string): Promise<void> {
   const code = roomCode.toUpperCase();
 
   try {
-    await subscribeToChannel(code);
-    console.log(`[Pusher] Joined room: ${code}`);
+    await connectSocket();
+    setupListeners();
 
-    // For the client, fire connectHandler immediately since we're connected
-    // once subscribed
-    if (connectHandler) connectHandler();
+    return new Promise((resolve, reject) => {
+      socket!.emit('join-room', code, (response: any) => {
+        if (response.success) {
+          currentRoom = code;
+          console.log(`[Socket.IO] Joined room: ${code}`);
+          // For the client, fire connectHandler since we're connected
+          if (connectHandler) connectHandler();
+          resolve();
+        } else {
+          reject(new Error(response.error || 'Failed to join room. Please check the room code and try again.'));
+        }
+      });
+
+      // Timeout for join
+      setTimeout(() => {
+        reject(new Error('Join timed out. Please try again.'));
+      }, 10000);
+    });
   } catch (err: any) {
     destroyPeer();
     throw new Error(err?.message || 'Failed to join room. Please check the room code and try again.');
@@ -180,17 +178,15 @@ export async function joinRoom(roomCode: string): Promise<void> {
 }
 
 /**
- * Send a message to all participants in the room via server-side trigger.
- * Uses /api/pusher/send endpoint to trigger events server-side,
- * which is more reliable than client events.
+ * Send a message to the other player in the room.
  */
 export function sendMessage(msg: PeerMessage) {
-  if (!channelName) {
-    console.warn('[Pusher] Cannot send message: not connected to any channel');
+  if (!socket || !currentRoom) {
+    console.warn('[Socket.IO] Cannot send message: not connected to any room');
     return;
   }
 
-  // Debounce rapid state broadcasts (gameHost sends duplicates intentionally)
+  // Debounce rapid state broadcasts
   if (msg.type === 'state') {
     const now = Date.now();
     if (now - lastStateSendTime < STATE_DEBOUNCE_MS) {
@@ -199,36 +195,11 @@ export function sendMessage(msg: PeerMessage) {
     lastStateSendTime = now;
   }
 
-  // Send via server-side trigger for reliability
-  fetch('/api/pusher/send', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      channel: channelName,
-      event: 'game-message',
-      data: msg,
-      socketId: mySocketId, // Exclude sender from receiving their own message
-    }),
-  }).catch((err) => {
-    console.error('[Pusher] Failed to send message:', err);
-    if (errorHandler) {
-      errorHandler('Failed to send message. Check your connection.');
-    }
-  });
+  socket.emit('game-message', { roomCode: currentRoom, message: msg });
 }
 
 export function onMessage(handler: MessageHandler) {
   messageHandler = handler;
-
-  // Re-bind the channel listener if channel already exists
-  if (channel) {
-    channel.unbind('game-message');
-    channel.bind('game-message', (data: any) => {
-      if (messageHandler) {
-        messageHandler(data as PeerMessage);
-      }
-    });
-  }
 }
 
 export function onPeerConnect(handler: ConnectionHandler) {
@@ -244,20 +215,16 @@ export function onPeerError(handler: ErrorHandler) {
 }
 
 export function isConnected(): boolean {
-  return channel !== null && pusher !== null && pusher.connection.state === 'connected';
+  return socket !== null && socket.connected && currentRoom !== null;
 }
 
 export function destroyPeer() {
-  if (channel && pusher) {
-    pusher.unsubscribe(channelName ?? '');
-    channel = null;
+  if (socket) {
+    socket.removeAllListeners();
+    socket.disconnect();
+    socket = null;
   }
-  if (pusher) {
-    pusher.disconnect();
-    pusher = null;
-  }
-  channelName = null;
-  mySocketId = null;
+  currentRoom = null;
   messageHandler = null;
   connectHandler = null;
   disconnectHandler = null;
