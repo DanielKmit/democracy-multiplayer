@@ -101,6 +101,19 @@ export default function GamePage() {
     });
   }, [mode]);
 
+  // Client: listen for state updates from host
+  useEffect(() => {
+    if (mode !== 'client') return;
+    
+    const { onMessage } = require('@/lib/peer');
+    
+    onMessage((msg: { type: string; state?: unknown }) => {
+      if (msg.type === 'state') {
+        useGameStore.getState().setGameState(msg.state as GameState);
+      }
+    });
+  }, [mode]);
+
   // Recovery: detect stuck party_creation phase where both parties are already created
   useEffect(() => {
     if (!gameState || recoveryAttempted.current) return;
