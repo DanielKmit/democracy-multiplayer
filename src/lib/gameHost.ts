@@ -2201,6 +2201,17 @@ function handleEndTurnPhase(playerId?: string) {
   } else if (gameState.phase === 'campaigning') {
     // Campaign phase — track who ended their turn, advance when both ready
     if (playerId) {
+      // Require at least 1 campaign promise before ending turn
+      const pledgesThisTurn = (gameState.pledges ?? []).filter(
+        p => p.playerId === playerId && p.madeOnTurn === gameState!.turn
+      ).length;
+      if (pledgesThisTurn < 1) {
+        const player = gameState.players.find(p => p.id === playerId);
+        addLogEntry(gameState, `⚠️ ${player?.party.partyName ?? playerId} must make at least 1 campaign promise before ending turn`, 'info');
+        broadcastState();
+        return;
+      }
+
       if (!gameState.campaignActedThisTurn) gameState.campaignActedThisTurn = {};
       gameState.campaignActedThisTurn[playerId] = true;
 

@@ -38,6 +38,14 @@ export function CampaignDashboard() {
   const opponent = gameState.players.find(p => p.id !== myPlayer.id);
   const opponentActed = opponent ? (gameState.campaignActedThisTurn?.[opponent.id] ?? false) : true;
 
+  // Count promises made this campaign turn (submitted + pending)
+  const submittedPromisesThisTurn = (gameState.pledges ?? []).filter(
+    p => p.playerId === myPlayer.id && p.madeOnTurn === gameState.turn
+  ).length;
+  const pendingPromises = pendingActions.filter(a => a.type === 'voter_promise').length;
+  const promisesThisTurn = submittedPromisesThisTurn + pendingPromises;
+  const canEndTurn = promisesThisTurn >= 1;
+
   const addAction = (action: PendingAction) => {
     if (pendingCost + action.cost <= pc) {
       setPendingActions(prev => [...prev, action]);
@@ -243,8 +251,23 @@ export function CampaignDashboard() {
                       Submit ({pendingCost} PC)
                     </button>
                   )}
-                  <button onClick={endTurnPhase} className="px-4 py-2 text-xs bg-game-border hover:bg-game-muted/20 rounded-lg transition-all">
-                    {pendingActions.length > 0 ? 'Skip' : 'End Turn →'}
+                  {!canEndTurn && (
+                    <span className="text-yellow-400 text-[10px] self-center max-w-[140px] leading-tight">
+                      ⚠️ Make at least 1 campaign promise before ending your turn
+                    </span>
+                  )}
+                  <button
+                    onClick={endTurnPhase}
+                    disabled={!canEndTurn}
+                    className={`px-4 py-2 text-xs rounded-lg transition-all ${
+                      canEndTurn
+                        ? 'bg-game-border hover:bg-game-muted/20'
+                        : 'bg-game-border/50 opacity-50 cursor-not-allowed'
+                    }`}
+                  >
+                    {!canEndTurn
+                      ? 'Make 1 promise first'
+                      : pendingActions.length > 0 ? 'Skip' : 'End Turn →'}
                   </button>
                 </div>
               </div>
