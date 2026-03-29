@@ -82,9 +82,9 @@ export function shouldUseLocalMode(): boolean {
   if (localParam === 'true') return true;
   if (localParam === 'false') return false;
 
-  // Default: local mode everywhere (BroadcastChannel)
-  // Use ?local=false to force PeerJS for cross-device multiplayer
-  return true;
+  // Default: PeerJS (online mode) for real multiplayer
+  // Use ?local=true for same-machine testing
+  return false;
 }
 
 /** @deprecated Use shouldUseLocalMode(). Kept for API compat. */
