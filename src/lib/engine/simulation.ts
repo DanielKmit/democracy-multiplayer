@@ -27,6 +27,8 @@ import {
   CampaignAction,
   Pledge,
   VoterCynicism,
+  DEFAULT_GAME_SETTINGS,
+  Scandal,
 } from './types';
 import { POLICIES, POLICY_MAP } from './policies';
 import { VOTER_GROUPS } from './voters';
@@ -40,6 +42,11 @@ import { checkSituations, shouldResolveSituation } from './situations';
 import { checkRegionalEvents, getRegionalEventById } from './regionalEvents';
 import { checkMediaEvents } from './mediaEvents';
 import { checkVoterGroupEvents } from './voterGroupEvents';
+import { rollForScandal, plantEvidence, spinScandal, tickScandals } from './scandals';
+import { createInitialReputation, updateReputation, getReputationEffects } from './reputation';
+import { updateVictoryTrackers, checkVictory, createVictoryTracker } from './victoryConditions';
+import { checkActiveSynergies, applySynergyEffects } from './policySynergies';
+import { createInitialRelations, updateRelations, rollForDiplomaticIncident, applyTradeEffects, signTradeDeal, sendForeignAid } from './internationalRelations';
 
 // ---- Helpers ----
 
@@ -782,6 +789,19 @@ export function createInitialGameState(roomId: string): GameState {
     consecutiveRulingPartyElections: 0,
     activeRegionalEvents: [],
     autoPilotOpposition: false,
+    // AI opponent
+    isAIGame: false,
+    aiPlayerId: null,
+    aiIdeology: null,
+    aiThinking: false,
+    // === NEW FEATURES ===
+    activeScandals: [],
+    reputation: createInitialReputation([]),
+    gameSettings: { ...DEFAULT_GAME_SETTINGS },
+    victoryTrackers: {},
+    activeSynergies: [],
+    diplomaticRelations: createInitialRelations(),
+    activeDiplomaticIncident: null,
   };
 }
 
@@ -1611,6 +1631,144 @@ export function advancePhase(state: GameState): void {
         state.pledges = state.pledges.filter(p => state.turn - p.madeOnTurn <= 8);
       }
 
+      // === SCANDAL SYSTEM ===
+      if (state.gameSettings?.scandalsEnabled !== false) {
+        // Tick existing scandals
+        if (!state.activeScandals) state.activeScandals = [];
+        state.activeScandals = tickScandals(state.activeScandals);
+
+        // Roll for new organic scandals on ruling party
+        const rulingForScandal = state.players.find(p => p.role === 'ruling');
+        if (rulingForScandal) {
+          const pressFreedom = state.policies.press_freedom ?? 65;
+          const repScore = state.reputation?.scores?.[rulingForScandal.id] ?? 60;
+          const newScandal = rollForScandal(
+            rulingForScandal.id, state.simulation, state.policies, pressFreedom, repScore
+          );
+          if (newScandal) {
+            state.activeScandals.push(newScandal);
+            modifyRulingApproval(state, newScandal.approvalImpact);
+            addNewsItem(state, `🔥 SCANDAL: ${newScandal.title} — ${newScandal.description}`, 'event');
+            addLogEntry(state, `🔥 Scandal: ${newScandal.title} (severity: ${newScandal.severity})`, 'event');
+          }
+        }
+
+        // Apply scandal approval effects
+        for (const scandal of state.activeScandals) {
+          if (scandal.exposed && !scandal.coveredUp) {
+            const target = state.players.find(p => p.id === scandal.targetPlayerId);
+            if (target) {
+              const impact = scandal.spun ? Math.round(scandal.approvalImpact * 0.3) : Math.round(scandal.approvalImpact * 0.5);
+              if (state.approvalRating[target.id] !== undefined) {
+                state.approvalRating[target.id] = clamp(state.approvalRating[target.id] + impact, 0, 100);
+              }
+            }
+          }
+        }
+      }
+
+      // === REPUTATION SYSTEM ===
+      if (state.gameSettings?.reputationEnabled !== false) {
+        if (!state.reputation) state.reputation = createInitialReputation(state.players.map(p => p.id));
+        for (const player of state.players) {
+          if (!state.reputation.scores[player.id]) {
+            state.reputation.scores[player.id] = 60;
+          }
+          const playerScandals = (state.activeScandals ?? []).filter(
+            s => s.targetPlayerId === player.id && s.exposed
+          );
+          const cabinetComp = player.role === 'ruling' ? getAverageCabinetCompetence(state) : 0;
+          updateReputation(state.reputation, player.id, {
+            activeScandals: playerScandals.length,
+            brokenPromiseThisTurn: false, // tracked separately in pledge system
+            keptPromiseThisTurn: false,
+            approval: state.approvalRating[player.id] ?? 50,
+            cabinetCompetence: cabinetComp,
+            isRuling: player.role === 'ruling',
+          });
+
+          // Apply reputation effects
+          const repEffects = getReputationEffects(state.reputation.scores[player.id]);
+          if (state.approvalRating[player.id] !== undefined) {
+            state.approvalRating[player.id] = clamp(
+              state.approvalRating[player.id] + repEffects.approvalModifier, 0, 100
+            );
+          }
+        }
+      }
+
+      // === POLICY SYNERGIES ===
+      if (state.gameSettings?.policySynergiesEnabled !== false) {
+        state.activeSynergies = checkActiveSynergies(state.policies);
+        if (state.activeSynergies.length > 0) {
+          applySynergyEffects(state.simulation, state.activeSynergies);
+          // Apply approval bonuses from synergies
+          const rulingP2 = state.players.find(p => p.role === 'ruling');
+          if (rulingP2) {
+            const totalApprovalBonus = state.activeSynergies.reduce((sum, s) => sum + s.approvalBonus, 0);
+            if (totalApprovalBonus !== 0 && state.approvalRating[rulingP2.id] !== undefined) {
+              state.approvalRating[rulingP2.id] = clamp(
+                state.approvalRating[rulingP2.id] + totalApprovalBonus, 0, 100
+              );
+            }
+          }
+        }
+      }
+
+      // === INTERNATIONAL RELATIONS ===
+      if (state.gameSettings?.internationalRelationsEnabled !== false) {
+        if (!state.diplomaticRelations || state.diplomaticRelations.length === 0) {
+          state.diplomaticRelations = createInitialRelations();
+        }
+        updateRelations(state.diplomaticRelations, state.policies, state.simulation);
+
+        // Apply trade effects
+        const tradeEffects = applyTradeEffects(state.diplomaticRelations);
+        for (const [key, val] of Object.entries(tradeEffects)) {
+          (state.simulation as unknown as Record<string, number>)[key] =
+            ((state.simulation as unknown as Record<string, number>)[key] ?? 0) + (val as number);
+        }
+
+        // Roll for diplomatic incident
+        if (!state.activeDiplomaticIncident) {
+          const incident = rollForDiplomaticIncident(state.diplomaticRelations);
+          if (incident) {
+            state.activeDiplomaticIncident = incident;
+            const nation = state.diplomaticRelations.find(r => r.nationId === incident.nationId);
+            addNewsItem(state, `🌐 ${incident.title}: ${incident.description}`, 'event');
+            addLogEntry(state, `🌐 Diplomatic incident: ${incident.title}`, 'event');
+          }
+        }
+
+        // War threat warnings
+        for (const rel of state.diplomaticRelations) {
+          if (rel.warThreat) {
+            addNewsItem(state, `⚠️ WAR THREAT: Relations with ${rel.nationId} critically low!`, 'event');
+          }
+        }
+      }
+
+      // === VICTORY CONDITION TRACKING ===
+      if (!state.victoryTrackers) state.victoryTrackers = {};
+      for (const player of state.players) {
+        if (!state.victoryTrackers[player.id]) {
+          state.victoryTrackers[player.id] = createVictoryTracker();
+        }
+      }
+      updateVictoryTrackers(state);
+
+      // Check for alternative victory (if not default electoral)
+      const victoryType = state.gameSettings?.victoryCondition ?? 'electoral';
+      if (victoryType !== 'electoral') {
+        const { winner: altWinner, condition: altCond } = checkVictory(state, victoryType);
+        if (altWinner && altCond) {
+          addNewsItem(state, `🏆 ${altCond.icon} ${state.players.find(p => p.id === altWinner)?.party.partyName} achieves ${altCond.name}!`, 'election');
+          addLogEntry(state, `🏆 VICTORY: ${altCond.name} achieved!`, 'election');
+          state.phase = 'game_over';
+          return;
+        }
+      }
+
       // Reset question time
       state.questionTimeUsed = false;
 
@@ -1670,7 +1828,10 @@ export function advancePhase(state: GameState): void {
   }
 
   if (state.phase === 'election') {
-    if (state.electionHistory.length >= 3) {
+    // Check electoral victory (default: 3 elections)
+    const victoryMode = state.gameSettings?.victoryCondition ?? 'electoral';
+    const electoralLimit = victoryMode === 'electoral' ? 3 : 5; // More elections if alternative victory
+    if (state.electionHistory.length >= electoralLimit) {
       state.phase = 'game_over';
     } else {
       state.turn++;
@@ -1762,6 +1923,20 @@ export function checkMinisterResignations(state: GameState): void {
       }
     }
   }
+}
+
+// Helper: get average cabinet competence
+function getAverageCabinetCompetence(state: GameState): number {
+  if (!state.cabinet) return 5;
+  let total = 0;
+  let count = 0;
+  for (const polId of Object.values(state.cabinet.ministers)) {
+    if (polId) {
+      const pol = state.cabinet.availablePool.find(p => p.id === polId);
+      if (pol) { total += pol.competence; count++; }
+    }
+  }
+  return count > 0 ? total / count : 5;
 }
 
 export function addLogEntry(state: GameState, message: string, type: ActionLogEntry['type']): void {

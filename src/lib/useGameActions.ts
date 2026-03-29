@@ -10,7 +10,7 @@ export function useGameActions() {
   const playerId = useGameStore((s) => s.playerId);
 
   function dispatch(action: string, payload?: unknown) {
-    if (mode === 'host') {
+    if (mode === 'host' || mode === 'ai_host') {
       handleAction(playerId ?? 'host', action, payload);
     } else if (mode === 'client') {
       sendMessage({ type: 'action', action, payload });

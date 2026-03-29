@@ -161,6 +161,19 @@
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
+/* Global button cursor + hover */
+button, [role="button"], a[href] {
+  cursor: pointer;
+}
+
+button:not(:disabled):hover, [role="button"]:not(:disabled):hover {
+  filter: brightness(1.1);
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
 /* Select styling */
 select {
   color: var(--game-text);

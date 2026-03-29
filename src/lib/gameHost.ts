@@ -8,8 +8,15 @@ import {
   PartyConfig,
   MinistryId,
   Bill,
+  ManifestoOption,
   PARTY_COLORS,
 } from './engine/types';
+import {
+  makeAIDecision,
+  AIPersonality,
+  AIIdeology,
+  AI_PARTY_PRESETS,
+} from './engine/ai';
 import {
   createInitialGameState,
   computeSimulation,
@@ -149,6 +156,10 @@ function broadcastState() {
   persistState();
   sendMessage({ type: 'state', state: gameState });
   if (onStateChange) onStateChange({ ...gameState });
+  // Schedule AI turn after state broadcast (async to avoid recursion)
+  if (gameState.isAIGame) {
+    setTimeout(() => checkAITurn(), 100);
+  }
 }
 
 export function setOnStateChange(handler: (state: GameState) => void) {
@@ -164,6 +175,200 @@ const DEFAULT_PARTY: PartyConfig = {
   logo: 'star',
   manifesto: ['Job creation', 'Education reform', 'Green energy'],
 };
+
+// ---- AI Game Support ----
+
+let aiPersonality: AIPersonality | null = null;
+let aiTurnTimer: ReturnType<typeof setTimeout> | null = null;
+
+function getAIPersonality(): AIPersonality {
+  if (!aiPersonality && gameState) {
+    const ideology = (gameState.aiIdeology ?? 'center') as AIIdeology;
+    aiPersonality = {
+      ideology,
+      aggressiveness: 0.5,
+      adaptiveness: 0.7,
+    };
+  }
+  return aiPersonality ?? { ideology: 'center', aggressiveness: 0.5, adaptiveness: 0.7 };
+}
+
+/**
+ * Initialize a game against AI. Creates both players, auto-generates AI party,
+ * skips lobby, and starts immediately.
+ */
+export function initAIGame(
+  roomCode: string,
+  hostPlayerName: string,
+  hostPartyConfig: PartyConfig,
+  aiIdeology: AIIdeology,
+): GameState {
+  gameState = createInitialGameState(roomCode);
+  gameState.isAIGame = true;
+  gameState.aiIdeology = aiIdeology;
+
+  // Create human player
+  const humanPlayer: Player = {
+    id: 'host',
+    name: hostPlayerName,
+    role: 'ruling', // Will be set properly after party creation
+    politicalCapital: 5,
+    termsWon: 0,
+    party: hostPartyConfig,
+  };
+  gameState.players.push(humanPlayer);
+
+  // Create AI player
+  const preset = AI_PARTY_PRESETS[aiIdeology];
+  const aiPartyConfig: PartyConfig = {
+    partyName: preset.partyName,
+    partyColor: preset.color,
+    leaderName: preset.leaderName,
+    economicAxis: aiIdeology === 'left' ? 25 : aiIdeology === 'right' ? 75 : 50,
+    socialAxis: aiIdeology === 'left' ? 75 : aiIdeology === 'right' ? 35 : 55,
+    logo: preset.logo,
+    manifesto: preset.manifesto as unknown as [ManifestoOption, ManifestoOption, ManifestoOption],
+  };
+
+  const aiPlayer: Player = {
+    id: 'ai',
+    name: preset.leaderName,
+    role: 'opposition',
+    politicalCapital: 5,
+    termsWon: 0,
+    party: aiPartyConfig,
+  };
+  gameState.players.push(aiPlayer);
+  gameState.aiPlayerId = 'ai';
+
+  aiPersonality = {
+    ideology: aiIdeology,
+    aggressiveness: 0.5,
+    adaptiveness: 0.7,
+  };
+
+  addLogEntry(gameState, `${humanPlayer.name} created the game`, 'info');
+  addLogEntry(gameState, `🤖 ${preset.partyName} (${preset.leaderName}) joins as AI opponent`, 'info');
+  addNewsItem(gameState, `${preset.partyName} enters Novarian politics under ${preset.leaderName}`, 'general');
+
+  // Initialize parliament (both parties ready)
+  gameState.parliament = createInitialParliament(gameState.players, gameState.botParties);
+  gameState.regionalSatisfaction = computeRegionalSatisfaction(
+    gameState.policies, gameState.voterSatisfaction, gameState.players
+  );
+
+  // Pre-election campaign
+  gameState.turnsUntilElection = 5;
+  gameState.isPreElection = true;
+  gameState.phase = 'campaigning';
+
+  for (const p of gameState.players) {
+    p.role = 'opposition'; // Neither rules yet
+    p.politicalCapital = 5;
+  }
+
+  addLogEntry(gameState, '📢 Campaign season begins! Win voters to form the first government.', 'info');
+  addNewsItem(gameState, 'Election campaign begins in Novaria — all parties vie for voter support', 'election');
+
+  broadcastState();
+
+  // Trigger AI turn if needed
+  scheduleAITurn();
+
+  return gameState;
+}
+
+/**
+ * Schedule AI turn with a realistic delay (1.5-2.5s).
+ */
+function scheduleAITurn() {
+  if (!gameState || !gameState.isAIGame || !gameState.aiPlayerId) return;
+
+  const aiPlayer = gameState.players.find(p => p.id === gameState!.aiPlayerId);
+  if (!aiPlayer) return;
+
+  // Check if it's AI's turn to act
+  if (!isAITurn(gameState, aiPlayer)) return;
+
+  // Set thinking state
+  gameState.aiThinking = true;
+  broadcastState();
+
+  const delay = 1500 + Math.random() * 1000; // 1.5-2.5s
+
+  if (aiTurnTimer) clearTimeout(aiTurnTimer);
+  aiTurnTimer = setTimeout(() => {
+    executeAITurn();
+  }, delay);
+}
+
+/**
+ * Check if the current phase requires AI action.
+ */
+function isAITurn(state: GameState, aiPlayer: Player): boolean {
+  const phase = state.phase;
+
+  // Campaign phase: AI acts when it hasn't yet this turn
+  if (phase === 'campaigning') {
+    return !state.campaignActedThisTurn[aiPlayer.id];
+  }
+
+  // Ruling phase: AI acts if it's the ruling party
+  if (phase === 'ruling' && aiPlayer.role === 'ruling') return true;
+
+  // Opposition phase: AI acts if it's the opposition
+  if (phase === 'opposition' && aiPlayer.role === 'opposition') return true;
+
+  // Events: AI acknowledges
+  if (phase === 'events' && state.currentEvent && aiPlayer.role === 'ruling') return true;
+
+  // Dilemma: AI decides if ruling
+  if (phase === 'dilemma' && aiPlayer.role === 'ruling') return true;
+
+  // Coalition: AI negotiates
+  if (phase === 'coalition_negotiation') return true;
+
+  // Government formation: AI appoints ministers if ruling
+  if (phase === 'government_formation' && aiPlayer.role === 'ruling') return true;
+
+  // Polling/election/etc: AI advances
+  if (['polling', 'election', 'bill_voting', 'resolution'].includes(phase)) return true;
+
+  return false;
+}
+
+/**
+ * Execute the AI's turn.
+ */
+function executeAITurn() {
+  if (!gameState || !gameState.isAIGame || !gameState.aiPlayerId) return;
+
+  const aiPlayer = gameState.players.find(p => p.id === gameState!.aiPlayerId);
+  if (!aiPlayer) return;
+
+  gameState.aiThinking = false;
+
+  const decision = makeAIDecision(gameState, aiPlayer, getAIPersonality());
+
+  if (decision) {
+    addLogEntry(gameState, `🤖 ${decision.description}`, 'info');
+    handleAction(aiPlayer.id, decision.action, decision.payload);
+  }
+
+  // After AI acts, check if another AI turn is needed (e.g., multiple phases)
+  // Small delay to avoid instant chain
+  setTimeout(() => {
+    scheduleAITurn();
+  }, 500);
+}
+
+/**
+ * Call this after any state change to check if AI should act next.
+ */
+function checkAITurn() {
+  if (!gameState || !gameState.isAIGame) return;
+  scheduleAITurn();
+}
 
 export function initGame(roomCode: string, hostPlayerName: string): GameState {
   gameState = createInitialGameState(roomCode);

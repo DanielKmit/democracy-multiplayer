@@ -45,7 +45,7 @@ export default function GamePage() {
         store.setPlayerId('host');
         store.setPlayerName(saved.players[0]?.name ?? 'Player');
         store.setRoomId(saved.roomId);
-        store.setMode('host');
+        store.setMode(saved.isAIGame ? 'ai_host' : 'host');
         store.setConnected(true);
 
         const state = restoreGame(saved);
@@ -63,10 +63,23 @@ export default function GamePage() {
   if (disconnected) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-game-bg">
-        <div className="text-center">
-          <p className="text-2xl mb-4">😔 Connection Lost</p>
-          <p className="text-game-secondary mb-4">You may have refreshed the page or the opponent disconnected.</p>
-          <a href="/" className="text-game-accent hover:text-blue-300 underline">Return to Menu</a>
+        <div className="text-center max-w-md mx-4 animate-fade-in">
+          <div className="text-5xl mb-4">😔</div>
+          <h2 className="text-2xl font-bold mb-2">Connection Lost</h2>
+          <p className="text-[#9CA3AF] mb-6">
+            This room doesn&apos;t exist or the connection was interrupted. This can happen if you refreshed the page or if your opponent disconnected.
+          </p>
+          <div className="space-y-3">
+            <a href="/" className="block w-full px-6 py-3 bg-blue-600 hover:bg-blue-500 rounded-lg font-semibold transition-all hover:scale-[1.02] cursor-pointer text-center">
+              ← Return to Menu
+            </a>
+            <button
+              onClick={() => window.location.reload()}
+              className="block w-full px-6 py-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg font-medium transition-all cursor-pointer text-[#9CA3AF]"
+            >
+              🔄 Try Reconnecting
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -80,7 +93,9 @@ export default function GamePage() {
     );
   }
 
-  if (gameState.phase === 'waiting' || gameState.players.length < 2) {
+  const isAIGame = gameState.isAIGame;
+
+  if (!isAIGame && (gameState.phase === 'waiting' || gameState.players.length < 2)) {
     return <Lobby roomId={roomId} />;
   }
 
@@ -162,10 +177,21 @@ export default function GamePage() {
           {showWaiting && (
             <div className="flex-1 flex items-center justify-center">
               <div className="text-center">
-                <div className="text-6xl mb-4">⏳</div>
+                <div className="text-6xl mb-4">{isAIGame && gameState.aiThinking ? '🤖' : '⏳'}</div>
                 <p className="text-xl text-game-secondary">
-                  {isRulingPhase ? 'Ruling Party is making policy changes...' : 'Opposition is planning their moves...'}
+                  {isAIGame && gameState.aiThinking
+                    ? '🤖 AI is deciding...'
+                    : isRulingPhase ? 'Ruling Party is making policy changes...' : 'Opposition is planning their moves...'}
                 </p>
+                {isAIGame && gameState.aiThinking && (
+                  <div className="mt-4 flex justify-center">
+                    <div className="flex gap-1">
+                      <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                      <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { GameState, PolicyChange, OppositionAction, PartyConfig, MinistryId, CampaignAction, CoalitionOffer } from './engine/types';
 
-export type ConnectionMode = 'none' | 'host' | 'client';
+export type ConnectionMode = 'none' | 'host' | 'client' | 'ai_host';
 
 interface GameStore {
   // Connection

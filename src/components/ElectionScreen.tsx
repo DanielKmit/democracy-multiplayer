@@ -6,12 +6,14 @@ import { useGameActions } from '@/lib/useGameActions';
 import { REGIONS } from '@/lib/engine/regions';
 import { PARTY_COLORS } from '@/lib/engine/types';
 import { ParliamentHemicycle } from './ParliamentHemicycle';
+import { ElectionShareCard } from './ElectionShareCard';
 
 export function ElectionScreen() {
   const { gameState, playerId } = useGameStore();
   const { endTurnPhase } = useGameActions();
   const [revealIndex, setRevealIndex] = useState(0);
   const [revealed, setRevealed] = useState(false);
+  const [showShareCard, setShowShareCard] = useState(false);
 
   if (!gameState) return null;
 
@@ -128,12 +130,22 @@ export function ElectionScreen() {
             Election {gameState.electionHistory.length} of 3 • Need 51 seats for majority
           </div>
 
-          <button
-            onClick={endTurnPhase}
-            className="btn-primary px-8 py-3 rounded-lg font-semibold"
-          >
-            {gameState.electionHistory.length >= 3 ? 'See Final Results' : 'Begin Coalition Talks →'}
-          </button>
+          <div className="flex gap-3 justify-center">
+            <button
+              onClick={() => setShowShareCard(true)}
+              className="px-6 py-3 bg-slate-700 hover:bg-slate-600 rounded-lg font-semibold transition-all cursor-pointer"
+            >
+              📸 Share Results
+            </button>
+            <button
+              onClick={endTurnPhase}
+              className="btn-primary px-8 py-3 rounded-lg font-semibold cursor-pointer"
+            >
+              {gameState.electionHistory.length >= 3 ? 'See Final Results' : 'Begin Coalition Talks →'}
+            </button>
+          </div>
+
+          {showShareCard && <ElectionShareCard onClose={() => setShowShareCard(false)} />}
         </div>
       )}
     </div>

@@ -394,7 +394,11 @@ export type OppositionActionType =
   | 'constitutional_challenge'
   | 'delay_tactics'
   | 'campaign_visit'
-  | 'run_ads';
+  | 'run_ads'
+  | 'plant_evidence'
+  | 'spin_scandal'
+  | 'sign_trade_deal'
+  | 'send_foreign_aid';
 
 export interface OppositionAction {
   type: OppositionActionType;
@@ -407,6 +411,10 @@ export interface OppositionAction {
   targetBillId?: string;
   targetRegionId?: string;
   topic?: string;
+  scandalType?: ScandalType;
+  scandalId?: string;
+  targetNationId?: string;
+  aidAmount?: number;
 }
 
 // Shadow Cabinet
@@ -634,6 +642,102 @@ export interface TurnSnapshot {
   debtToGdp: number;
 }
 
+// ---- Scandals ----
+
+export type ScandalType = 'corruption' | 'personal' | 'policy';
+
+export interface Scandal {
+  id: string;
+  type: ScandalType;
+  title: string;
+  description: string;
+  severity: number;
+  targetPlayerId: string;
+  sourcePlayerId?: string;
+  planted: boolean;
+  exposed: boolean;
+  coveredUp: boolean;
+  spun: boolean;
+  approvalImpact: number;
+  reputationImpact: number;
+  turnsRemaining: number;
+}
+
+// ---- Reputation ----
+
+export interface ReputationState {
+  scores: Record<string, number>;
+  promisesKept: Record<string, number>;
+  promisesBroken: Record<string, number>;
+  scandalCount: Record<string, number>;
+}
+
+// ---- Victory ----
+
+export type VictoryType = 'electoral' | 'economic' | 'approval' | 'parliamentary';
+
+export interface VictoryTracker {
+  consecutiveHighGDP: number;
+  consecutiveHighApproval: number;
+  consecutiveSupermajority: number;
+}
+
+// ---- Policy Synergies ----
+
+export interface ActiveSynergy {
+  synergyId: string;
+  name: string;
+  icon: string;
+  effects: Partial<Record<SimVarKey, number>>;
+  approvalBonus: number;
+}
+
+// ---- International Relations ----
+
+export interface DiplomaticRelation {
+  nationId: string;
+  relation: number;
+  hasTradeAgreement: boolean;
+  hasForeignAid: boolean;
+  aidAmount: number;
+  warThreat: boolean;
+  activeDeal: {
+    nationId: string;
+    gdpBonus: number;
+    unemploymentEffect: number;
+    turnsRemaining: number;
+  } | null;
+}
+
+export interface DiplomaticIncident {
+  id: string;
+  nationId: string;
+  title: string;
+  description: string;
+  optionA: { label: string; relationDelta: number; effects: Partial<Record<SimVarKey, number>> };
+  optionB: { label: string; relationDelta: number; effects: Partial<Record<SimVarKey, number>> };
+}
+
+// ---- Game Settings (toggleable features) ----
+
+export interface GameSettings {
+  scandalsEnabled: boolean;
+  reputationEnabled: boolean;
+  victoryCondition: VictoryType;
+  internationalRelationsEnabled: boolean;
+  policySynergiesEnabled: boolean;
+  coalitionMechanicsEnabled: boolean;
+}
+
+export const DEFAULT_GAME_SETTINGS: GameSettings = {
+  scandalsEnabled: true,
+  reputationEnabled: true,
+  victoryCondition: 'electoral',
+  internationalRelationsEnabled: true,
+  policySynergiesEnabled: true,
+  coalitionMechanicsEnabled: true,
+};
+
 // ---- Game State ----
 
 export interface GameState {
@@ -700,6 +804,24 @@ export interface GameState {
   activeRegionalEvents: ActiveRegionalEvent[];      // Currently active regional events
   // Opposition auto-pilot
   autoPilotOpposition: boolean;                     // Whether AI controls opposition
+  // AI opponent
+  isAIGame: boolean;                                // Whether this is a solo vs AI game
+  aiPlayerId: string | null;                        // Which player is AI-controlled
+  aiIdeology: 'left' | 'center' | 'right' | null;  // AI ideology preset
+  aiThinking: boolean;                              // Whether AI is currently "thinking"
+  // === NEW FEATURES ===
+  // Scandal system
+  activeScandals: Scandal[];
+  // Party reputation
+  reputation: ReputationState;
+  // Victory conditions
+  gameSettings: GameSettings;
+  victoryTrackers: Record<string, VictoryTracker>;
+  // Policy synergies
+  activeSynergies: ActiveSynergy[];
+  // International relations
+  diplomaticRelations: DiplomaticRelation[];
+  activeDiplomaticIncident: DiplomaticIncident | null;
 }
 
 // ---- Peer Messages ----

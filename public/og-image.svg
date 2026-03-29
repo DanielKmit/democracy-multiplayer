@@ -1,0 +1,42 @@
+<svg width="1200" height="630" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#60a5fa;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#a78bfa;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#f87171;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0a0e1a;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#111827;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)" />
+  <!-- Decorative columns -->
+  <rect x="150" y="120" width="30" height="250" rx="4" fill="#1e293b" />
+  <rect x="220" y="120" width="30" height="250" rx="4" fill="#1e293b" />
+  <rect x="950" y="120" width="30" height="250" rx="4" fill="#1e293b" />
+  <rect x="1020" y="120" width="30" height="250" rx="4" fill="#1e293b" />
+  <!-- Pediment -->
+  <polygon points="100,130 600,50 1100,130" fill="none" stroke="#1e293b" stroke-width="3" />
+  <!-- Title -->
+  <text x="600" y="280" text-anchor="middle" font-family="Georgia, serif" font-size="80" font-weight="bold" fill="url(#grad)">Democracy</text>
+  <!-- Subtitle -->
+  <text x="600" y="350" text-anchor="middle" font-family="sans-serif" font-size="30" fill="#9CA3AF">Rule the Republic of Novaria</text>
+  <!-- Divider -->
+  <line x1="450" y1="390" x2="750" y2="390" stroke="#334155" stroke-width="1" />
+  <!-- Tagline -->
+  <text x="600" y="440" text-anchor="middle" font-family="sans-serif" font-size="22" fill="#64748b">Multiplayer Political Strategy Game</text>
+  <!-- Feature pills -->
+  <rect x="280" y="475" width="130" height="30" rx="15" fill="#1e293b" />
+  <text x="345" y="495" text-anchor="middle" font-family="sans-serif" font-size="13" fill="#60a5fa">Parliament</text>
+  <rect x="430" y="475" width="110" height="30" rx="15" fill="#1e293b" />
+  <text x="485" y="495" text-anchor="middle" font-family="sans-serif" font-size="13" fill="#a78bfa">Elections</text>
+  <rect x="560" y="475" width="100" height="30" rx="15" fill="#1e293b" />
+  <text x="610" y="495" text-anchor="middle" font-family="sans-serif" font-size="13" fill="#f87171">Crises</text>
+  <rect x="680" y="475" width="110" height="30" rx="15" fill="#1e293b" />
+  <text x="735" y="495" text-anchor="middle" font-family="sans-serif" font-size="13" fill="#fbbf24">Strategy</text>
+  <rect x="810" y="475" width="110" height="30" rx="15" fill="#1e293b" />
+  <text x="865" y="495" text-anchor="middle" font-family="sans-serif" font-size="13" fill="#34d399">2 Players</text>
+  <!-- URL -->
+  <text x="600" y="580" text-anchor="middle" font-family="monospace" font-size="14" fill="#475569">democracy-game-omega.vercel.app</text>
+</svg>

@@ -1,9 +1,10 @@
 'use client';
 
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { useGameStore } from '@/lib/store';
 import { PARTY_COLORS, GameState } from '@/lib/engine/types';
 import { restoreGame } from '@/lib/gameHost';
+import { HelpModal } from './HelpModal';
 
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -24,6 +25,7 @@ const phaseLabels: Record<string, string> = {
 export function TopBar() {
   const { gameState, playerId, setGameState } = useGameStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showHelp, setShowHelp] = useState(false);
   if (!gameState) return null;
 
   const myPlayer = gameState.players.find(p => p.id === playerId);
@@ -142,21 +144,28 @@ export function TopBar() {
             </div>
           )}
 
-          {/* Save/Load */}
+          {/* Save/Load/Help */}
           <div className="flex items-center gap-1">
             <button
               onClick={handleSaveGame}
-              className="text-[10px] px-2 py-1 rounded glass-card text-game-secondary hover:text-white transition-colors"
+              className="text-[10px] px-2 py-1 rounded glass-card text-game-secondary hover:text-white transition-colors cursor-pointer"
               title="Save Game"
             >
               💾
             </button>
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="text-[10px] px-2 py-1 rounded glass-card text-game-secondary hover:text-white transition-colors"
+              className="text-[10px] px-2 py-1 rounded glass-card text-game-secondary hover:text-white transition-colors cursor-pointer"
               title="Load Game"
             >
               📂
+            </button>
+            <button
+              onClick={() => setShowHelp(true)}
+              className="text-[10px] px-2 py-1 rounded glass-card text-game-secondary hover:text-white transition-colors cursor-pointer"
+              title="How to Play"
+            >
+              ❓
             </button>
             <input
               ref={fileInputRef}
@@ -166,6 +175,7 @@ export function TopBar() {
               className="hidden"
             />
           </div>
+          {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
         </div>
       </div>
     </div>
