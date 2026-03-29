@@ -2,60 +2,39 @@ import { ParliamentState, ParliamentSeat, Bill, Player, BotParty, PARTY_COLORS }
 import { REGIONS } from './regions';
 
 /**
- * Create initial parliament with caretaker distribution across ALL parties (human + bot).
- * No human player should have 51+ seats. Bot parties get realistic shares.
+ * Create initial parliament — placeholder caretaker distribution before first election.
+ * Uses equal shares for all parties. The first election (after campaign phase) will
+ * replace this with dynamic results based on campaign performance + voter satisfaction.
  */
 export function createInitialParliament(players: Player[], botParties?: BotParty[]): ParliamentState {
   const seats: ParliamentSeat[] = [];
   let seatId = 0;
 
-  // Default seat share: human players ~30% each, bots split the rest
-  // With 2 human + 4 bot = 6 parties
-  const allParties: { id: string; color: string; share: number }[] = [];
+  const allParties: { id: string; color: string }[] = [];
 
-  // Human players get equal shares (~28% each), no inherent advantage
-  if (players[0]) {
+  for (const player of players) {
     allParties.push({
-      id: players[0].id,
-      color: PARTY_COLORS[players[0].party.partyColor],
-      share: 0.28,
+      id: player.id,
+      color: PARTY_COLORS[player.party.partyColor],
     });
   }
-  if (players[1]) {
-    allParties.push({
-      id: players[1].id,
-      color: PARTY_COLORS[players[1].party.partyColor],
-      share: 0.28,
-    });
-  }
-
-  // Bot parties — more competitive distribution
-  const botShares: Record<string, number> = {
-    bot_green: 0.14,
-    bot_national: 0.12,
-    bot_workers: 0.11,
-    bot_freemarket: 0.07,
-  };
 
   for (const bot of (botParties ?? [])) {
     allParties.push({
       id: bot.id,
       color: bot.color,
-      share: botShares[bot.id] ?? 0.08,
     });
   }
 
-  // Normalize shares
-  const totalShare = allParties.reduce((s, p) => s + p.share, 0);
-  for (const p of allParties) {
-    p.share /= totalShare;
-  }
+  // Equal share for all parties — this is just a caretaker parliament,
+  // the real seat distribution comes from the first election after campaign
+  const equalShare = allParties.length > 0 ? 1 / allParties.length : 1;
 
-  // Allocate seats per region using largest remainder
+  // Allocate seats per region using largest remainder with equal shares
   for (const region of REGIONS) {
     const totalSeats = region.seats;
     const quotas = allParties.map(p => {
-      const quota = p.share * totalSeats;
+      const quota = equalShare * totalSeats;
       return { ...p, quota, baseSeats: Math.floor(quota), remainder: quota - Math.floor(quota) };
     });
 

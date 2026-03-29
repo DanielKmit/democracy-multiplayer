@@ -32,7 +32,7 @@ import { REGIONS, REGION_MAP } from './regions';
 import { rollForEvent } from './events';
 import { calculateBudget } from './budget';
 import { getInitialPoliticianPool } from './politicians';
-import { createInitialParliament, allocateSeats } from './parliament';
+import { createInitialParliament } from './parliament';
 import { createInitialExtremism, updateExtremism } from './extremism';
 import { checkSituations, shouldResolveSituation } from './situations';
 
@@ -510,8 +510,46 @@ export function computePoliticalCapital(
 // ---- Election ----
 
 /**
+ * D'Hondt method for proportional seat allocation.
+ * Avoids fractional seats — each seat is awarded to the party with the highest quotient.
+ */
+function allocateSeatsProportional(
+  voteShares: Record<string, number>,
+  totalSeats: number,
+): Record<string, number> {
+  const seats: Record<string, number> = {};
+  const partyIds = Object.keys(voteShares);
+
+  // Initialize seats to 0
+  for (const pid of partyIds) {
+    seats[pid] = 0;
+  }
+
+  // Award seats one at a time using D'Hondt quotients
+  for (let i = 0; i < totalSeats; i++) {
+    let bestId = '';
+    let bestQuotient = -1;
+
+    for (const pid of partyIds) {
+      const quotient = (voteShares[pid] ?? 0) / ((seats[pid] ?? 0) + 1);
+      if (quotient > bestQuotient) {
+        bestQuotient = quotient;
+        bestId = pid;
+      }
+    }
+
+    if (bestId) {
+      seats[bestId] = (seats[bestId] ?? 0) + 1;
+    }
+  }
+
+  return seats;
+}
+
+/**
  * Run election with ALL parties (human + bot) competing for seats.
- * Bot parties get votes based on their voter satisfaction scores.
+ * Uses campaign bonuses, regional satisfaction, ideology alignment, and random swing.
+ * Seats allocated per-region using D'Hondt proportional method.
  */
 export function runElection(
   regionalSatisfaction: Record<string, Record<string, number>>,
@@ -542,13 +580,16 @@ export function runElection(
 
     // Human players
     for (const player of players) {
+      // Base: regional satisfaction (weighted average of voter group satisfaction in region)
       let share = regionalSatisfaction[region.id]?.[player.id] ?? 50;
 
-      // Campaign bonuses for this player
+      // Campaign bonuses — region-specific rallies (strong effect)
       const playerBonuses = campaignBonuses[player.id] ?? {};
-      share += (playerBonuses[region.id] ?? 0) * 0.5;
+      share += (playerBonuses[region.id] ?? 0) * 0.8;
+
+      // Campaign bonuses — targeting dominant voter groups in this region
       for (const groupId of region.dominantGroups) {
-        share += (playerBonuses[groupId] ?? 0) * 0.3;
+        share += (playerBonuses[groupId] ?? 0) * 0.5;
       }
 
       // Coalition lock effects
@@ -561,23 +602,31 @@ export function runElection(
         }
       }
 
+      // Random swing: ±5% polling error per party per region
+      const swing = (Math.random() - 0.5) * 10;
+      share += swing;
+
       shares[player.id] = Math.max(5, share);
     }
 
-    // Bot parties — derive regional support from voter satisfaction
+    // Bot parties — ideology alignment + voter satisfaction + random swing
     for (const bot of (botParties ?? [])) {
       let share = 0;
       const botSat = allVoterSatisfaction?.[bot.id] ?? {};
 
-      // Weighted by which voter groups are in this region
+      // Base from voter group satisfaction in this region
       for (const groupId of region.dominantGroups) {
-        share += (botSat[groupId] ?? 30) * 0.25;
+        share += (botSat[groupId] ?? 30) * 0.3;
       }
 
-      // Ideology alignment with region
+      // Ideology alignment with region (stronger effect)
       const econDiff = Math.abs(region.economicLean - bot.economicAxis);
       const socialDiff = Math.abs(region.socialLean - bot.socialAxis);
-      share += (200 - econDiff - socialDiff) * 0.05;
+      // Max alignment bonus: ~15 points when perfectly aligned
+      share += (200 - econDiff - socialDiff) * 0.075;
+
+      // Random swing: ±2% for bots (less volatile than player parties)
+      share += (Math.random() - 0.5) * 4;
 
       shares[bot.id] = Math.max(3, share);
     }
@@ -590,19 +639,17 @@ export function runElection(
     }
     voteShares[region.id] = normalizedShares;
 
-    // Allocate seats proportionally
-    const regionSeats = allocateSeats(
-      { [region.id]: normalizedShares },
-      players,
-      botParties,
-    );
+    // Allocate seats using D'Hondt proportional method
+    const regionSeatAlloc = allocateSeatsProportional(normalizedShares, region.seats);
 
-    for (const seat of regionSeats.seats) {
-      seatResults[region.id][seat.partyId] = (seatResults[region.id][seat.partyId] ?? 0) + 1;
-      totalSeats[seat.partyId] = (totalSeats[seat.partyId] ?? 0) + 1;
+    for (const [pid, seatCount] of Object.entries(regionSeatAlloc)) {
+      if (seatCount > 0) {
+        seatResults[region.id][pid] = seatCount;
+        totalSeats[pid] = (totalSeats[pid] ?? 0) + seatCount;
+      }
     }
 
-    // Region winner
+    // Region winner = party with most seats in this region
     let maxSeats = 0;
     let winner = players[0]?.id ?? '';
     for (const [pid, seats] of Object.entries(seatResults[region.id])) {
@@ -614,7 +661,7 @@ export function runElection(
     regionWinners[region.id] = winner;
   }
 
-  // Overall vote share
+  // Overall vote share (population-weighted)
   const overallVoteShare: Record<string, number> = {};
   for (const pid of allPartyIds) {
     let totalWeightedShare = 0;
