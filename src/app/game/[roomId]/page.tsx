@@ -139,18 +139,19 @@ export default function GamePage() {
   if (gameState.phase === 'party_creation') {
     const myPlayer = gameState.players.find(p => p.id === playerId);
     const hasSubmitted = myPlayer && myPlayer.party.partyName !== 'Default Party' && myPlayer.party.partyName !== 'Opposition';
-    if (hasSubmitted) {
-      return (
-        <div className="min-h-screen flex items-center justify-center bg-game-bg">
-          <div className="text-center animate-fade-in">
-            <div className="text-5xl mb-4">⏳</div>
-            <h2 className="text-xl font-bold mb-2 font-display">Party Created!</h2>
-            <p className="text-game-secondary">Waiting for your opponent to create their party...</p>
-          </div>
-        </div>
-      );
+    if (!hasSubmitted) {
+      return <PartyCreator />;
     }
-    return <PartyCreator />;
+    // Has submitted — show waiting screen
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-game-bg">
+        <div className="text-center animate-fade-in">
+          <div className="text-5xl mb-4">⏳</div>
+          <h2 className="text-xl font-bold mb-2 font-display">Party Created!</h2>
+          <p className="text-game-secondary">Waiting for your opponent to create their party...</p>
+        </div>
+      </div>
+    );
   }
 
   if (gameState.phase === 'game_over') return <GameOverScreen />;
