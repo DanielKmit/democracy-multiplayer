@@ -63,6 +63,12 @@ const ACTION_DEFS: ActionDef[] = [
   { type: 'delay_tactics', name: 'Delay Tactics', cost: 1, emoji: '⏳', category: 'blocking',
     description: 'Delay a policy change by 2 turns.', needsTarget: 'policy' },
 
+  // New: Plant Evidence
+  { type: 'plant_evidence', name: 'Plant Evidence', cost: 3, emoji: '🕵️', category: 'public',
+    description: 'Plant scandal evidence — 40% chance BACKFIRES onto you!',
+    needsTarget: 'none',
+    condition: (gs) => gs.gameSettings?.scandalsEnabled !== false, conditionLabel: 'Scandals enabled' },
+
   // Campaign phase
   { type: 'campaign_visit', name: 'Campaign Visit', cost: 1, emoji: '🎪', category: 'campaign',
     description: 'Visit a region: +5% permanent support.', needsTarget: 'region',
@@ -219,6 +225,11 @@ export function OppositionActionPanel() {
     if (selectedAction.needsTarget === 'policy_value' && targetPolicy) {
       action.proposedPolicyId = targetPolicy;
       action.proposedValue = proposedValue;
+    }
+    // Plant evidence: randomly pick a scandal type
+    if (selectedAction.type === 'plant_evidence') {
+      const types: ('corruption' | 'personal' | 'policy')[] = ['corruption', 'personal', 'policy'];
+      action.scandalType = types[Math.floor(Math.random() * types.length)];
     }
     addOppositionAction(action);
     setSelectedAction(null);

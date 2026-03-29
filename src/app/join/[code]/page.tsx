@@ -43,12 +43,9 @@ export default function JoinPage() {
 
       router.push(`/game/${code}`);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to join room';
-      if (message.includes('timeout') || message.includes('not found')) {
-        setErrorMsg("This room doesn't exist. Check the code and try again.");
-      } else {
-        setErrorMsg(message);
-      }
+      // Error messages are already user-friendly from peer.ts
+      const message = err instanceof Error ? err.message : 'Connection failed. Please try again.';
+      setErrorMsg(message);
       setLoading(false);
     }
   };

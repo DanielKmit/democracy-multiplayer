@@ -11,6 +11,7 @@ export type PeerMessage =
 
 type MessageHandler = (msg: PeerMessage) => void;
 type ConnectionHandler = () => void;
+type ErrorHandler = (message: string) => void;
 
 const PEER_PREFIX = 'DEM-';
 
@@ -25,21 +26,73 @@ const PEER_CONFIG = {
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
       { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun3.l.google.com:19302' },
+      { urls: 'stun:stun4.l.google.com:19302' },
+      { urls: 'stun:global.stun.twilio.com:3478' },
+      { urls: 'stun:stun.cloudflare.com:3478' },
+      // Free TURN relay for symmetric NAT / strict firewalls
+      {
+        urls: 'turn:openrelay.metered.ca:80',
+        username: 'openrelayproject',
+        credential: 'openrelayproject',
+      },
+      {
+        urls: 'turn:openrelay.metered.ca:443',
+        username: 'openrelayproject',
+        credential: 'openrelayproject',
+      },
+      {
+        urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+        username: 'openrelayproject',
+        credential: 'openrelayproject',
+      },
     ],
   },
 };
+
+// Retry configuration
+const JOIN_MAX_ATTEMPTS = 3;
+const JOIN_RETRY_DELAY_MS = 2000;
+const JOIN_TIMEOUT_MS = 12000;
 
 let peer: PeerType | null = null;
 let connection: DataConnection | null = null;
 let messageHandler: MessageHandler | null = null;
 let connectHandler: ConnectionHandler | null = null;
 let disconnectHandler: ConnectionHandler | null = null;
+let errorHandler: ErrorHandler | null = null;
 
 function generateRoomCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code = '';
   for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
   return code;
+}
+
+/** Map raw PeerJS error types to user-friendly messages */
+function friendlyError(err: any): string {
+  const errType = err?.type ?? '';
+  const errMsg = err?.message ?? String(err);
+
+  if (errType === 'peer-unavailable' || errMsg.includes('Could not connect to peer')) {
+    return 'Room not found. The host may have left or the code is incorrect.';
+  }
+  if (errType === 'network' || errMsg.includes('Lost connection')) {
+    return 'Network error. Check your internet connection and try again.';
+  }
+  if (errType === 'server-error') {
+    return 'Connection server is temporarily unavailable. Please try again in a moment.';
+  }
+  if (errType === 'socket-error' || errType === 'socket-closed') {
+    return 'Connection to the server was lost. Please try again.';
+  }
+  if (errType === 'webrtc') {
+    return 'Connection blocked — your network may be restricting peer-to-peer connections. Try a different network.';
+  }
+  if (errMsg.includes('timeout')) {
+    return 'Connection timed out. Make sure the host is still in the lobby and try again.';
+  }
+  return 'Connection failed. Please check the room code and try again.';
 }
 
 function setupConnection(conn: DataConnection) {
@@ -52,16 +105,19 @@ function setupConnection(conn: DataConnection) {
   });
 
   conn.on('open', () => {
+    console.log('[Peer] Connection opened successfully');
     if (connectHandler) connectHandler();
   });
 
   conn.on('close', () => {
+    console.log('[Peer] Connection closed');
     connection = null;
     if (disconnectHandler) disconnectHandler();
   });
 
   conn.on('error', (err: any) => {
     console.error('[Peer] Connection error:', err);
+    if (errorHandler) errorHandler(friendlyError(err));
   });
 }
 
@@ -75,9 +131,15 @@ export function createRoom(): Promise<string> {
     const roomCode = generateRoomCode();
     const peerId = PEER_PREFIX + roomCode;
 
-    peer = await createPeer(peerId);
+    try {
+      peer = await createPeer(peerId);
+    } catch (err) {
+      reject(new Error('Failed to initialize connection. Please refresh and try again.'));
+      return;
+    }
 
     peer.on('open', () => {
+      console.log('[Peer] Host peer open, room code:', roomCode);
       resolve(roomCode);
     });
 
@@ -88,49 +150,122 @@ export function createRoom(): Promise<string> {
     peer.on('error', (err: any) => {
       console.error('[Peer] Host error:', err);
       if (err.type === 'unavailable-id') {
-        // ID taken, try again
+        // ID taken, try again with new code
         destroyPeer();
         createRoom().then(resolve).catch(reject);
       } else {
-        reject(err);
+        reject(new Error(friendlyError(err)));
+      }
+    });
+
+    peer.on('disconnected', () => {
+      console.warn('[Peer] Host disconnected from signaling server, attempting reconnect...');
+      if (peer && !peer.destroyed) {
+        peer.reconnect();
       }
     });
   });
 }
 
-export function joinRoom(roomCode: string): Promise<void> {
+/** Single join attempt — used internally by joinRoom with retry */
+function attemptJoin(roomCode: string): Promise<void> {
   return new Promise(async (resolve, reject) => {
     const peerId = PEER_PREFIX + roomCode.toUpperCase();
     const clientId = PEER_PREFIX + 'CLIENT-' + Math.random().toString(36).substring(2, 8);
+    let settled = false;
 
-    peer = await createPeer(clientId);
+    const settle = (fn: () => void) => {
+      if (!settled) {
+        settled = true;
+        fn();
+      }
+    };
+
+    try {
+      peer = await createPeer(clientId);
+    } catch (err) {
+      reject(new Error('Failed to initialize connection. Please refresh and try again.'));
+      return;
+    }
+
+    const timeoutId = setTimeout(() => {
+      settle(() => {
+        destroyPeer();
+        reject(new Error('timeout'));
+      });
+    }, JOIN_TIMEOUT_MS);
 
     peer.on('open', () => {
-      const conn = peer!.connect(peerId, { reliable: true });
+      console.log('[Peer] Client peer open, connecting to:', peerId);
+      const conn = peer!.connect(peerId, {
+        reliable: true,
+        serialization: 'json',
+      });
 
       conn.on('open', () => {
-        setupConnection(conn);
-        resolve();
+        clearTimeout(timeoutId);
+        settle(() => {
+          setupConnection(conn);
+          resolve();
+        });
       });
 
       conn.on('error', (err: any) => {
         console.error('[Peer] Join connection error:', err);
-        reject(err);
+        clearTimeout(timeoutId);
+        settle(() => {
+          destroyPeer();
+          reject(err);
+        });
       });
     });
 
     peer.on('error', (err: any) => {
       console.error('[Peer] Client error:', err);
-      reject(err);
+      clearTimeout(timeoutId);
+      settle(() => {
+        destroyPeer();
+        reject(err);
+      });
     });
-
-    // Timeout
-    setTimeout(() => {
-      if (!connection) {
-        reject(new Error('Connection timeout — room not found'));
-      }
-    }, 10000);
   });
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+export async function joinRoom(roomCode: string): Promise<void> {
+  let lastError: any;
+
+  for (let attempt = 1; attempt <= JOIN_MAX_ATTEMPTS; attempt++) {
+    try {
+      console.log(`[Peer] Join attempt ${attempt}/${JOIN_MAX_ATTEMPTS} for room ${roomCode}`);
+      await attemptJoin(roomCode);
+      console.log('[Peer] Successfully joined room:', roomCode);
+      return; // Success!
+    } catch (err: any) {
+      lastError = err;
+      const errType = err?.type ?? '';
+      const errMsg = err?.message ?? '';
+
+      // Don't retry if the peer explicitly doesn't exist
+      if (errType === 'peer-unavailable') {
+        throw new Error(friendlyError(err));
+      }
+
+      console.warn(`[Peer] Attempt ${attempt} failed:`, errMsg);
+
+      // Retry with delay (except on last attempt)
+      if (attempt < JOIN_MAX_ATTEMPTS) {
+        console.log(`[Peer] Retrying in ${JOIN_RETRY_DELAY_MS}ms...`);
+        await sleep(JOIN_RETRY_DELAY_MS);
+      }
+    }
+  }
+
+  // All attempts exhausted
+  throw new Error(friendlyError(lastError));
 }
 
 export function onMessage(handler: MessageHandler) {
@@ -143,6 +278,10 @@ export function onPeerConnect(handler: ConnectionHandler) {
 
 export function onPeerDisconnect(handler: ConnectionHandler) {
   disconnectHandler = handler;
+}
+
+export function onPeerError(handler: ErrorHandler) {
+  errorHandler = handler;
 }
 
 export function sendMessage(msg: PeerMessage) {
@@ -167,4 +306,5 @@ export function destroyPeer() {
   messageHandler = null;
   connectHandler = null;
   disconnectHandler = null;
+  errorHandler = null;
 }

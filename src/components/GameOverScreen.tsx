@@ -2,6 +2,7 @@
 
 import { useGameStore } from '@/lib/store';
 import { PARTY_COLORS } from '@/lib/engine/types';
+import { VICTORY_CONDITIONS } from '@/lib/engine/victoryConditions';
 import { ParliamentHemicycle } from './ParliamentHemicycle';
 
 export function GameOverScreen() {
@@ -11,9 +12,28 @@ export function GameOverScreen() {
   const p1 = gameState.players[0];
   const p2 = gameState.players[1];
 
-  const winner = p1 && p2
-    ? (p1.termsWon > p2.termsWon ? p1 : p2.termsWon > p1.termsWon ? p2 : null)
-    : null;
+  const victoryType = gameState.gameSettings?.victoryCondition ?? 'electoral';
+  const victoryCondition = VICTORY_CONDITIONS.find(vc => vc.type === victoryType);
+
+  // Determine winner based on victory condition
+  let winner = null;
+  if (victoryType === 'electoral') {
+    winner = p1 && p2
+      ? (p1.termsWon > p2.termsWon ? p1 : p2.termsWon > p1.termsWon ? p2 : null)
+      : null;
+  } else if (victoryCondition) {
+    // Check alternative victory conditions
+    for (const p of gameState.players) {
+      if (victoryCondition.checkVictory(gameState, p.id)) {
+        winner = p;
+        break;
+      }
+    }
+    // Fallback to terms won
+    if (!winner && p1 && p2) {
+      winner = p1.termsWon > p2.termsWon ? p1 : p2.termsWon > p1.termsWon ? p2 : null;
+    }
+  }
 
   const isMe = winner?.id === playerId;
 

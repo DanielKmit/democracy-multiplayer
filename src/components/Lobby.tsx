@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useGameStore } from '@/lib/store';
 import { PARTY_COLORS } from '@/lib/engine/types';
 import { PartyLogoIcon } from './icons/PartyLogos';
+import { GameSettingsPanel } from './GameSettingsPanel';
 import { destroyPeer } from '@/lib/peer';
 
 const BASE_URL = 'https://democracy-game-omega.vercel.app';
@@ -157,6 +158,13 @@ export function Lobby({ roomId }: { roomId: string }) {
                 <div className="ml-auto w-2 h-2 bg-green-500 rounded-full" />
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Game Settings */}
+        {gameState && (
+          <div className="mb-6 text-left max-w-md mx-auto">
+            <GameSettingsPanel />
           </div>
         )}
 
