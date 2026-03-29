@@ -27,6 +27,8 @@ import {
   addNewsItem,
   runElection,
   tickActiveEffects,
+  proposeBotBills,
+  recalculateAfterPolicyChange,
 } from './engine/simulation';
 import { POLICY_MAP } from './engine/policies';
 import { rollForEvent } from './engine/events';
@@ -276,7 +278,7 @@ export function handleAction(playerId: string, action: string, payload?: unknown
 
       const chosen = option === 'a' ? dilemma.optionA : dilemma.optionB;
 
-      // Apply effects
+      // Apply simulation effects
       if (chosen.effects) {
         gameState.activeEffects.push({
           type: 'dilemma',
@@ -294,8 +296,49 @@ export function handleAction(playerId: string, action: string, payload?: unknown
         }
       }
 
+      // Apply voter satisfaction effects (direct per-group modifiers)
+      if (chosen.voterEffects) {
+        for (const [groupId, delta] of Object.entries(chosen.voterEffects)) {
+          // Apply to ruling party's voter satisfaction
+          if (ruling && gameState.voterSatisfaction[ruling.id]) {
+            const current = gameState.voterSatisfaction[ruling.id][groupId] ?? 50;
+            gameState.voterSatisfaction[ruling.id][groupId] = Math.max(0, Math.min(100, current + (delta as number)));
+          }
+        }
+      }
+
+      // Apply region effects (direct regional satisfaction modifiers)
+      if (chosen.regionEffects) {
+        for (const [regionId, delta] of Object.entries(chosen.regionEffects)) {
+          if (ruling && gameState.regionalSatisfaction[regionId]) {
+            const current = gameState.regionalSatisfaction[regionId][ruling.id] ?? 50;
+            gameState.regionalSatisfaction[regionId][ruling.id] = Math.max(0, Math.min(100, current + (delta as number)));
+          }
+        }
+      }
+
+      // Build consequences notification
+      const consequenceParts: string[] = [];
+      if (chosen.effects) {
+        for (const [k, v] of Object.entries(chosen.effects)) {
+          if (v !== 0) consequenceParts.push(`${k}: ${(v as number) > 0 ? '+' : ''}${v}`);
+        }
+      }
+      if (chosen.policyEffects) {
+        for (const [k, v] of Object.entries(chosen.policyEffects)) {
+          const pName = POLICY_MAP.get(k)?.name ?? k;
+          consequenceParts.push(`${pName}: ${v > 0 ? '+' : ''}${v}`);
+        }
+      }
+
       addLogEntry(gameState, `Dilemma resolved: "${chosen.label}"`, 'dilemma');
       addNewsItem(gameState, `Government decides: ${chosen.label} on "${dilemma.title}"`, 'dilemma');
+      if (consequenceParts.length > 0) {
+        addNewsItem(gameState, `📊 Consequences: ${consequenceParts.join(', ')}`, 'general');
+      }
+
+      // Recalculate everything after dilemma consequences
+      recalculate(gameState);
 
       gameState.activeDilemma = null;
       gameState.phase = 'ruling';
@@ -319,6 +362,16 @@ export function handleAction(playerId: string, action: string, payload?: unknown
 
       advancePhase(gameState); // -> resolution
       recalculate(gameState);
+
+      // Show impact notification for each change
+      for (const change of changes) {
+        if (change.newValue !== change.oldValue && !gameState.filibusteredPolicies.includes(change.policyId)) {
+          const impactMsg = recalculateAfterPolicyChange(
+            gameState, change.policyId, change.oldValue, change.newValue
+          );
+          addNewsItem(gameState, `📊 Impact: ${impactMsg}`, 'general');
+        }
+      }
       addLogEntry(gameState, 'Policy effects propagated.', 'info');
       advancePhase(gameState); // -> opposition
       addLogEntry(gameState, 'Opposition phase', 'info');
@@ -385,14 +438,25 @@ export function handleAction(playerId: string, action: string, payload?: unknown
         return `${name}: ${v.yes}Y/${v.no}N`;
       }).join(', ');
 
+      const isOppositionBill = player.role === 'opposition';
+      const billBadge = isOppositionBill ? '[Opposition Bill] ' : '';
+
       if (votedBill.status === 'passed') {
         // Apply the policy change
+        const oldVal = gameState.policies[votedBill.policyId];
         gameState.policies[votedBill.policyId] = votedBill.proposedValue;
-        addLogEntry(gameState, `✅ ${votedBill.title} PASSED (${votedBill.votesFor}-${votedBill.votesAgainst})`, 'ruling');
-        addNewsItem(gameState, `📋 ${votedBill.title} passed! ${voteDetails}`, 'bill');
+
+        // Recalculate and get impact notification
+        const impactMsg = recalculateAfterPolicyChange(
+          gameState, votedBill.policyId, oldVal, votedBill.proposedValue
+        );
+
+        addLogEntry(gameState, `✅ ${billBadge}${votedBill.title} PASSED (${votedBill.votesFor}-${votedBill.votesAgainst})`, 'ruling');
+        addNewsItem(gameState, `📋 ${billBadge}${votedBill.title} passed! ${voteDetails}`, 'bill');
+        addNewsItem(gameState, `📊 Impact: ${impactMsg}`, 'general');
       } else {
-        addLogEntry(gameState, `❌ ${votedBill.title} FAILED (${votedBill.votesFor}-${votedBill.votesAgainst})`, 'ruling');
-        addNewsItem(gameState, `📋 ${votedBill.title} rejected. ${voteDetails}`, 'bill');
+        addLogEntry(gameState, `❌ ${billBadge}${votedBill.title} FAILED (${votedBill.votesFor}-${votedBill.votesAgainst})`, 'ruling');
+        addNewsItem(gameState, `📋 ${billBadge}${votedBill.title} rejected. ${voteDetails}`, 'bill');
       }
 
       recalculate(gameState);
@@ -529,9 +593,23 @@ export function handleAction(playerId: string, action: string, payload?: unknown
 
       player.politicalCapital -= totalCost;
 
-      // Check if both players have submitted (or this is the only action)
-      // For simplicity, campaign progresses after each player submits
-      gameState.pendingCampaignActions = [];
+      // Track that this player has acted this campaign turn
+      if (!gameState.campaignActedThisTurn) gameState.campaignActedThisTurn = {};
+      gameState.campaignActedThisTurn[player.id] = true;
+
+      // Check if both players have submitted
+      const allActed = gameState.players.every(p => gameState!.campaignActedThisTurn[p.id]);
+      if (allActed) {
+        // Both players have acted — auto-advance to polling
+        gameState.campaignActedThisTurn = {};
+        gameState.pendingCampaignActions = [];
+        recalculate(gameState);
+        advancePhase(gameState); // -> polling
+        addLogEntry(gameState, `📊 Campaign standings update`, 'info');
+      } else {
+        gameState.pendingCampaignActions = [];
+        addLogEntry(gameState, `${player.party.partyName} has finished their campaign actions. Waiting for opponent...`, 'info');
+      }
       broadcastState();
       break;
     }
@@ -649,13 +727,13 @@ export function handleAction(playerId: string, action: string, payload?: unknown
     }
 
     case 'endTurnPhase': {
-      handleEndTurnPhase();
+      handleEndTurnPhase(playerId);
       break;
     }
   }
 }
 
-function handleEndTurnPhase() {
+function handleEndTurnPhase(playerId?: string) {
   if (!gameState) return;
 
   if (gameState.phase === 'polling') {
@@ -843,9 +921,14 @@ function handleEndTurnPhase() {
           );
           Object.assign(bill, votedBill);
           if (votedBill.status === 'passed') {
+            const oldVal = gameState.policies[votedBill.policyId];
             gameState.policies[votedBill.policyId] = votedBill.proposedValue;
+            const impactMsg = recalculateAfterPolicyChange(
+              gameState, votedBill.policyId, oldVal, votedBill.proposedValue
+            );
             addLogEntry(gameState, `✅ ${votedBill.title} PASSED (${votedBill.votesFor}-${votedBill.votesAgainst})`, 'ruling');
             addNewsItem(gameState, `📋 ${votedBill.title} passed in parliament!`, 'bill');
+            addNewsItem(gameState, `📊 Impact: ${impactMsg}`, 'general');
           } else {
             addLogEntry(gameState, `❌ ${votedBill.title} FAILED (${votedBill.votesFor}-${votedBill.votesAgainst})`, 'ruling');
             addNewsItem(gameState, `📋 ${votedBill.title} rejected by parliament`, 'bill');
@@ -862,6 +945,46 @@ function handleEndTurnPhase() {
   } else if (gameState.phase === 'opposition') {
     gameState.pendingOppositionActions = [];
     recalculate(gameState);
+
+    // Bot parties propose bills (20% chance each)
+    proposeBotBills(gameState);
+
+    // Vote on any bot-proposed bills
+    for (const bill of gameState.activeBills) {
+      if (bill.status === 'voting' && bill.authorId.startsWith('bot_')) {
+        const votedBill = voteBill(
+          bill,
+          gameState.parliament,
+          bill.authorId,
+          gameState.players,
+          gameState.botParties,
+          gameState.policies,
+        );
+        Object.assign(bill, votedBill);
+
+        const voteDetails = Object.entries(votedBill.partyVotes ?? {}).map(([pid, v]) => {
+          const p = gameState!.players.find(pl => pl.id === pid);
+          const bot = gameState!.botParties.find(b => b.id === pid);
+          const name = p?.party.partyName ?? bot?.name ?? pid;
+          return `${name}: ${v.yes}Y/${v.no}N`;
+        }).join(', ');
+
+        if (votedBill.status === 'passed') {
+          const oldVal = gameState.policies[votedBill.policyId];
+          gameState.policies[votedBill.policyId] = votedBill.proposedValue;
+          const impactMsg = recalculateAfterPolicyChange(
+            gameState, votedBill.policyId, oldVal, votedBill.proposedValue
+          );
+          addLogEntry(gameState, `✅ ${votedBill.title} PASSED (${votedBill.votesFor}-${votedBill.votesAgainst})`, 'ruling');
+          addNewsItem(gameState, `📋 ${votedBill.title} passed! ${voteDetails}`, 'bill');
+          addNewsItem(gameState, `📊 Impact: ${impactMsg}`, 'general');
+        } else {
+          addLogEntry(gameState, `❌ ${votedBill.title} FAILED (${votedBill.votesFor}-${votedBill.votesAgainst})`, 'ruling');
+          addNewsItem(gameState, `📋 ${votedBill.title} rejected. ${voteDetails}`, 'bill');
+        }
+      }
+    }
+
     advancePhase(gameState);
     addLogEntry(gameState, `📊 Ruling Approval: ${gameState.rulingApproval}%`, 'info');
     broadcastState();
@@ -901,7 +1024,22 @@ function handleEndTurnPhase() {
 
     broadcastState();
   } else if (gameState.phase === 'campaigning') {
-    // Campaign phase — move to polling
+    // Campaign phase — track who ended their turn, advance when both ready
+    if (playerId) {
+      if (!gameState.campaignActedThisTurn) gameState.campaignActedThisTurn = {};
+      gameState.campaignActedThisTurn[playerId] = true;
+
+      const allActed = gameState.players.every(p => gameState!.campaignActedThisTurn[p.id]);
+      if (!allActed) {
+        const player = gameState.players.find(p => p.id === playerId);
+        addLogEntry(gameState, `${player?.party.partyName ?? playerId} passes. Waiting for opponent...`, 'info');
+        broadcastState();
+        return;
+      }
+    }
+
+    // Both players ready (or forced advance) — move to polling
+    gameState.campaignActedThisTurn = {};
     recalculate(gameState);
     advancePhase(gameState); // -> polling
     addLogEntry(gameState, `📊 Campaign standings update`, 'info');

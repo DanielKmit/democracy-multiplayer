@@ -763,6 +763,7 @@ export function createInitialGameState(roomId: string): GameState {
     campaignBonuses: {},
     isPreElection: true,
     voteShares: {},
+    campaignActedThisTurn: {},
   };
 }
 
@@ -1173,6 +1174,115 @@ function recordSnapshot(state: GameState): void {
 
 // ---- Advance Phase ----
 
+// ---- Bot Party Bill Proposals ----
+
+/**
+ * Each bot party has a 20% chance to propose a bill aligned with their ideology.
+ * Called after opposition phase, before polling.
+ */
+export function proposeBotBills(state: GameState): void {
+  for (const bot of (state.botParties ?? [])) {
+    if (Math.random() > 0.20) continue; // 20% chance
+
+    // Pick a policy they care about — find one where current value differs from preference
+    const policyEntries = Object.entries(bot.policyPreferences);
+    if (policyEntries.length === 0) continue;
+
+    // Sort by how far the current value is from their ideal (most upset = most likely to act)
+    const ranked = policyEntries
+      .map(([policyId, idealValue]) => ({
+        policyId,
+        idealValue,
+        currentValue: state.policies[policyId] ?? 50,
+        distance: Math.abs((state.policies[policyId] ?? 50) - idealValue),
+      }))
+      .filter(e => e.distance >= 10) // Only propose if they disagree enough
+      .sort((a, b) => b.distance - a.distance);
+
+    if (ranked.length === 0) continue;
+
+    // Pick from top 3 most disagreed policies (some randomness)
+    const pick = ranked[Math.floor(Math.random() * Math.min(3, ranked.length))];
+    const policy = POLICY_MAP.get(pick.policyId);
+    if (!policy) continue;
+
+    // Propose moving partway toward their ideal (not all the way — realistic)
+    const step = Math.round((pick.idealValue - pick.currentValue) * 0.4);
+    const proposedValue = clamp(pick.currentValue + step, 0, 100);
+    if (proposedValue === pick.currentValue) continue;
+
+    // Generate a thematic bill title
+    const direction = proposedValue > pick.currentValue ? 'Enhancement' : 'Reform';
+    const title = `${bot.name} ${policy.name} ${direction} Act`;
+
+    const bill: Bill = {
+      id: `bill_bot_${bot.id}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      title,
+      policyId: pick.policyId,
+      proposedValue,
+      currentValue: pick.currentValue,
+      authorId: bot.id,
+      status: 'voting',
+      votesFor: 0,
+      votesAgainst: 0,
+      isEmergency: false,
+    };
+
+    // Import voteBill from parliament — we'll call it from gameHost where it's available
+    // For now, just add the bill to activeBills and mark it for voting
+    state.activeBills.push(bill);
+
+    addNewsItem(state, `📋 ${bot.name} proposes "${title}" — ${policy.name}: ${pick.currentValue} → ${proposedValue}`, 'bill');
+    addLogEntry(state, `${bot.name} proposes ${title}`, 'info');
+  }
+}
+
+/**
+ * Recalculate all derived state after a policy change.
+ * Returns a summary of changes for notification purposes.
+ */
+export function recalculateAfterPolicyChange(
+  state: GameState,
+  policyId: string,
+  oldValue: number,
+  newValue: number,
+): string {
+  const policy = POLICY_MAP.get(policyId);
+  const policyName = policy?.name ?? policyId;
+
+  // Snapshot before
+  const oldBudgetRevenue = state.budget.revenue;
+  const oldBudgetSpending = state.budget.spending;
+
+  // Recalculate
+  state.simulation = computeSimulation(state.policies, state.activeEffects);
+  state.budget = calculateBudget(state.policies, state.simulation, state.budget.debtTotal ?? 200);
+
+  if (state.players.length >= 1) {
+    const oldSatisfaction = { ...state.voterSatisfaction };
+    state.voterSatisfaction = computeAllVoterSatisfaction(
+      state.players, state.policies, state.simulation,
+      state.activeEffects, state.ngoAlliances ?? [], state.botParties,
+    );
+    state.approvalRating = computeAllApprovalRatings(state.voterSatisfaction, state.activeEffects);
+    state.voteShares = computeVoteShares(state.voterSatisfaction);
+
+    const ruling = state.players.find(p => p.role === 'ruling');
+    if (ruling) {
+      state.rulingApproval = state.approvalRating[ruling.id] ?? 50;
+    }
+  }
+
+  // Build notification
+  const revenueDelta = Math.round(state.budget.revenue - oldBudgetRevenue);
+  const spendingDelta = Math.round(state.budget.spending - oldBudgetSpending);
+  const parts: string[] = [`${policyName} changed to ${newValue}`];
+  if (revenueDelta !== 0) parts.push(`Revenue ${revenueDelta > 0 ? '+' : ''}${revenueDelta}B`);
+  if (spendingDelta !== 0) parts.push(`Spending ${spendingDelta > 0 ? '+' : ''}${spendingDelta}B`);
+
+  return parts.join(' → ');
+}
+
 export function advancePhase(state: GameState): void {
   const phaseOrder: TurnPhase[] = ['events', 'dilemma', 'ruling', 'bill_voting', 'resolution', 'opposition', 'polling', 'election'];
   const currentIndex = phaseOrder.indexOf(state.phase);
@@ -1327,6 +1437,7 @@ export function advancePhase(state: GameState): void {
       // If still in pre-election campaign phase, go back to campaigning
       if (state.isPreElection) {
         state.phase = 'campaigning';
+        state.campaignActedThisTurn = {};
       } else {
         state.phase = 'events';
       }

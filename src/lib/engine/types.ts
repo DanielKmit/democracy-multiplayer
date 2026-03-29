@@ -666,6 +666,7 @@ export interface GameState {
   campaignBonuses: Record<string, Record<string, number>>; // playerId -> { regionId/groupId: bonus }
   isPreElection: boolean;  // true during first 5 turns
   voteShares: Record<string, number>;  // partyId -> vote % (sums to 100)
+  campaignActedThisTurn: Record<string, boolean>;  // playerId -> has acted this campaign turn
 }
 
 // ---- Peer Messages ----

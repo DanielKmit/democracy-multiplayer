@@ -18,17 +18,33 @@ export function BillsPanel() {
         const policy = POLICY_MAP.get(bill.policyId);
         const passed = bill.status === 'passed';
         const author = gameState.players.find(p => p.id === bill.authorId);
+        const botAuthor = gameState.botParties.find(b => b.id === bill.authorId);
+        const authorName = author?.party.partyName ?? botAuthor?.name ?? 'Unknown';
+        const isOppositionBill = author?.role === 'opposition';
+        const isBotBill = bill.authorId.startsWith('bot_');
 
         return (
           <div key={bill.id} className={`glass-card p-2.5 ${passed ? 'ring-1 ring-emerald-800/50' : 'ring-1 ring-red-800/50'}`}>
             <div className="flex items-center justify-between mb-1">
-              <span className="text-xs font-bold text-white">{bill.title}</span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-bold text-white">{bill.title}</span>
+                {isOppositionBill && (
+                  <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-orange-900/50 text-orange-400 border border-orange-700/50">
+                    OPP
+                  </span>
+                )}
+                {isBotBill && (
+                  <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-purple-900/50 text-purple-400 border border-purple-700/50">
+                    BOT
+                  </span>
+                )}
+              </div>
               <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${passed ? 'bg-emerald-900/50 text-emerald-400' : 'bg-red-900/50 text-red-400'}`}>
                 {passed ? 'PASSED' : 'FAILED'}
               </span>
             </div>
             <div className="text-[10px] text-game-muted mb-1">
-              by {author?.party.partyName ?? 'Unknown'} • {bill.votesFor}–{bill.votesAgainst}
+              by {authorName} • {bill.votesFor}–{bill.votesAgainst}
             </div>
 
             {/* Party vote breakdown */}

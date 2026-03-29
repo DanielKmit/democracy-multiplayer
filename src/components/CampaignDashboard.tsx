@@ -34,6 +34,9 @@ export function CampaignDashboard() {
   const pc = myPlayer.politicalCapital;
   const pendingCost = pendingActions.reduce((s, a) => s + a.cost, 0);
   const remaining = pc - pendingCost;
+  const hasActedThisTurn = gameState.campaignActedThisTurn?.[myPlayer.id] ?? false;
+  const opponent = gameState.players.find(p => p.id !== myPlayer.id);
+  const opponentActed = opponent ? (gameState.campaignActedThisTurn?.[opponent.id] ?? false) : true;
 
   const addAction = (action: PendingAction) => {
     if (pendingCost + action.cost <= pc) {
@@ -184,36 +187,47 @@ export function CampaignDashboard() {
 
           {/* Bottom: pending + submit */}
           <div className="border-t border-game-border p-3 bg-game-card/50">
-            <div className="flex items-center justify-between">
-              <div className="flex-1 min-w-0">
-                {pendingActions.length > 0 ? (
-                  <div className="flex flex-wrap gap-2">
-                    {pendingActions.map((a, i) => (
-                      <span key={i} className="text-xs glass-card px-2 py-1 text-game-accent">
-                        {a.label} ({a.cost} PC)
-                        <button onClick={() => setPendingActions(prev => prev.filter((_, j) => j !== i))}
-                          className="ml-1 text-game-muted hover:text-red-400">✕</button>
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  <span className="text-xs text-game-muted">Select campaign actions or pass</span>
-                )}
-              </div>
-              <div className="flex gap-2 ml-4">
-                <span className="text-xs text-game-muted self-center">
-                  PC: <span className={`font-bold ${remaining >= 0 ? 'text-amber-400' : 'text-red-400'}`}>{remaining}</span>/{pc}
+            {hasActedThisTurn ? (
+              <div className="flex items-center justify-center gap-2 py-2">
+                <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                <span className="text-sm text-game-secondary">
+                  {opponentActed
+                    ? 'Both ready — advancing...'
+                    : `Waiting for ${opponent?.party.partyName ?? 'opponent'} to finish their campaign actions...`}
                 </span>
-                {pendingActions.length > 0 && (
-                  <button onClick={handleSubmit} className="btn-primary px-4 py-2 text-xs rounded-lg font-medium">
-                    Submit ({pendingCost} PC)
-                  </button>
-                )}
-                <button onClick={endTurnPhase} className="px-4 py-2 text-xs bg-game-border hover:bg-game-muted/20 rounded-lg transition-all">
-                  {pendingActions.length > 0 ? 'Skip' : 'End Turn →'}
-                </button>
               </div>
-            </div>
+            ) : (
+              <div className="flex items-center justify-between">
+                <div className="flex-1 min-w-0">
+                  {pendingActions.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {pendingActions.map((a, i) => (
+                        <span key={i} className="text-xs glass-card px-2 py-1 text-game-accent">
+                          {a.label} ({a.cost} PC)
+                          <button onClick={() => setPendingActions(prev => prev.filter((_, j) => j !== i))}
+                            className="ml-1 text-game-muted hover:text-red-400">✕</button>
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <span className="text-xs text-game-muted">Select campaign actions or pass</span>
+                  )}
+                </div>
+                <div className="flex gap-2 ml-4">
+                  <span className="text-xs text-game-muted self-center">
+                    PC: <span className={`font-bold ${remaining >= 0 ? 'text-amber-400' : 'text-red-400'}`}>{remaining}</span>/{pc}
+                  </span>
+                  {pendingActions.length > 0 && (
+                    <button onClick={handleSubmit} className="btn-primary px-4 py-2 text-xs rounded-lg font-medium">
+                      Submit ({pendingCost} PC)
+                    </button>
+                  )}
+                  <button onClick={endTurnPhase} className="px-4 py-2 text-xs bg-game-border hover:bg-game-muted/20 rounded-lg transition-all">
+                    {pendingActions.length > 0 ? 'Skip' : 'End Turn →'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
