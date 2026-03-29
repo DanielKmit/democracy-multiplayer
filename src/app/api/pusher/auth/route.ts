@@ -16,8 +16,10 @@ const pusher = new Pusher({
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { socket_id, channel_name } = body;
+    // Pusher sends data as form-urlencoded, not JSON
+    const formData = await req.formData();
+    const socket_id = formData.get('socket_id') as string;
+    const channel_name = formData.get('channel_name') as string;
 
     if (!socket_id || !channel_name) {
       return Response.json(
