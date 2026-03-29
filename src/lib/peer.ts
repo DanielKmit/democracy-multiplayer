@@ -37,7 +37,7 @@ let errorHandler: ErrorHandler | null = null;
 
 // Debounce/dedup: track last state broadcast to avoid double-sends
 let lastStateSendTime = 0;
-const STATE_DEBOUNCE_MS = 200;
+const STATE_DEBOUNCE_MS = 80; // Keep low — Socket.IO batches internally
 
 function generateRoomCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -179,20 +179,23 @@ export async function joinRoom(roomCode: string): Promise<void> {
 
 /**
  * Send a message to the other player in the room.
+ * force=true bypasses debounce (use after action-triggered state changes).
  */
-export function sendMessage(msg: PeerMessage) {
+export function sendMessage(msg: PeerMessage, force?: boolean) {
   if (!socket || !currentRoom) {
     console.warn('[Socket.IO] Cannot send message: not connected to any room');
     return;
   }
 
-  // Debounce rapid state broadcasts
-  if (msg.type === 'state') {
+  // Debounce rapid state broadcasts (unless forced)
+  if (msg.type === 'state' && !force) {
     const now = Date.now();
     if (now - lastStateSendTime < STATE_DEBOUNCE_MS) {
       return; // Skip duplicate state broadcast
     }
     lastStateSendTime = now;
+  } else if (msg.type === 'state') {
+    lastStateSendTime = Date.now();
   }
 
   socket.emit('game-message', { roomCode: currentRoom, message: msg });

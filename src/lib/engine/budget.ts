@@ -106,7 +106,10 @@ export function calculateBudget(
   previousDebtTotal: number
 ): BudgetState {
   // ---- GDP calculation ----
-  const gdp = BASE_GDP * (1 + simulation.gdpGrowth / 100);
+  // GDP grows faster when economy is doing well, enabling debt reduction via growth
+  const gdpMultiplier = 1 + simulation.gdpGrowth / 100;
+  // Compound growth: high GDP over time reduces debt-to-GDP ratio naturally
+  const gdp = BASE_GDP * gdpMultiplier;
   const employmentRate = 1 - (simulation.unemployment / 100);
 
   // ---- REVENUE ----
@@ -117,13 +120,14 @@ export function calculateBudget(
 
   // Income tax: workers pay based on income × employment
   // At default 40% rate with normal GDP → ~80B
-  const incomeTaxRevenue = lafferCurve(incomeTaxRate) * gdp * 0.45 * employmentRate;
+  // Boosted responsiveness: raising taxes from 40→60 should meaningfully increase revenue
+  const incomeTaxRevenue = lafferCurve(incomeTaxRate) * gdp * 0.48 * employmentRate;
 
   // Corporate tax: businesses pay based on profits × business activity
   // At default 30% rate → ~35B
-  const businessActivity = 1 + (simulation.gdpGrowth / 50); // Better GDP = more profit
+  const businessActivity = 1 + (simulation.gdpGrowth / 40); // Stronger GDP feedback
   const corruptionLeakage = 1 - (simulation.corruption / 200); // Corruption = tax evasion
-  const corporateTaxRevenue = lafferCurve(corporateTaxRate) * gdp * 0.2 * businessActivity * corruptionLeakage;
+  const corporateTaxRevenue = lafferCurve(corporateTaxRate) * gdp * 0.22 * businessActivity * corruptionLeakage;
 
   // Carbon tax: modest revenue, scales with economic activity
   // At default 20% → ~5B
@@ -137,7 +141,10 @@ export function calculateBudget(
   // Other revenue: fees, licenses, state enterprises → ~15B flat
   const otherRevenue = 15 * (gdp / BASE_GDP);
 
-  const totalRevenue = incomeTaxRevenue + corporateTaxRevenue + carbonTaxRevenue + tariffRevenue + otherRevenue;
+  // GDP growth bonus: strong economy generates bonus revenue (virtuous cycle)
+  const growthBonus = Math.max(0, simulation.gdpGrowth - 2) * gdp * 0.005;
+
+  const totalRevenue = incomeTaxRevenue + corporateTaxRevenue + carbonTaxRevenue + tariffRevenue + otherRevenue + growthBonus;
 
   // ---- SPENDING ----
   let totalSpending = 0;
@@ -153,6 +160,12 @@ export function calculateBudget(
     totalSpending += cost;
   }
 
+  // Government spending efficiency: lower govt_spending = austerity = less overhead
+  const govtSpendingLevel = policyValues.govt_spending ?? 50;
+  // Austerity multiplier: at 25 (Low) = 0.85x, at 50 (Med) = 1.0x, at 75 (High) = 1.15x
+  const austerityMultiplier = 0.7 + (govtSpendingLevel / 100) * 0.6;
+  totalSpending *= austerityMultiplier;
+
   // Corruption wastes money
   const corruptionWaste = 1 + (simulation.corruption / 300);
   totalSpending *= corruptionWaste;
@@ -163,9 +176,12 @@ export function calculateBudget(
 
   // ---- DEBT & INTEREST ----
   const previousDebt = Math.max(0, previousDebtTotal);
-  const creditRating = getCreditRating((previousDebt / gdp) * 100);
+  const debtToGdpBefore = (previousDebt / gdp) * 100;
+  const creditRating = getCreditRating(debtToGdpBefore);
   const interestRate = getInterestRate(creditRating);
-  const interestPayments = previousDebt * (interestRate / 100);
+  // Cap interest payments at 25% of revenue — prevents death spiral
+  const rawInterest = previousDebt * (interestRate / 100);
+  const interestPayments = Math.min(rawInterest, totalRevenue * 0.25);
 
   // ---- BALANCE ----
   const balance = totalRevenue - totalSpending - interestPayments;
@@ -173,6 +189,7 @@ export function calculateBudget(
 
   // ---- NEW DEBT ----
   let newDebtTotal = previousDebt - balance; // If balance positive, debt shrinks
+  // Natural debt reduction: even small surpluses compound over time
   newDebtTotal = Math.max(0, newDebtTotal);
 
   const debtToGdp = (newDebtTotal / gdp) * 100;

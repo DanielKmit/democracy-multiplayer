@@ -781,6 +781,7 @@ export function createInitialGameState(roomId: string): GameState {
     isPreElection: true,
     voteShares: {},
     campaignActedThisTurn: {},
+    turnActedThisTurn: {},
     // D4 Features
     pledges: [],
     voterCynicism: {},
@@ -1215,6 +1216,48 @@ export function applyOppositionActions(state: GameState, actions: OppositionActi
         }
         break;
       }
+      case 'attack_broken_promise': {
+        // Attack opponent's broken campaign promise
+        if (action.targetPledgeIndex !== undefined && state.pledges) {
+          const pledge = state.pledges[action.targetPledgeIndex];
+          if (pledge && pledge.status === 'broken' && pledge.playerId !== opposition.id && !pledge.attackedBy) {
+            pledge.attackedBy = opposition.id;
+            pledge.attackedOnTurn = state.turn;
+
+            const policy = POLICY_MAP.get(pledge.policyId);
+            const policyName = policy?.name ?? pledge.policyId;
+            const targetPlayer = state.players.find(p => p.id === pledge.playerId);
+
+            // -5 approval for the target
+            if (targetPlayer && state.approvalRating[targetPlayer.id] !== undefined) {
+              state.approvalRating[targetPlayer.id] = clamp(state.approvalRating[targetPlayer.id] - 5, 0, 100);
+              if (targetPlayer.role === 'ruling') {
+                state.rulingApproval = state.approvalRating[targetPlayer.id];
+              }
+            }
+
+            // -10% regional satisfaction if promise was region-specific
+            if (pledge.regionId && targetPlayer && state.regionalSatisfaction[pledge.regionId]) {
+              const current = state.regionalSatisfaction[pledge.regionId][targetPlayer.id] ?? 50;
+              state.regionalSatisfaction[pledge.regionId][targetPlayer.id] = clamp(current - 10, 0, 100);
+            }
+
+            log.push(`💔 BROKEN PROMISE exposed: ${targetPlayer?.party.partyName ?? 'Government'} failed to ${pledge.direction} ${policyName}! -5% approval`);
+            addNewsItem(state, `💔 Opposition exposes broken promise: ${policyName} was never ${pledge.direction}d as promised!`, 'general');
+
+            // Increase voter cynicism for affected groups
+            if (!state.voterCynicism) state.voterCynicism = {};
+            for (const group of VOTER_GROUPS) {
+              if (group.policyPreferences[pledge.policyId] !== undefined) {
+                state.voterCynicism[group.id] = Math.min(100, (state.voterCynicism[group.id] ?? 0) + 5);
+              }
+            }
+          } else {
+            log.push(`Cannot attack this promise — it's not broken or already attacked.`);
+          }
+        }
+        break;
+      }
     }
   }
 
@@ -1341,6 +1384,9 @@ export function proposeBotBills(state: GameState): void {
       votesFor: 0,
       votesAgainst: 0,
       isEmergency: false,
+      lobbyInfluence: {},
+      whipBonus: 0,
+      publicPressure: 0,
     };
 
     // Import voteBill from parliament — we'll call it from gameHost where it's available
@@ -1663,21 +1709,30 @@ export function advancePhase(state: GameState): void {
         }
       }
 
-      // D4: Check broken pledges (8 turn deadline)
+      // D4: Update pledge statuses & check broken pledges (8 turn deadline)
       if (!state.pledges) state.pledges = [];
-      const brokenPledges = state.pledges.filter(pledge => {
-        if (state.turn - pledge.madeOnTurn > 8) {
-          // Check if the pledge was fulfilled
+      
+      // Update all pledge statuses each turn
+      for (const pledge of state.pledges) {
+        if (pledge.status === 'pending') {
           const currentVal = state.policies[pledge.policyId] ?? 50;
-          const policy = POLICY_MAP.get(pledge.policyId);
-          // Find the value when the pledge was made (approximate via originalValue in delayed or just baseline)
-          const fulfilled = pledge.direction === 'increase'
-            ? currentVal > 50 // rough check — did it go up from default
-            : currentVal < 50;
-          return !fulfilled;
+          const fulfilled = pledge.direction === 'increase' ? currentVal > 50 : currentVal < 50;
+          if (fulfilled) {
+            pledge.status = 'kept';
+            const policy = POLICY_MAP.get(pledge.policyId);
+            const player = state.players.find(p => p.id === pledge.playerId);
+            if (player) {
+              addNewsItem(state, `✅ Promise kept: ${player.party.partyName} ${pledge.direction}d ${policy?.name ?? pledge.policyId}`, 'general');
+            }
+          } else if (state.turn - pledge.madeOnTurn > 8) {
+            pledge.status = 'broken';
+          }
         }
-        return false;
-      });
+      }
+      
+      const brokenPledges = state.pledges.filter(p => 
+        p.status === 'broken' && !p.attackedBy && state.turn - p.madeOnTurn === 9
+      );
 
       if (brokenPledges.length > 0) {
         for (const pledge of brokenPledges) {
@@ -1690,15 +1745,14 @@ export function advancePhase(state: GameState): void {
             }
           }
           addNewsItem(state, `💔 Broken Promise: ${policyName} was never ${pledge.direction}d as promised`, 'general');
-          // Opposition can call out broken pledges
           const rulingP = state.players.find(p => p.role === 'ruling');
           if (rulingP) {
             modifyRulingApproval(state, -5);
           }
         }
-        // Remove fulfilled/expired pledges
-        state.pledges = state.pledges.filter(p => state.turn - p.madeOnTurn <= 8);
       }
+      // Clean up very old pledges (>12 turns)
+      state.pledges = state.pledges.filter(p => state.turn - p.madeOnTurn <= 12);
 
       // === SCANDAL SYSTEM ===
       if (state.gameSettings?.scandalsEnabled !== false) {

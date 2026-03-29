@@ -33,6 +33,7 @@ import { ReputationBar } from '@/components/ReputationBar';
 import { PolicySynergiesPanel } from '@/components/PolicySynergiesPanel';
 import { VictoryProgress } from '@/components/VictoryProgress';
 import { DiplomacyPanel } from '@/components/DiplomacyPanel';
+import { PromisesPanel } from '@/components/PromisesPanel';
 
 export default function GamePage() {
   const params = useParams();
@@ -105,12 +106,24 @@ export default function GamePage() {
   useEffect(() => {
     if (mode !== 'client') return;
     
-    const { onMessage } = require('@/lib/peer');
+    const { onMessage, onPeerConnect, onPeerDisconnect } = require('@/lib/peer');
     
     onMessage((msg: { type: string; state?: unknown }) => {
-      if (msg.type === 'state') {
+      if (msg.type === 'state' && msg.state) {
+        console.log('[Game] Client received state update, phase:', (msg.state as GameState).phase);
         useGameStore.getState().setGameState(msg.state as GameState);
       }
+    });
+
+    // Re-register handlers for reconnection
+    onPeerConnect(() => {
+      console.log('[Game] Client reconnected');
+      useGameStore.getState().setConnected(true);
+    });
+
+    onPeerDisconnect(() => {
+      console.log('[Game] Client disconnected');
+      useGameStore.getState().setConnected(false);
     });
   }, [mode]);
 
@@ -322,6 +335,7 @@ export default function GamePage() {
             <ScandalPanel />
             <ReputationBar />
             <BillsPanel />
+            <PromisesPanel />
             <CabinetPanel />
             <DiplomacyPanel />
             <PolicySynergiesPanel />

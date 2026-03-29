@@ -232,6 +232,21 @@ export interface Bill {
   isEmergency: boolean;
   seatVotes?: Record<number, boolean>;  // seatId -> yes/no
   partyVotes?: Record<string, { yes: number; no: number }>;  // partyId -> vote counts
+  // Parliament influence system
+  lobbyInfluence: Record<string, number>;   // partyId -> lobbying PC spent on this bill
+  whipBonus: number;                        // ruling party whip bonus (0-30)
+  publicPressure: number;                   // public campaign pressure (-20 to +20)
+}
+
+// Parliament influence actions
+export type ParliamentActionType = 'lobby' | 'whip' | 'public_campaign';
+
+export interface ParliamentAction {
+  type: ParliamentActionType;
+  billId: string;
+  pcSpent: number;          // political capital spent
+  targetPartyId?: string;   // for lobby: which party to sway
+  direction: 'support' | 'oppose';  // lobby for or against
 }
 
 // ---- Situations ----
@@ -398,7 +413,8 @@ export type OppositionActionType =
   | 'plant_evidence'
   | 'spin_scandal'
   | 'sign_trade_deal'
-  | 'send_foreign_aid';
+  | 'send_foreign_aid'
+  | 'attack_broken_promise';
 
 export interface OppositionAction {
   type: OppositionActionType;
@@ -415,6 +431,7 @@ export interface OppositionAction {
   scandalId?: string;
   targetNationId?: string;
   aidAmount?: number;
+  targetPledgeIndex?: number;  // for attack_broken_promise: index into state.pledges
 }
 
 // Shadow Cabinet
@@ -439,6 +456,10 @@ export interface Pledge {
   policyId: string;
   direction: 'increase' | 'decrease';
   madeOnTurn: number;
+  status: 'pending' | 'kept' | 'broken';
+  regionId?: string;      // region the promise was made in
+  attackedBy?: string;     // playerId who attacked this promise
+  attackedOnTurn?: number; // turn it was attacked
 }
 
 // Voter cynicism per group
@@ -794,6 +815,7 @@ export interface GameState {
   isPreElection: boolean;  // true during first 5 turns
   voteShares: Record<string, number>;  // partyId -> vote % (sums to 100)
   campaignActedThisTurn: Record<string, boolean>;  // playerId -> has acted this campaign turn
+  turnActedThisTurn: Record<string, boolean>;      // playerId -> has acted this governing turn (ruling/opp)
   // D4 Features
   pledges: Pledge[];                                // Campaign promises made by players
   voterCynicism: VoterCynicism;                     // Per voter group cynicism (0-100)

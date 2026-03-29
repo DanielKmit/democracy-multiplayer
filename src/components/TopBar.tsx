@@ -1,6 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useGameStore } from '@/lib/store';
 import { PARTY_COLORS, GameState } from '@/lib/engine/types';
 import { restoreGame } from '@/lib/gameHost';
@@ -176,7 +177,10 @@ export function TopBar() {
               className="hidden"
             />
           </div>
-          {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
+          {showHelp && typeof document !== 'undefined' && createPortal(
+            <HelpModal onClose={() => setShowHelp(false)} />,
+            document.body
+          )}
         </div>
       </div>
     </div>

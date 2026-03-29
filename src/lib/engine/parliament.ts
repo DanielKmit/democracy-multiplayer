@@ -150,6 +150,7 @@ export function allocateSeats(
 
 /**
  * Vote on a bill — ALL parties vote based on ideology alignment.
+ * Now factors in: lobby influence, whip bonus, and public pressure.
  * Returns updated bill with per-party vote breakdown.
  */
 export function voteBill(
@@ -169,52 +170,72 @@ export function voteBill(
   let votesFor = 0;
   let votesAgainst = 0;
 
+  // Influence factors from the bill
+  const lobbyInfluence = bill.lobbyInfluence ?? {};
+  const whipBonus = bill.whipBonus ?? 0;
+  const publicPressure = bill.publicPressure ?? 0;
+
   // Determine how each party votes
-  const partyDecisions: Record<string, boolean> = {};
+  const partyDecisions: Record<string, number> = {}; // probability of voting yes (0-1)
 
-  // Author's party always votes yes
-  partyDecisions[authorPlayerId] = true;
+  // Author's party always votes yes (high loyalty)
+  partyDecisions[authorPlayerId] = 0.95;
 
+  // Whip bonus: author's coalition partners vote more favorably
+  // whipBonus adds 0-30% to coalition partner loyalty
+  
   // Other human player
   const otherHuman = players.find(p => p.id !== authorPlayerId);
   if (otherHuman) {
     if (oppositionPlayerVote === 'support') {
-      partyDecisions[otherHuman.id] = true;
+      partyDecisions[otherHuman.id] = 0.85;
     } else if (oppositionPlayerVote === 'oppose') {
-      partyDecisions[otherHuman.id] = false;
+      partyDecisions[otherHuman.id] = 0.10;
     } else {
-      // Auto-decide: oppose by default if they're opposition
-      partyDecisions[otherHuman.id] = false;
+      partyDecisions[otherHuman.id] = 0.10; // oppose by default
     }
   }
 
-  // Bot parties vote based on policy alignment
+  // Bot parties vote based on policy alignment + influence
   for (const bot of botParties) {
+    let yesProb = 0.35; // default slight opposition to change
+    
     const pref = bot.policyPreferences[bill.policyId];
     if (pref !== undefined) {
       const currentValue = policyValues[bill.policyId] ?? 50;
       const currentDist = Math.abs(currentValue - pref);
       const proposedDist = Math.abs(bill.proposedValue - pref);
-      // Vote yes if the proposed value is closer to their preference
-      partyDecisions[bot.id] = proposedDist < currentDist;
-    } else {
-      // No strong opinion — slight tendency to oppose change
-      partyDecisions[bot.id] = Math.random() < 0.35;
+      // Base probability from ideology alignment
+      if (proposedDist < currentDist) {
+        yesProb = 0.6 + (currentDist - proposedDist) / 200; // 60-90%
+      } else {
+        yesProb = 0.2 - (proposedDist - currentDist) / 400; // 5-20%
+      }
     }
+
+    // Lobby influence: +10% per PC spent on this party
+    const lobbyPC = lobbyInfluence[bot.id] ?? 0;
+    if (lobbyPC > 0) {
+      yesProb += lobbyPC * 0.10;
+    } else if (lobbyPC < 0) {
+      // Counter-lobbying (opposition lobbied against)
+      yesProb -= Math.abs(lobbyPC) * 0.10;
+    }
+
+    // Whip bonus: applies to coalition partners (+15% per whip level)
+    // whipBonus is 0-30, so up to +30% for coalition partners
+    yesProb += whipBonus / 100;
+
+    // Public pressure: applies to all parties (+/-5% per unit)
+    yesProb += publicPressure / 100;
+
+    partyDecisions[bot.id] = Math.max(0.02, Math.min(0.98, yesProb));
   }
 
-  // Apply decisions to seats with some rebel chance
+  // Apply decisions to seats with probability
   for (const seat of parliament.seats) {
-    const partyVotesYes = partyDecisions[seat.partyId] ?? false;
-    let voteYes: boolean;
-
-    if (partyVotesYes) {
-      // 90% follow party line, 10% rebel
-      voteYes = Math.random() < 0.90;
-    } else {
-      // 90% follow party line (vote no), 10% rebel to yes
-      voteYes = Math.random() < 0.10;
-    }
+    const yesProb = partyDecisions[seat.partyId] ?? 0.35;
+    const voteYes = Math.random() < yesProb;
 
     updatedBill.seatVotes![seat.id] = voteYes;
 

@@ -17,6 +17,17 @@ const MINISTRY_ICONS: Record<MinistryId, string> = {
   justice: '⚖️',
 };
 
+const MINISTRY_BONUS_DESC: Record<MinistryId, string> = {
+  finance: '+GDP Growth',
+  interior: '-Crime Rate',
+  defense: '+Security, -Threat',
+  health: '+Health Index',
+  education: '+Education Index',
+  foreign: '+Security',
+  environment: '-Pollution',
+  justice: '+Freedom, -Corruption',
+};
+
 export function CabinetPanel() {
   const { gameState, playerId } = useGameStore();
   const { appointMinister, fireMinister } = useGameActions();
@@ -59,18 +70,34 @@ export function CabinetPanel() {
               <div className="flex-1 min-w-0">
                 <div className="text-xs text-slate-500 truncate">{MINISTRY_NAMES[mId].replace('Minister of ', '')}</div>
                 {politician ? (
-                  <div className="flex items-center gap-1.5">
-                    <div
-                      className="w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-bold text-white"
-                      style={{ backgroundColor: politician.avatarColor }}
-                    >
-                      {politician.initials}
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <div
+                        className="w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-bold text-white"
+                        style={{ backgroundColor: politician.avatarColor }}
+                      >
+                        {politician.initials}
+                      </div>
+                      <span className="text-xs text-slate-200 truncate">{politician.name}</span>
+                      <span className={`text-[10px] ml-1 ${politician.loyalty < 3 ? 'text-red-400' : politician.loyalty < 5 ? 'text-orange-400' : 'text-emerald-400'}`}>
+                        ♥{politician.loyalty}
+                      </span>
+                      <span className="text-[10px] text-yellow-400 ml-auto">★{effComp}</span>
                     </div>
-                    <span className="text-xs text-slate-200 truncate">{politician.name}</span>
-                    <span className={`text-[10px] ml-1 ${politician.loyalty < 3 ? 'text-red-400' : politician.loyalty < 5 ? 'text-orange-400' : 'text-emerald-400'}`}>
-                      ♥{politician.loyalty}
-                    </span>
-                    <span className="text-[10px] text-yellow-400 ml-auto">★{effComp}</span>
+                    <div className="flex items-center gap-1 mt-0.5 ml-6">
+                      {politician.specialty === mId && (
+                        <span className="text-[9px] px-1 py-0 rounded bg-green-900/40 text-green-400 border border-green-800/30">
+                          SPECIALIST
+                        </span>
+                      )}
+                      <span className={`text-[9px] ${
+                        politician.loyalty < 3 ? 'text-red-400' :
+                        effComp >= 8 ? 'text-emerald-400' : 'text-slate-500'
+                      }`}>
+                        {politician.loyalty < 3 ? `⚠️ ${MINISTRY_BONUS_DESC[mId]} (penalty)` :
+                         effComp >= 7 ? MINISTRY_BONUS_DESC[mId] : ''}
+                      </span>
+                    </div>
                   </div>
                 ) : (
                   <span className="text-xs text-slate-600 italic">Vacant</span>

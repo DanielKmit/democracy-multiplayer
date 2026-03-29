@@ -47,6 +47,7 @@ import { createInitialParliament, allocateSeats, voteBill } from './engine/parli
 import { checkAssassination, updateExtremism } from './engine/extremism';
 import { rollForDilemma, getDilemmaById } from './engine/dilemmas';
 import { getSituationById } from './engine/situations';
+import { getEffectiveCompetence } from './engine/politicians';
 import { sendMessage, isConnected } from './peer';
 
 let gameState: GameState | null = null;
@@ -109,8 +110,68 @@ export function restoreGame(savedState: GameState): GameState {
   return gameState;
 }
 
+/**
+ * Apply cabinet minister specialty bonuses to simulation.
+ * Ministers with matching specialty + high competence boost their domain.
+ * Low-loyalty ministers (<3) provide penalties instead.
+ */
+function applyCabinetBonuses(state: GameState) {
+  const { ministers, availablePool } = state.cabinet;
+  if (!ministers || !availablePool) return;
+
+  // Map ministry → simulation variable(s) affected
+  const MINISTRY_SIM_MAP: Record<string, { vars: Array<{ key: keyof typeof state.simulation; weight: number }>; }> = {
+    finance:     { vars: [{ key: 'gdpGrowth', weight: 0.10 }] },
+    interior:    { vars: [{ key: 'crime', weight: -0.15 }] },
+    defense:     { vars: [{ key: 'nationalSecurity', weight: 0.10 }] },
+    health:      { vars: [{ key: 'healthIndex', weight: 0.10 }] },
+    education:   { vars: [{ key: 'educationIndex', weight: 0.10 }] },
+    foreign:     { vars: [{ key: 'nationalSecurity', weight: 0.05 }] },
+    environment: { vars: [{ key: 'pollution', weight: -0.10 }] },
+    justice:     { vars: [{ key: 'freedomIndex', weight: 0.08 }, { key: 'corruption', weight: -0.08 }] },
+  };
+
+  for (const [ministryId, politicianId] of Object.entries(ministers)) {
+    if (!politicianId) continue;
+    const politician = availablePool.find(p => p.id === politicianId);
+    if (!politician) continue;
+
+    const mapping = MINISTRY_SIM_MAP[ministryId];
+    if (!mapping) continue;
+
+    const effComp = getEffectiveCompetence(politician, ministryId as import('./engine/types').MinistryId);
+    // Bonus scales with competence: comp 5 = neutral, comp 10 = full bonus
+    // Low loyalty (<3) inverts the bonus (penalty)
+    const loyaltyMultiplier = politician.loyalty < 3 ? -0.5 : (politician.loyalty >= 7 ? 1.2 : 1.0);
+    const compFactor = (effComp - 5) / 5; // -1 to +1 range
+
+    for (const v of mapping.vars) {
+      const bonus = v.weight * compFactor * loyaltyMultiplier * 100;
+      (state.simulation as unknown as Record<string, number>)[v.key] += bonus;
+    }
+  }
+
+  // Intelligence minister bonus: affects threat detection
+  const intelMinId = ministers.defense;
+  if (intelMinId) {
+    const intelMin = availablePool.find(p => p.id === intelMinId);
+    if (intelMin && intelMin.specialty === 'defense') {
+      // High-competence defense minister reduces extremism threat slightly
+      const compBonus = (getEffectiveCompetence(intelMin, 'defense') - 5) * 0.5;
+      state.extremism.far_left = Math.max(0, state.extremism.far_left - compBonus);
+      state.extremism.far_right = Math.max(0, state.extremism.far_right - compBonus);
+      state.extremism.religious = Math.max(0, state.extremism.religious - compBonus);
+      state.extremism.eco = Math.max(0, state.extremism.eco - compBonus);
+    }
+  }
+}
+
 function recalculate(state: GameState) {
   state.simulation = computeSimulation(state.policies, state.activeEffects);
+
+  // Apply cabinet minister bonuses to simulation
+  applyCabinetBonuses(state);
+
   state.budget = calculateBudget(state.policies, state.simulation, state.budget.debtTotal ?? 200);
 
   // Apply situation effects to simulation
@@ -178,15 +239,9 @@ function recalculate(state: GameState) {
 function broadcastState() {
   if (!gameState) return;
   persistState();
-  sendMessage({ type: 'state', state: gameState });
+  // Force-send to bypass debounce — every action-triggered broadcast must reach the client
+  sendMessage({ type: 'state', state: gameState }, true);
   if (onStateChange) onStateChange({ ...gameState });
-  // Retry peer sync for critical phase transitions (party_creation -> campaigning)
-  // In case the first sendMessage was dropped
-  if (!gameState.isAIGame && isConnected()) {
-    setTimeout(() => {
-      if (gameState) sendMessage({ type: 'state', state: gameState });
-    }, 500);
-  }
   // Schedule AI turn after state broadcast (async to avoid recursion)
   if (gameState.isAIGame) {
     setTimeout(() => checkAITurn(), 100);
@@ -642,6 +697,11 @@ export function handleAction(playerId: string, action: string, payload?: unknown
         }
       }
       addLogEntry(gameState, 'Policy effects propagated.', 'info');
+
+      // Mark ruling player as acted
+      if (!gameState.turnActedThisTurn) gameState.turnActedThisTurn = {};
+      gameState.turnActedThisTurn[playerId] = true;
+
       advancePhase(gameState); // -> opposition
       addLogEntry(gameState, 'Opposition phase', 'info');
       broadcastState();
@@ -685,6 +745,9 @@ export function handleAction(playerId: string, action: string, payload?: unknown
         votesFor: 0,
         votesAgainst: 0,
         isEmergency: false,
+        lobbyInfluence: {},
+        whipBonus: 0,
+        publicPressure: 0,
       };
 
       // Immediately run parliament vote
@@ -762,6 +825,10 @@ export function handleAction(playerId: string, action: string, payload?: unknown
           addNewsItem(gameState, `Assassination attempt foiled! ${assassinResult.group} thwarted.`, 'event');
         }
       }
+
+      // Mark opposition player as acted
+      if (!gameState.turnActedThisTurn) gameState.turnActedThisTurn = {};
+      gameState.turnActedThisTurn[playerId] = true;
 
       advancePhase(gameState); // -> polling
       addLogEntry(gameState, `📊 Ruling Approval: ${gameState.rulingApproval}%`, 'info');
@@ -849,6 +916,7 @@ export function handleAction(playerId: string, action: string, payload?: unknown
                 policyId: action.promisePolicyId,
                 direction: direction as 'increase' | 'decrease',
                 madeOnTurn: gameState.turn,
+                status: 'pending',
               });
               addLogEntry(gameState, `📢 ${player.party.partyName} promises to ${direction} ${action.promisePolicyId}`, 'info');
               addNewsItem(gameState, `📢 Campaign pledge: ${player.party.partyName} promises to ${direction} ${POLICY_MAP.get(action.promisePolicyId)?.name ?? action.promisePolicyId}`, 'election');
@@ -909,6 +977,21 @@ export function handleAction(playerId: string, action: string, payload?: unknown
       );
       if (existingOffer) {
         addLogEntry(gameState, `You already approached ${botParty.name}`, 'info');
+        broadcastState();
+        break;
+      }
+
+      // Mutual exclusion: if another player already formed a coalition with this bot party, block
+      const alreadyCoalitioned = gameState.coalitionPartners.find(
+        cp => cp.botPartyId === offer.toBotPartyId
+      );
+      if (alreadyCoalitioned) {
+        const otherPlayer = gameState.players.find(p =>
+          gameState!.coalitionOffers.some(o =>
+            o.fromPlayerId === p.id && o.toBotPartyId === offer.toBotPartyId && o.accepted
+          )
+        );
+        addLogEntry(gameState, `❌ ${botParty.name} already joined ${otherPlayer?.party.partyName ?? 'another party'}'s coalition`, 'info');
         broadcastState();
         break;
       }
@@ -1070,6 +1153,105 @@ export function handleAction(playerId: string, action: string, payload?: unknown
       } else {
         addLogEntry(gameState, `${gameState.botParties.find(b => b.id === botPartyId)?.name ?? botPartyId} stays loyal to the coalition`, 'info');
       }
+      broadcastState();
+      break;
+    }
+
+    case 'lobbyBill': {
+      // Player spends PC to lobby a bot party on a specific bill
+      const { billId, targetPartyId, pcSpent, direction } = payload as {
+        billId: string; targetPartyId: string; pcSpent: number; direction: 'support' | 'oppose';
+      };
+      const player = gameState.players.find(p => p.id === playerId);
+      if (!player) return;
+      if (pcSpent < 1 || pcSpent > player.politicalCapital) {
+        addLogEntry(gameState, `Not enough PC to lobby (need ${pcSpent}, have ${player.politicalCapital})`, 'info');
+        broadcastState();
+        return;
+      }
+
+      const bill = gameState.activeBills.find(b => b.id === billId);
+      if (!bill || bill.status !== 'voting') {
+        addLogEntry(gameState, 'Bill not available for lobbying', 'info');
+        broadcastState();
+        return;
+      }
+
+      player.politicalCapital -= pcSpent;
+      if (!bill.lobbyInfluence) bill.lobbyInfluence = {};
+      const influence = direction === 'support' ? pcSpent : -pcSpent;
+      bill.lobbyInfluence[targetPartyId] = (bill.lobbyInfluence[targetPartyId] ?? 0) + influence;
+
+      const botParty = gameState.botParties.find(b => b.id === targetPartyId);
+      const dirLabel = direction === 'support' ? 'support' : 'oppose';
+      addLogEntry(gameState, `🤝 ${player.party.partyName} lobbied ${botParty?.name ?? targetPartyId} to ${dirLabel} "${bill.title}" (${pcSpent} PC)`, 'info');
+      addNewsItem(gameState, `📋 Lobbying: ${player.party.partyName} pressures ${botParty?.name ?? targetPartyId} on ${bill.title}`, 'bill');
+      broadcastState();
+      break;
+    }
+
+    case 'whipVotes': {
+      // Ruling party whips coalition partners to vote with them on a bill
+      const { billId: whipBillId, pcSpent: whipPC } = payload as { billId: string; pcSpent: number };
+      const ruling = gameState.players.find(p => p.id === playerId && p.role === 'ruling');
+      if (!ruling) {
+        addLogEntry(gameState, 'Only the ruling party can whip votes', 'info');
+        broadcastState();
+        return;
+      }
+      if (whipPC < 1 || whipPC > ruling.politicalCapital) {
+        addLogEntry(gameState, `Not enough PC to whip (need ${whipPC}, have ${ruling.politicalCapital})`, 'info');
+        broadcastState();
+        return;
+      }
+
+      const whipBill = gameState.activeBills.find(b => b.id === whipBillId);
+      if (!whipBill || whipBill.status !== 'voting') {
+        addLogEntry(gameState, 'Bill not available for whipping', 'info');
+        broadcastState();
+        return;
+      }
+
+      ruling.politicalCapital -= whipPC;
+      // Each PC adds 15% loyalty to coalition partners
+      whipBill.whipBonus = Math.min(30, (whipBill.whipBonus ?? 0) + whipPC * 15);
+
+      addLogEntry(gameState, `🏛️ ${ruling.party.partyName} whips coalition partners on "${whipBill.title}" (+${whipPC * 15}% loyalty, ${whipPC} PC)`, 'ruling');
+      addNewsItem(gameState, `🏛️ Government whip pressures coalition on ${whipBill.title}`, 'bill');
+      broadcastState();
+      break;
+    }
+
+    case 'campaignForBill': {
+      // Public campaign to build pressure for/against a bill
+      const { billId: campBillId, pcSpent: campPC, direction: campDir } = payload as {
+        billId: string; pcSpent: number; direction: 'support' | 'oppose';
+      };
+      const campPlayer = gameState.players.find(p => p.id === playerId);
+      if (!campPlayer) return;
+      if (campPC < 1 || campPC > campPlayer.politicalCapital) {
+        addLogEntry(gameState, `Not enough PC for public campaign`, 'info');
+        broadcastState();
+        return;
+      }
+
+      const campBill = gameState.activeBills.find(b => b.id === campBillId);
+      if (!campBill || campBill.status !== 'voting') {
+        addLogEntry(gameState, 'Bill not available for campaigning', 'info');
+        broadcastState();
+        return;
+      }
+
+      campPlayer.politicalCapital -= campPC;
+      // Each PC adds +5% public pressure
+      const pressureDir = campDir === 'support' ? 1 : -1;
+      campBill.publicPressure = Math.max(-20, Math.min(20,
+        (campBill.publicPressure ?? 0) + campPC * 5 * pressureDir
+      ));
+
+      const dirLabel = campDir === 'support' ? 'supporting' : 'opposing';
+      addLogEntry(gameState, `📢 ${campPlayer.party.partyName} launches public campaign ${dirLabel} "${campBill.title}" (${campPC} PC)`, 'info');
+      addNewsItem(gameState, `📢 Public campaign: ${campPlayer.party.partyName} rallies public ${dirLabel} ${campBill.title}`, 'bill');
       broadcastState();
       break;
     }
@@ -1272,6 +1454,12 @@ function handleEndTurnPhase(playerId?: string) {
 
     broadcastState();
   } else if (gameState.phase === 'ruling') {
+    // Mark ruling player as acted (passed without policy changes)
+    if (playerId) {
+      if (!gameState.turnActedThisTurn) gameState.turnActedThisTurn = {};
+      gameState.turnActedThisTurn[playerId] = true;
+    }
+
     gameState.pendingPolicyChanges = [];
     advancePhase(gameState); // -> bill_voting (if bills exist) or resolution
 
@@ -1314,6 +1502,12 @@ function handleEndTurnPhase(playerId?: string) {
     addLogEntry(gameState, 'Ruling party passed. Opposition phase.', 'info');
     broadcastState();
   } else if (gameState.phase === 'opposition') {
+    // Mark opposition player as acted (passed without actions)
+    if (playerId) {
+      if (!gameState.turnActedThisTurn) gameState.turnActedThisTurn = {};
+      gameState.turnActedThisTurn[playerId] = true;
+    }
+
     gameState.pendingOppositionActions = [];
     recalculate(gameState);
 
@@ -1358,6 +1552,9 @@ function handleEndTurnPhase(playerId?: string) {
         }
       }
     }
+
+    // Reset turn tracking for next turn
+    gameState.turnActedThisTurn = {};
 
     advancePhase(gameState);
     addLogEntry(gameState, `📊 Ruling Approval: ${gameState.rulingApproval}%`, 'info');

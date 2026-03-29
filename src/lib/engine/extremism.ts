@@ -22,28 +22,31 @@ export function updateExtremism(
 ): ExtremismState {
   const next = { ...current, assassinationAttempted: false, assassinationSucceeded: false };
 
+  // Intelligence spending provides general suppression
+  const intelSuppression = ((policies.intelligence ?? 30) - 30) * 0.04; // 0 at 30, +2.8 at 100
+
   // Far-left: high inequality, low workers rights, low minimum wage
   const leftDrivers =
     (100 - sim.equality) * 0.3 +
     (100 - (policies.minimum_wage ?? 40)) * 0.2 +
     (100 - (policies.unemployment_benefits ?? 40)) * 0.15 +
-    sim.unemployment * 0.2;
-  next.far_left = clamp(current.far_left + (leftDrivers - 50) * 0.15, 0, 100);
+    sim.unemployment * 0.25;
+  next.far_left = clamp(current.far_left + (leftDrivers - 50) * 0.20 - intelSuppression, 0, 100);
 
   // Far-right: high immigration, low patriotism/border security
   const rightDrivers =
     (policies.immigration ?? 50) * 0.3 +
     (100 - (policies.border_security ?? 45)) * 0.25 +
     (100 - (policies.military ?? 40)) * 0.15 +
-    sim.crime * 0.15;
-  next.far_right = clamp(current.far_right + (rightDrivers - 50) * 0.15, 0, 100);
+    sim.crime * 0.2;
+  next.far_right = clamp(current.far_right + (rightDrivers - 50) * 0.20 - intelSuppression, 0, 100);
 
   // Religious extremists: low religious freedom
   const relDrivers =
     (100 - (policies.religious_freedom ?? 70)) * 0.4 +
     (100 - sim.freedomIndex) * 0.2 +
-    sim.crime * 0.1;
-  next.religious = clamp(current.religious + (relDrivers - 40) * 0.12, 0, 100);
+    sim.crime * 0.15;
+  next.religious = clamp(current.religious + (relDrivers - 40) * 0.18 - intelSuppression, 0, 100);
 
   // Eco-terrorists: high pollution, low environmental action
   const ecoDrivers =
@@ -51,7 +54,7 @@ export function updateExtremism(
     (100 - (policies.env_regulations ?? 40)) * 0.2 +
     (100 - (policies.renewables ?? 30)) * 0.15 +
     (100 - (policies.carbon_tax ?? 20)) * 0.1;
-  next.eco = clamp(current.eco + (ecoDrivers - 45) * 0.12, 0, 100);
+  next.eco = clamp(current.eco + (ecoDrivers - 45) * 0.18 - intelSuppression, 0, 100);
 
   return next;
 }

@@ -36,6 +36,12 @@ export function useGameActions() {
     spinScandal: (scandalId: string) => dispatch('spinScandal', scandalId),
     resolveDiplomaticIncident: (option: 'a' | 'b') => dispatch('resolveDiplomaticIncident', { option }),
     updateGameSettings: (settings: Partial<GameSettings>) => dispatch('updateGameSettings', settings),
+    lobbyBill: (billId: string, targetPartyId: string, pcSpent: number, direction: 'support' | 'oppose') =>
+      dispatch('lobbyBill', { billId, targetPartyId, pcSpent, direction }),
+    whipVotes: (billId: string, pcSpent: number) =>
+      dispatch('whipVotes', { billId, pcSpent }),
+    campaignForBill: (billId: string, pcSpent: number, direction: 'support' | 'oppose') =>
+      dispatch('campaignForBill', { billId, pcSpent, direction }),
     endTurnPhase: () => dispatch('endTurnPhase'),
   };
 }

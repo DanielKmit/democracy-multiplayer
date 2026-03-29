@@ -76,6 +76,13 @@ const ACTION_DEFS: ActionDef[] = [
   { type: 'run_ads', name: 'Run Ads', cost: 2, emoji: '📺', category: 'campaign',
     description: 'Target voter group with ads: +5% for election.',
     needsTarget: 'group', condition: (gs) => gs.campaignPhase, conditionLabel: 'Campaign phase' },
+
+  // Promise attacks
+  { type: 'attack_broken_promise', name: 'Attack Broken Promise', cost: 1, emoji: '💔', category: 'public',
+    description: 'Expose opponent\'s broken campaign promise: -5% approval, -10% regional support.',
+    needsTarget: 'none',
+    condition: (gs) => (gs.pledges ?? []).some(p => p.status === 'broken' && !p.attackedBy && p.playerId !== gs.players.find(pl => pl.role === 'opposition')?.id),
+    conditionLabel: 'Opponent has broken promises' },
 ];
 
 const SIM_VARS: { key: SimVarKey; label: string }[] = [
