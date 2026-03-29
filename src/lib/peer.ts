@@ -82,13 +82,9 @@ export function shouldUseLocalMode(): boolean {
   if (localParam === 'true') return true;
   if (localParam === 'false') return false;
 
-  // Localhost = dev mode = local by default
-  const hostname = window.location.hostname;
-  if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') {
-    return true;
-  }
-
-  return false; // Production = PeerJS
+  // Default: local mode everywhere (BroadcastChannel)
+  // Use ?local=false to force PeerJS for cross-device multiplayer
+  return true;
 }
 
 /** @deprecated Use shouldUseLocalMode(). Kept for API compat. */
