@@ -82,13 +82,11 @@ export default function GamePage() {
     if (mode !== 'host') return;
     
     const { onMessage } = require('@/lib/peer');
-    const cleanup = onMessage((msg: { type: string; action?: string; payload?: unknown }) => {
+    onMessage((msg: { type: string; action?: string; payload?: unknown }) => {
       if (msg.type === 'action' && msg.action) {
         hostHandleAction('client', msg.action, msg.payload);
       }
     });
-    
-    return cleanup;
   }, [mode]);
 
   // Recovery: detect stuck party_creation phase where both parties are already created
