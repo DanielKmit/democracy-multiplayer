@@ -3,7 +3,7 @@
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { useGameStore } from '@/lib/store';
-import { joinRoom, onMessage, onPeerDisconnect, sendMessage } from '@/lib/peer';
+import { joinRoom, onMessage, onPeerDisconnect, sendMessage, setLocalMode as setPeerLocalMode } from '@/lib/peer';
 import { GameState } from '@/lib/engine/types';
 
 export default function JoinPage() {
@@ -14,6 +14,12 @@ export default function JoinPage() {
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [localTestMode, setLocalTestMode] = useState(false);
+
+  const handleToggleLocalMode = (enabled: boolean) => {
+    setLocalTestMode(enabled);
+    setPeerLocalMode(enabled);
+  };
 
   const handleJoin = async () => {
     if (!name.trim()) { setErrorMsg('Enter your name'); return; }
@@ -86,6 +92,15 @@ export default function JoinPage() {
               className="w-full p-3 bg-slate-800 border border-slate-700 rounded-lg text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-blue-500"
             />
           </div>
+          <label className="flex items-center gap-2 text-sm text-slate-400 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={localTestMode}
+              onChange={(e) => handleToggleLocalMode(e.target.checked)}
+              className="accent-blue-500"
+            />
+            🖥️ Local test mode <span className="text-slate-600">(same computer)</span>
+          </label>
           <button
             onClick={handleJoin}
             disabled={loading}
