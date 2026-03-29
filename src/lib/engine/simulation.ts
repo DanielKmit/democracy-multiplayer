@@ -189,8 +189,8 @@ function computeSinglePartySatisfaction(
 
     const econDiff = Math.abs(party.economicAxis - groupEcon);
     const socialDiff = Math.abs(party.socialAxis - groupSocial);
-    // Ideology match: max +10, mismatch: down to -10
-    const ideoScore = ((200 - econDiff - socialDiff) / 200) * 20 - 10;
+    // Ideology match: max +25, mismatch: down to -25 (strong differentiation)
+    const ideoScore = ((200 - econDiff - socialDiff) / 200) * 50 - 25;
     score += ideoScore;
 
     // 4. Active effects (targeted at this party)
@@ -1255,6 +1255,14 @@ export function advancePhase(state: GameState): void {
           }
         }
       }
+
+      // Recalculate voter satisfaction and vote shares every turn
+      state.voterSatisfaction = computeAllVoterSatisfaction(
+        state.players, state.policies, state.simulation,
+        state.activeEffects, state.ngoAlliances ?? [], state.botParties
+      );
+      state.approvalRating = computeAllApprovalRatings(state.voterSatisfaction, state.activeEffects);
+      state.voteShares = computeVoteShares(state.voterSatisfaction);
 
       // Give PC
       const rulingApprovalVal = getRulingApproval(state);
