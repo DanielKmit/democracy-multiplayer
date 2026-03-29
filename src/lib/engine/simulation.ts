@@ -826,7 +826,7 @@ export function applyPolicyChanges(state: GameState, changes: PolicyChange[]): s
     if (!policy) continue;
 
     // Cost = 1 PC per policy level step (Off/Low/Medium/High/Maximum = 25pts each)
-    const steps = Math.round(Math.abs(change.newValue - change.oldValue) / 25);
+    const steps = Math.ceil(Math.abs(change.newValue - change.oldValue) / 25);
     const cost = Math.max(1, steps); // minimum 1 PC for any change
     if (totalCost + cost > ruling.politicalCapital) {
       log.push(`Not enough PC to change ${policy.name}`);
