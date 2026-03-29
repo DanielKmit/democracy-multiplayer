@@ -168,6 +168,32 @@ function makeRulingDecision(
   aiPlayer: Player,
   personality: AIPersonality,
 ): AIDecision {
+  // Priority: spin active scandals if we have PC to spare
+  if (state.gameSettings?.scandalsEnabled !== false && aiPlayer.politicalCapital >= 4) {
+    const myScandals = (state.activeScandals ?? []).filter(
+      s => s.targetPlayerId === aiPlayer.id && s.exposed && !s.spun && s.severity >= 5
+    );
+    if (myScandals.length > 0) {
+      // Spin the worst scandal
+      const worst = myScandals.sort((a, b) => b.severity - a.severity)[0];
+      return {
+        action: 'spinScandal',
+        payload: worst.id,
+        description: `AI spins scandal: ${worst.title}`,
+      };
+    }
+  }
+
+  // Resolve diplomatic incident if pending
+  if (state.activeDiplomaticIncident && state.gameSettings?.internationalRelationsEnabled !== false) {
+    const option = personality.aggressiveness > 0.5 ? 'b' : 'a';
+    return {
+      action: 'resolveDiplomaticIncident',
+      payload: { option },
+      description: `AI resolves diplomatic incident: option ${option}`,
+    };
+  }
+
   const prefs = IDEOLOGY_POLICY_PREFS[personality.ideology];
 
   // Strategy: propose a bill that moves policy toward our preference AND helps approval
@@ -396,6 +422,17 @@ function makeOppositionDecision(
       });
       pcBudget -= 1;
     }
+  }
+
+  // Priority 7: Plant Evidence — aggressive move (only if scandals enabled)
+  if (pcBudget >= 3 && personality.aggressiveness > 0.6 && state.gameSettings?.scandalsEnabled !== false) {
+    const types: ('corruption' | 'personal' | 'policy')[] = ['corruption', 'personal', 'policy'];
+    actions.push({
+      type: 'plant_evidence' as OppositionActionType,
+      cost: 3,
+      scandalType: types[Math.floor(Math.random() * types.length)],
+    });
+    pcBudget -= 3;
   }
 
   // Random variance: 20% chance to also rally in a region

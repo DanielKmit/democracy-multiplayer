@@ -28,6 +28,11 @@ import { DetailPanel } from '@/components/DetailPanel';
 import { EventCards } from '@/components/EventCards';
 import { OppositionActionPanel } from '@/components/OppositionActionPanel';
 import { BillsPanel } from '@/components/BillsPanel';
+import { ScandalPanel } from '@/components/ScandalPanel';
+import { ReputationBar } from '@/components/ReputationBar';
+import { PolicySynergiesPanel } from '@/components/PolicySynergiesPanel';
+import { VictoryProgress } from '@/components/VictoryProgress';
+import { DiplomacyPanel } from '@/components/DiplomacyPanel';
 
 export default function GamePage() {
   const params = useParams();
@@ -243,8 +248,13 @@ export default function GamePage() {
         ) : (
           <div className="w-72 border-l border-game-border bg-game-card/50 overflow-y-auto p-3 space-y-4 flex-shrink-0">
             <ParliamentHemicycle compact />
+            <VictoryProgress />
+            <ScandalPanel />
+            <ReputationBar />
             <BillsPanel />
             <CabinetPanel />
+            <DiplomacyPanel />
+            <PolicySynergiesPanel />
             <SparklinePanel />
             <ThreatAdvisory />
           </div>

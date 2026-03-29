@@ -3,7 +3,7 @@
 import { useGameStore } from './store';
 import { handleAction } from './gameHost';
 import { sendMessage } from './peer';
-import { PolicyChange, OppositionAction, PartyConfig, MinistryId, CoalitionOffer, CampaignAction } from './engine/types';
+import { PolicyChange, OppositionAction, PartyConfig, MinistryId, CoalitionOffer, CampaignAction, GameSettings, ScandalType } from './engine/types';
 
 export function useGameActions() {
   const mode = useGameStore((s) => s.mode);
@@ -33,6 +33,9 @@ export function useGameActions() {
     submitCoalitionOffer: (offer: CoalitionOffer) => dispatch('submitCoalitionOffer', offer),
     submitCampaignActions: (actions: CampaignAction[]) => dispatch('submitCampaignActions', actions),
     poachCoalitionPartner: (botPartyId: string) => dispatch('poachCoalitionPartner', botPartyId),
+    spinScandal: (scandalId: string) => dispatch('spinScandal', scandalId),
+    resolveDiplomaticIncident: (option: 'a' | 'b') => dispatch('resolveDiplomaticIncident', { option }),
+    updateGameSettings: (settings: Partial<GameSettings>) => dispatch('updateGameSettings', settings),
     endTurnPhase: () => dispatch('endTurnPhase'),
   };
 }

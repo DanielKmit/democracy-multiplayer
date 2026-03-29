@@ -1120,6 +1120,75 @@ export function applyOppositionActions(state: GameState, actions: OppositionActi
         }
         break;
       }
+      case 'plant_evidence': {
+        // Opposition plants evidence to create a scandal (40% backfire)
+        if (action.scandalType && state.gameSettings?.scandalsEnabled !== false) {
+          const ruling = state.players.find(p => p.role === 'ruling');
+          if (ruling) {
+            const { scandal, backfired } = plantEvidence(ruling.id, opposition.id, action.scandalType);
+            if (!state.activeScandals) state.activeScandals = [];
+            state.activeScandals.push(scandal);
+
+            if (backfired) {
+              log.push(`🔥 PLANTED EVIDENCE BACKFIRED! Scandal hits opposition instead!`);
+              addNewsItem(state, `🔥 Opposition scandal planting exposed! ${scandal.title}`, 'event');
+              // Impact opposition approval
+              if (state.approvalRating[opposition.id] !== undefined) {
+                state.approvalRating[opposition.id] = clamp(
+                  state.approvalRating[opposition.id] + scandal.approvalImpact, 0, 100
+                );
+              }
+              // Reputation hit
+              if (state.reputation?.scores) {
+                state.reputation.scores[opposition.id] = Math.max(0,
+                  (state.reputation.scores[opposition.id] ?? 60) - 15
+                );
+              }
+            } else {
+              log.push(`🔍 Evidence planted! ${scandal.title} hits ruling party`);
+              modifyRulingApproval(state, scandal.approvalImpact);
+            }
+          }
+        }
+        break;
+      }
+      case 'spin_scandal': {
+        // Ruling party spins a scandal (costs 2 PC, reduces impact 50%)
+        // This is handled as a ruling action but can also be triggered here
+        if (action.scandalId) {
+          const scandal = (state.activeScandals ?? []).find(s => s.id === action.scandalId);
+          if (scandal && !scandal.spun) {
+            const spun = spinScandal(scandal);
+            state.activeScandals = state.activeScandals.map(s =>
+              s.id === action.scandalId ? spun : s
+            );
+            log.push(`🔄 Scandal "${scandal.title}" spun — impact reduced 50%`);
+          }
+        }
+        break;
+      }
+      case 'sign_trade_deal': {
+        if (action.targetNationId && state.gameSettings?.internationalRelationsEnabled !== false) {
+          const deal = signTradeDeal(state.diplomaticRelations, action.targetNationId);
+          if (deal) {
+            log.push(`📊 Trade deal signed with ${action.targetNationId}! GDP +${deal.gdpBonus.toFixed(1)}%`);
+            addNewsItem(state, `🤝 Trade agreement reached with ${action.targetNationId}`, 'general');
+          } else {
+            log.push(`❌ Trade deal with ${action.targetNationId} failed — relations too low or already active`);
+          }
+        }
+        break;
+      }
+      case 'send_foreign_aid': {
+        if (action.targetNationId && action.aidAmount && state.gameSettings?.internationalRelationsEnabled !== false) {
+          const result = sendForeignAid(state.diplomaticRelations, action.targetNationId, action.aidAmount);
+          if (result.success) {
+            log.push(`🌐 Sent $${action.aidAmount}B aid to ${action.targetNationId} — relations +${result.relationGain}`);
+            addNewsItem(state, `🌐 Foreign aid package sent to ${action.targetNationId}`, 'general');
+          }
+        }
+        break;
+      }
       case 'campaign_visit': {
         if (action.targetRegionId && state.campaignPhase) {
           state.activeEffects.push({

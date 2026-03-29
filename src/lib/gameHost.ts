@@ -37,6 +37,8 @@ import {
   proposeBotBills,
   recalculateAfterPolicyChange,
 } from './engine/simulation';
+import { spinScandal } from './engine/scandals';
+import { updateSupermajorityTracker, checkVictory } from './engine/victoryConditions';
 import { POLICY_MAP } from './engine/policies';
 import { VOTER_GROUPS } from './engine/voters';
 import { rollForEvent } from './engine/events';
@@ -278,11 +280,14 @@ export function initAIGame(
   return gameState;
 }
 
+let aiScheduled = false;
+
 /**
  * Schedule AI turn with a realistic delay (1.5-2.5s).
  */
 function scheduleAITurn() {
   if (!gameState || !gameState.isAIGame || !gameState.aiPlayerId) return;
+  if (aiScheduled) return; // Prevent re-entry
 
   const aiPlayer = gameState.players.find(p => p.id === gameState!.aiPlayerId);
   if (!aiPlayer) return;
@@ -290,14 +295,19 @@ function scheduleAITurn() {
   // Check if it's AI's turn to act
   if (!isAITurn(gameState, aiPlayer)) return;
 
-  // Set thinking state
+  aiScheduled = true;
+
+  // Set thinking state and broadcast without triggering another AI check
   gameState.aiThinking = true;
-  broadcastState();
+  persistState();
+  sendMessage({ type: 'state', state: gameState });
+  if (onStateChange) onStateChange({ ...gameState });
 
   const delay = 1500 + Math.random() * 1000; // 1.5-2.5s
 
   if (aiTurnTimer) clearTimeout(aiTurnTimer);
   aiTurnTimer = setTimeout(() => {
+    aiScheduled = false;
     executeAITurn();
   }, delay);
 }
@@ -352,14 +362,12 @@ function executeAITurn() {
 
   if (decision) {
     addLogEntry(gameState, `🤖 ${decision.description}`, 'info');
+    // handleAction will broadcastState which triggers checkAITurn for next phases
     handleAction(aiPlayer.id, decision.action, decision.payload);
+  } else {
+    // No decision but state changed — broadcast
+    broadcastState();
   }
-
-  // After AI acts, check if another AI turn is needed (e.g., multiple phases)
-  // Small delay to avoid instant chain
-  setTimeout(() => {
-    scheduleAITurn();
-  }, 500);
 }
 
 /**
@@ -367,6 +375,8 @@ function executeAITurn() {
  */
 function checkAITurn() {
   if (!gameState || !gameState.isAIGame) return;
+  // Don't check if AI is already scheduled/thinking
+  if (aiScheduled || gameState.aiThinking) return;
   scheduleAITurn();
 }
 
@@ -439,6 +449,20 @@ export function handleAction(playerId: string, action: string, payload?: unknown
             p.role = 'opposition'; // Neither rules yet — caretaker government
             p.politicalCapital = 5;
           }
+
+          // Initialize new feature systems
+          const allPartyIds = gameState.players.map(p => p.id);
+          gameState.reputation = {
+            scores: Object.fromEntries(allPartyIds.map(id => [id, 60])),
+            promisesKept: Object.fromEntries(allPartyIds.map(id => [id, 0])),
+            promisesBroken: Object.fromEntries(allPartyIds.map(id => [id, 0])),
+            scandalCount: Object.fromEntries(allPartyIds.map(id => [id, 0])),
+          };
+          gameState.victoryTrackers = Object.fromEntries(
+            allPartyIds.map(id => [id, { consecutiveHighGDP: 0, consecutiveHighApproval: 0, consecutiveSupermajority: 0 }])
+          );
+          gameState.activeScandals = [];
+          gameState.activeSynergies = [];
 
           addLogEntry(gameState, '📢 Campaign season begins! Win voters to form the first government.', 'info');
           addNewsItem(gameState, 'Election campaign begins in Novaria — all parties vie for voter support', 'election');
@@ -903,6 +927,74 @@ export function handleAction(playerId: string, action: string, payload?: unknown
       break;
     }
 
+    case 'spinScandal': {
+      // Ruling party spins a scandal — costs 2 PC, reduces impact
+      const ruling = gameState.players.find(p => p.role === 'ruling');
+      if (!ruling || ruling.id !== playerId) break;
+      if (ruling.politicalCapital < 2) {
+        addLogEntry(gameState, 'Not enough PC to spin scandal (need 2)', 'info');
+        broadcastState();
+        break;
+      }
+
+      const scandalId = payload as string;
+      const scandal = (gameState.activeScandals ?? []).find(s => s.id === scandalId);
+      if (scandal && !scandal.spun) {
+        ruling.politicalCapital -= 2;
+        const spun = spinScandal(scandal);
+        gameState.activeScandals = gameState.activeScandals.map(s =>
+          s.id === scandalId ? spun : s
+        );
+        addLogEntry(gameState, `🔄 Spun scandal: "${scandal.title}" — impact reduced`, 'ruling');
+        addNewsItem(gameState, `Government spin doctors address "${scandal.title}"`, 'general');
+      }
+      broadcastState();
+      break;
+    }
+
+    case 'resolveDiplomaticIncident': {
+      // Resolve a diplomatic incident (option a or b)
+      const ruling = gameState.players.find(p => p.role === 'ruling');
+      if (!ruling || ruling.id !== playerId) break;
+
+      const { option } = payload as { option: 'a' | 'b' };
+      const incident = gameState.activeDiplomaticIncident;
+      if (!incident) break;
+
+      const chosen = option === 'a' ? incident.optionA : incident.optionB;
+      const rel = gameState.diplomaticRelations?.find(r => r.nationId === incident.nationId);
+      if (rel) {
+        rel.relation = Math.max(0, Math.min(100, rel.relation + chosen.relationDelta));
+      }
+
+      // Apply effects
+      if (chosen.effects) {
+        gameState.activeEffects.push({
+          type: 'event',
+          id: `diplo_${incident.id}_${Date.now()}`,
+          turnsRemaining: 3,
+          data: { effects: chosen.effects },
+        });
+      }
+
+      addLogEntry(gameState, `🌐 Diplomatic response: "${chosen.label}" (${incident.title})`, 'ruling');
+      addNewsItem(gameState, `🌐 Government responds to ${incident.title}: ${chosen.label}`, 'general');
+
+      gameState.activeDiplomaticIncident = null;
+      broadcastState();
+      break;
+    }
+
+    case 'updateGameSettings': {
+      // Update game settings (only from lobby/host)
+      const settings = payload as Partial<import('./engine/types').GameSettings>;
+      if (gameState.gameSettings) {
+        gameState.gameSettings = { ...gameState.gameSettings, ...settings };
+      }
+      broadcastState();
+      break;
+    }
+
     case 'appointShadowMinister': {
       const { ministryId, politicianId } = payload as { ministryId: MinistryId; politicianId: string };
       const opp = gameState.players.find(p => p.role === 'opposition');
@@ -993,6 +1085,9 @@ function handleEndTurnPhase(playerId?: string) {
 
       addLogEntry(gameState, `🗳️ ELECTION RESULTS: ${seatSummary}`, 'election');
       addNewsItem(gameState, `Election results — ${seatSummary}`, 'election');
+
+      // Update supermajority victory tracker
+      updateSupermajorityTracker(gameState);
 
       // After first election, end pre-election phase
       gameState.isPreElection = false;
