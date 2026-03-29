@@ -1,7 +1,21 @@
 'use client';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import type { DataConnection, Peer as PeerType } from 'peerjs';
+/**
+ * Multiplayer communication layer using Pusher (replaces PeerJS).
+ *
+ * Architecture:
+ * - Host creates a room → subscribes to private-game-{ROOM_CODE}
+ * - Client joins → subscribes to the same channel
+ * - Messages are sent via server-side Pusher trigger (/api/pusher/send)
+ *   to ensure reliable delivery (no client event limitations)
+ * - Both sides listen for 'game-message' events on the channel
+ *
+ * The exported API is identical to the old PeerJS implementation so
+ * no other files need to change.
+ */
+
+import PusherClient from 'pusher-js';
 
 export type PeerMessage =
   | { type: 'action'; action: string; payload?: unknown }
@@ -13,61 +27,19 @@ type MessageHandler = (msg: PeerMessage) => void;
 type ConnectionHandler = () => void;
 type ErrorHandler = (message: string) => void;
 
-const PEER_PREFIX = 'DEM-';
+let pusher: PusherClient | null = null;
+let channel: any = null;
+let channelName: string | null = null;
+let mySocketId: string | null = null;
 
-const ICE_SERVERS = [
-  { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'stun:stun1.l.google.com:19302' },
-  { urls: 'stun:stun2.l.google.com:19302' },
-  { urls: 'stun:global.stun.twilio.com:3478' },
-  { urls: 'stun:stun.cloudflare.com:3478' },
-  // Free TURN relay for symmetric NAT / strict firewalls
-  {
-    urls: 'turn:openrelay.metered.ca:80',
-    username: 'openrelayproject',
-    credential: 'openrelayproject',
-  },
-  {
-    urls: 'turn:openrelay.metered.ca:443',
-    username: 'openrelayproject',
-    credential: 'openrelayproject',
-  },
-  {
-    urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-    username: 'openrelayproject',
-    credential: 'openrelayproject',
-  },
-];
-
-// Multiple PeerJS servers to try — if one is down we fall through to the next
-const PEER_SERVERS = [
-  { host: '0.peerjs.com', port: 443, secure: true, path: '/' },
-  { host: 'peerjs.com',   port: 443, secure: true, path: '/' },
-];
-
-// Track which server index the host registered on so joiners use the same one
-let activeServerIndex = 0;
-
-function makePeerConfig(serverIndex: number) {
-  const server = PEER_SERVERS[serverIndex] ?? PEER_SERVERS[0];
-  return {
-    ...server,
-    debug: 2,           // verbose — helps diagnose issues in console
-    config: { iceServers: ICE_SERVERS },
-  };
-}
-
-// Retry configuration
-const JOIN_MAX_ATTEMPTS = 5;       // bumped from 3
-const JOIN_BASE_DELAY_MS = 1500;   // exponential backoff base
-const JOIN_TIMEOUT_MS = 15000;     // slightly longer timeout
-
-let peer: PeerType | null = null;
-let connection: DataConnection | null = null;
 let messageHandler: MessageHandler | null = null;
 let connectHandler: ConnectionHandler | null = null;
 let disconnectHandler: ConnectionHandler | null = null;
 let errorHandler: ErrorHandler | null = null;
+
+// Debounce/dedup: track last state broadcast to avoid double-sends
+let lastStateSendTime = 0;
+const STATE_DEBOUNCE_MS = 200;
 
 function generateRoomCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -76,237 +48,186 @@ function generateRoomCode(): string {
   return code;
 }
 
-/** Map raw PeerJS error types to user-friendly messages */
-function friendlyError(err: any): string {
-  const errType = err?.type ?? '';
-  const errMsg = err?.message ?? String(err);
+function initPusher(): PusherClient {
+  if (pusher) return pusher;
 
-  if (errType === 'peer-unavailable' || errMsg.includes('Could not connect to peer')) {
-    return 'Room not found. The host may have left or the code is incorrect.';
-  }
-  if (errType === 'network' || errMsg.includes('Lost connection')) {
-    return 'Network error. Check your internet connection and try again.';
-  }
-  if (errType === 'server-error') {
-    return 'Connection server is temporarily unavailable. Please try again in a moment.';
-  }
-  if (errType === 'socket-error' || errType === 'socket-closed') {
-    return 'Connection to the server was lost. Please try again.';
-  }
-  if (errType === 'webrtc') {
-    return 'Connection blocked — your network may be restricting peer-to-peer connections. Try a different network.';
-  }
-  if (errMsg.includes('timeout')) {
-    return 'Connection timed out. Make sure the host is still in the lobby and try again.';
-  }
-  return 'Connection failed. Please check the room code and try again.';
-}
+  const key = process.env.NEXT_PUBLIC_PUSHER_KEY;
+  const cluster = process.env.NEXT_PUBLIC_PUSHER_CLUSTER;
 
-function setupConnection(conn: DataConnection) {
-  connection = conn;
+  if (!key || !cluster) {
+    throw new Error('Pusher configuration missing. Set NEXT_PUBLIC_PUSHER_KEY and NEXT_PUBLIC_PUSHER_CLUSTER.');
+  }
 
-  conn.on('data', (data) => {
-    if (messageHandler) {
-      messageHandler(data as PeerMessage);
+  pusher = new PusherClient(key, {
+    cluster,
+    authEndpoint: '/api/pusher/auth',
+  });
+
+  pusher.connection.bind('connected', () => {
+    mySocketId = pusher!.connection.socket_id;
+    console.log('[Pusher] Connected, socket_id:', mySocketId);
+  });
+
+  pusher.connection.bind('error', (err: any) => {
+    console.error('[Pusher] Connection error:', err);
+    if (errorHandler) {
+      errorHandler('Connection error. Please check your internet and try again.');
     }
   });
 
-  conn.on('open', () => {
-    console.log('[Peer] Connection opened successfully');
-    if (connectHandler) connectHandler();
-  });
-
-  conn.on('close', () => {
-    console.log('[Peer] Connection closed');
-    connection = null;
+  pusher.connection.bind('disconnected', () => {
+    console.warn('[Pusher] Disconnected');
     if (disconnectHandler) disconnectHandler();
   });
 
-  conn.on('error', (err: any) => {
-    console.error('[Peer] Connection error:', err);
-    if (errorHandler) errorHandler(friendlyError(err));
-  });
+  return pusher;
 }
 
-async function createPeer(id: string, serverIndex = activeServerIndex): Promise<PeerType> {
-  const { default: Peer } = await import('peerjs');
-  const config = makePeerConfig(serverIndex);
-  console.log(`[Peer] Creating peer ${id} on ${config.host}:${config.port}`);
-  return new Peer(id, config) as unknown as PeerType;
-}
-
-/** Wait for a peer's 'open' event or reject on error/timeout */
-function waitForPeerOpen(p: PeerType, timeoutMs = 10000): Promise<void> {
+function subscribeToChannel(roomCode: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    let done = false;
-    const timer = setTimeout(() => {
-      if (!done) { done = true; reject(new Error('timeout')); }
-    }, timeoutMs);
+    const p = initPusher();
+    channelName = `private-game-${roomCode}`;
 
-    p.on('open', () => {
-      if (!done) { done = true; clearTimeout(timer); resolve(); }
+    channel = p.subscribe(channelName);
+
+    channel.bind('pusher:subscription_succeeded', () => {
+      console.log(`[Pusher] Subscribed to ${channelName}`);
+      resolve();
     });
-    p.on('error', (err: any) => {
-      if (!done) { done = true; clearTimeout(timer); reject(err); }
+
+    channel.bind('pusher:subscription_error', (err: any) => {
+      console.error(`[Pusher] Subscription error for ${channelName}:`, err);
+      reject(new Error('Failed to join room. Please check the room code and try again.'));
     });
+
+    // Listen for game messages
+    channel.bind('game-message', (data: any) => {
+      if (messageHandler) {
+        messageHandler(data as PeerMessage);
+      }
+    });
+
+    // Listen for member-added events (host detects when client joins)
+    channel.bind('pusher:member_added', () => {
+      if (connectHandler) connectHandler();
+    });
+
+    // Timeout for subscription
+    setTimeout(() => {
+      reject(new Error('Connection timed out. Please try again.'));
+    }, 15000);
   });
 }
 
+/**
+ * Create a room (host). Returns the room code.
+ */
 export async function createRoom(): Promise<string> {
+  destroyPeer(); // Clean up any previous connection
+
   const roomCode = generateRoomCode();
-  const peerId = PEER_PREFIX + roomCode;
 
-  // Try each signaling server until one works
-  for (let si = 0; si < PEER_SERVERS.length; si++) {
-    try {
-      destroyPeer(); // clean up any previous attempt
-      peer = await createPeer(peerId, si);
-      await waitForPeerOpen(peer);
-      activeServerIndex = si; // remember which server we're on
-      console.log(`[Peer] Host peer open on server ${PEER_SERVERS[si].host}, room code: ${roomCode}`);
+  try {
+    await subscribeToChannel(roomCode);
+    console.log(`[Pusher] Room created: ${roomCode}`);
 
-      // Wire up handlers after successful open
-      peer.on('connection', (conn: any) => {
-        setupConnection(conn);
-      });
+    // Use presence channel events to detect when client connects.
+    // Since we're using private channels (not presence), we detect the
+    // client connection when they send their first 'playerInfo' message.
+    // The connectHandler fires when we get the first message from a client.
+    const origMessageHandler = messageHandler;
+    let clientConnected = false;
 
-      peer.on('error', (err: any) => {
-        console.error('[Peer] Host error:', err);
-        if (errorHandler) errorHandler(friendlyError(err));
-      });
-
-      peer.on('disconnected', () => {
-        console.warn('[Peer] Host disconnected from signaling server, attempting reconnect...');
-        if (peer && !peer.destroyed) {
-          peer.reconnect();
-        }
-      });
-
-      return roomCode;
-    } catch (err: any) {
-      console.warn(`[Peer] Server ${PEER_SERVERS[si].host} failed for host:`, err?.message ?? err);
-      if (err?.type === 'unavailable-id') {
-        // Peer ID collision — regenerate and restart
-        destroyPeer();
-        return createRoom();
+    // Wrap the message handler to detect first client message
+    channel.unbind('game-message');
+    channel.bind('game-message', (data: any) => {
+      if (!clientConnected && data.type === 'playerInfo') {
+        clientConnected = true;
+        if (connectHandler) connectHandler();
       }
-      // Try next server
-    }
+      if (messageHandler) {
+        messageHandler(data as PeerMessage);
+      }
+    });
+
+    return roomCode;
+  } catch (err: any) {
+    destroyPeer();
+    throw new Error(err?.message || 'Failed to create room. Please try again.');
   }
-
-  throw new Error('All connection servers are unavailable. Please try again in a moment.');
 }
 
-/** Single join attempt on a specific signaling server */
-function attemptJoin(roomCode: string, serverIndex: number): Promise<void> {
-  return new Promise(async (resolve, reject) => {
-    const peerId = PEER_PREFIX + roomCode.toUpperCase();
-    const clientId = PEER_PREFIX + 'CLIENT-' + Math.random().toString(36).substring(2, 8);
-    let settled = false;
-
-    const settle = (fn: () => void) => {
-      if (!settled) {
-        settled = true;
-        fn();
-      }
-    };
-
-    try {
-      peer = await createPeer(clientId, serverIndex);
-    } catch (err) {
-      reject(new Error('Failed to initialize connection. Please refresh and try again.'));
-      return;
-    }
-
-    const timeoutId = setTimeout(() => {
-      settle(() => {
-        destroyPeer();
-        reject(new Error('timeout'));
-      });
-    }, JOIN_TIMEOUT_MS);
-
-    peer.on('open', () => {
-      console.log(`[Peer] Client peer open on ${PEER_SERVERS[serverIndex].host}, connecting to: ${peerId}`);
-      const conn = peer!.connect(peerId, {
-        reliable: true,
-        serialization: 'json',
-      });
-
-      conn.on('open', () => {
-        clearTimeout(timeoutId);
-        settle(() => {
-          setupConnection(conn);
-          resolve();
-        });
-      });
-
-      conn.on('error', (err: any) => {
-        console.error('[Peer] Join connection error:', err);
-        clearTimeout(timeoutId);
-        settle(() => {
-          destroyPeer();
-          reject(err);
-        });
-      });
-    });
-
-    peer.on('error', (err: any) => {
-      console.error('[Peer] Client error:', err);
-      clearTimeout(timeoutId);
-      settle(() => {
-        destroyPeer();
-        reject(err);
-      });
-    });
-  });
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
+/**
+ * Join an existing room (client).
+ */
 export async function joinRoom(roomCode: string): Promise<void> {
-  let lastError: any;
+  destroyPeer(); // Clean up any previous connection
 
-  // Try each server, with retries per server
-  for (let si = 0; si < PEER_SERVERS.length; si++) {
-    const attemptsPerServer = si === 0 ? JOIN_MAX_ATTEMPTS : 2; // fewer retries on fallback
-    for (let attempt = 1; attempt <= attemptsPerServer; attempt++) {
-      try {
-        console.log(`[Peer] Join attempt ${attempt}/${attemptsPerServer} on ${PEER_SERVERS[si].host} for room ${roomCode}`);
-        await attemptJoin(roomCode, si);
-        console.log(`[Peer] Successfully joined room ${roomCode} via ${PEER_SERVERS[si].host}`);
-        activeServerIndex = si;
-        return;
-      } catch (err: any) {
-        lastError = err;
-        const errType = err?.type ?? '';
-        const errMsg = err?.message ?? '';
+  const code = roomCode.toUpperCase();
 
-        // peer-unavailable on the *first* server → try next server before giving up
-        // (host might have registered on a different server)
-        if (errType === 'peer-unavailable') {
-          console.warn(`[Peer] peer-unavailable on ${PEER_SERVERS[si].host}, trying next server...`);
-          break; // skip remaining retries for this server
-        }
+  try {
+    await subscribeToChannel(code);
+    console.log(`[Pusher] Joined room: ${code}`);
 
-        console.warn(`[Peer] Attempt ${attempt} failed on ${PEER_SERVERS[si].host}:`, errMsg);
+    // For the client, fire connectHandler immediately since we're connected
+    // once subscribed
+    if (connectHandler) connectHandler();
+  } catch (err: any) {
+    destroyPeer();
+    throw new Error(err?.message || 'Failed to join room. Please check the room code and try again.');
+  }
+}
 
-        if (attempt < attemptsPerServer) {
-          const delay = JOIN_BASE_DELAY_MS * Math.pow(1.5, attempt - 1);
-          console.log(`[Peer] Retrying in ${Math.round(delay)}ms...`);
-          await sleep(delay);
-        }
-      }
-    }
+/**
+ * Send a message to all participants in the room via server-side trigger.
+ * Uses /api/pusher/send endpoint to trigger events server-side,
+ * which is more reliable than client events.
+ */
+export function sendMessage(msg: PeerMessage) {
+  if (!channelName) {
+    console.warn('[Pusher] Cannot send message: not connected to any channel');
+    return;
   }
 
-  // All servers + attempts exhausted
-  throw new Error(friendlyError(lastError));
+  // Debounce rapid state broadcasts (gameHost sends duplicates intentionally)
+  if (msg.type === 'state') {
+    const now = Date.now();
+    if (now - lastStateSendTime < STATE_DEBOUNCE_MS) {
+      return; // Skip duplicate state broadcast
+    }
+    lastStateSendTime = now;
+  }
+
+  // Send via server-side trigger for reliability
+  fetch('/api/pusher/send', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      channel: channelName,
+      event: 'game-message',
+      data: msg,
+      socketId: mySocketId, // Exclude sender from receiving their own message
+    }),
+  }).catch((err) => {
+    console.error('[Pusher] Failed to send message:', err);
+    if (errorHandler) {
+      errorHandler('Failed to send message. Check your connection.');
+    }
+  });
 }
 
 export function onMessage(handler: MessageHandler) {
   messageHandler = handler;
+
+  // Re-bind the channel listener if channel already exists
+  if (channel) {
+    channel.unbind('game-message');
+    channel.bind('game-message', (data: any) => {
+      if (messageHandler) {
+        messageHandler(data as PeerMessage);
+      }
+    });
+  }
 }
 
 export function onPeerConnect(handler: ConnectionHandler) {
@@ -321,27 +242,24 @@ export function onPeerError(handler: ErrorHandler) {
   errorHandler = handler;
 }
 
-export function sendMessage(msg: PeerMessage) {
-  if (connection && connection.open) {
-    connection.send(msg);
-  }
-}
-
 export function isConnected(): boolean {
-  return connection !== null && connection.open;
+  return channel !== null && pusher !== null && pusher.connection.state === 'connected';
 }
 
 export function destroyPeer() {
-  if (connection) {
-    connection.close();
-    connection = null;
+  if (channel && pusher) {
+    pusher.unsubscribe(channelName ?? '');
+    channel = null;
   }
-  if (peer) {
-    peer.destroy();
-    peer = null;
+  if (pusher) {
+    pusher.disconnect();
+    pusher = null;
   }
+  channelName = null;
+  mySocketId = null;
   messageHandler = null;
   connectHandler = null;
   disconnectHandler = null;
   errorHandler = null;
+  lastStateSendTime = 0;
 }
