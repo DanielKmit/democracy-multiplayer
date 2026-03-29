@@ -63,18 +63,48 @@ let disconnectHandler: ConnectionHandler | null = null;
 let errorHandler: ErrorHandler | null = null;
 
 // ── BroadcastChannel (local/same-origin mode) ───────────────────
-// Always use BroadcastChannel for same-origin connections (two tabs on same machine).
-// This avoids PeerJS signaling server issues entirely for local play.
+// Used for same-machine testing (two tabs). Auto-detected or forced via URL param.
 let broadcastChannel: BroadcastChannel | null = null;
 let localRole: 'host' | 'client' | null = null;
 
-/** @deprecated Local mode is now always-on. This is a no-op kept for API compat. */
+/**
+ * Determine connection mode:
+ * - `?local=true`  → force BroadcastChannel (local)
+ * - `?local=false` → force PeerJS (online)
+ * - localhost/127.0.0.1 → default to local
+ * - Everything else → default to PeerJS (online)
+ */
+export function shouldUseLocalMode(): boolean {
+  if (typeof window === 'undefined') return false;
+
+  const params = new URLSearchParams(window.location.search);
+  const localParam = params.get('local');
+  if (localParam === 'true') return true;
+  if (localParam === 'false') return false;
+
+  // Localhost = dev mode = local by default
+  const hostname = window.location.hostname;
+  if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') {
+    return true;
+  }
+
+  return false; // Production = PeerJS
+}
+
+/** @deprecated Use shouldUseLocalMode(). Kept for API compat. */
 export function setLocalMode(_enabled: boolean) {
-  // no-op: local mode is always enabled
+  // no-op: mode is now auto-detected via URL param + hostname
 }
 
 export function isLocalMode(): boolean {
-  return true;
+  return shouldUseLocalMode();
+}
+
+/** Returns a user-friendly label for current connection mode */
+export function getConnectionModeLabel(): { emoji: string; label: string } {
+  return shouldUseLocalMode()
+    ? { emoji: '🖥️', label: 'Local Mode' }
+    : { emoji: '🌐', label: 'Online Mode' };
 }
 
 function generateRoomCode(): string {

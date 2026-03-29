@@ -5,6 +5,7 @@ import { useGameStore } from '@/lib/store';
 import { PARTY_COLORS, GameState } from '@/lib/engine/types';
 import { restoreGame } from '@/lib/gameHost';
 import { HelpModal } from './HelpModal';
+import { getConnectionModeLabel } from '@/lib/peer';
 
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -143,6 +144,11 @@ export function TopBar() {
               {isRuling ? '🏛️' : gameState.isPreElection ? '📢' : '⚔️'} {myPlayer.party.partyName}
             </div>
           )}
+
+          {/* Connection mode indicator */}
+          <div className="text-[10px] px-2 py-1 rounded glass-card text-game-muted" title={`${getConnectionModeLabel().label} — add ?local=true/false to URL to switch`}>
+            {getConnectionModeLabel().emoji}
+          </div>
 
           {/* Save/Load/Help */}
           <div className="flex items-center gap-1">
