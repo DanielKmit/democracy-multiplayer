@@ -40,10 +40,11 @@ export default function GamePage() {
   const { gameState, playerId, mode, centerView, setCenterView, detailPanelNodeId } = useGameStore();
   const { endTurnPhase } = useGameActions();
   const [disconnected, setDisconnected] = useState(false);
+  const recoveryAttempted = useRef(false);
 
+  // Restore game from localStorage on page refresh (mode resets to 'none')
   useEffect(() => {
     if (!mode || mode === 'none') {
-      // Try to restore from localStorage before declaring disconnected
       const saved = loadPersistedState();
       if (saved && saved.roomId === roomId && saved.phase !== 'game_over') {
         const store = useGameStore.getState();
@@ -64,6 +65,37 @@ export default function GamePage() {
       }
     }
   }, [mode, roomId]);
+
+  // Ensure onStateChange is always registered when we have a host/ai_host mode
+  // This covers the case where navigation from home page already set the handler,
+  // but also re-registers it if it was somehow lost
+  useEffect(() => {
+    if (mode === 'host' || mode === 'ai_host') {
+      setOnStateChange((newState: GameState) => {
+        useGameStore.getState().setGameState(newState);
+      });
+    }
+  }, [mode]);
+
+  // Recovery: detect stuck party_creation phase where both parties are already created
+  useEffect(() => {
+    if (!gameState || recoveryAttempted.current) return;
+    if (gameState.phase !== 'party_creation') return;
+    if (gameState.players.length < 2) return;
+    if (mode !== 'host' && mode !== 'ai_host') return;
+
+    const allReady = gameState.players.every(
+      p => p.party.partyName !== 'Default Party' && p.party.partyName !== 'Opposition'
+    );
+    if (allReady) {
+      recoveryAttempted.current = true;
+      // Both parties exist but phase is stuck — re-submit to trigger the allReady check
+      const myPlayer = gameState.players.find(p => p.id === playerId);
+      if (myPlayer) {
+        hostHandleAction(playerId ?? 'host', 'submitPartyConfig', myPlayer.party);
+      }
+    }
+  }, [gameState, mode, playerId]);
 
   if (disconnected) {
     return (
@@ -89,27 +121,6 @@ export default function GamePage() {
       </div>
     );
   }
-
-  // Recovery: detect stuck party_creation phase where both parties are already created
-  const recoveryAttempted = useRef(false);
-  useEffect(() => {
-    if (!gameState || recoveryAttempted.current) return;
-    if (gameState.phase !== 'party_creation') return;
-    if (gameState.players.length < 2) return;
-    if (mode !== 'host' && mode !== 'ai_host') return;
-
-    const allReady = gameState.players.every(
-      p => p.party.partyName !== 'Default Party' && p.party.partyName !== 'Opposition'
-    );
-    if (allReady) {
-      recoveryAttempted.current = true;
-      // Both parties exist but phase is stuck — re-submit to trigger the allReady check
-      const myPlayer = gameState.players.find(p => p.id === playerId);
-      if (myPlayer) {
-        hostHandleAction(playerId ?? 'host', 'submitPartyConfig', myPlayer.party);
-      }
-    }
-  }, [gameState, mode, playerId]);
 
   if (!gameState) {
     return (
