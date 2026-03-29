@@ -47,7 +47,7 @@ import { createInitialParliament, allocateSeats, voteBill } from './engine/parli
 import { checkAssassination, updateExtremism } from './engine/extremism';
 import { rollForDilemma, getDilemmaById } from './engine/dilemmas';
 import { getSituationById } from './engine/situations';
-import { sendMessage } from './peer';
+import { sendMessage, isConnected } from './peer';
 
 let gameState: GameState | null = null;
 let onStateChange: ((state: GameState) => void) | null = null;
@@ -83,6 +83,28 @@ export function clearPersistedState() {
 
 export function restoreGame(savedState: GameState): GameState {
   gameState = savedState;
+
+  // Phase recovery: if stuck in party_creation but both players have parties, advance
+  if (gameState.phase === 'party_creation' && gameState.players.length >= 2) {
+    const allReady = gameState.players.every(
+      p => p.party.partyName !== 'Default Party' && p.party.partyName !== 'Opposition'
+    );
+    if (allReady) {
+      gameState.parliament = createInitialParliament(gameState.players, gameState.botParties);
+      gameState.regionalSatisfaction = computeRegionalSatisfaction(
+        gameState.policies, gameState.voterSatisfaction, gameState.players
+      );
+      gameState.turnsUntilElection = 5;
+      gameState.isPreElection = true;
+      gameState.phase = 'campaigning';
+      for (const p of gameState.players) {
+        p.role = 'opposition';
+        p.politicalCapital = Math.max(p.politicalCapital, 5);
+      }
+      addLogEntry(gameState, '📢 Campaign season begins! (recovered from stuck state)', 'info');
+    }
+  }
+
   broadcastState();
   return gameState;
 }
@@ -158,6 +180,13 @@ function broadcastState() {
   persistState();
   sendMessage({ type: 'state', state: gameState });
   if (onStateChange) onStateChange({ ...gameState });
+  // Retry peer sync for critical phase transitions (party_creation -> campaigning)
+  // In case the first sendMessage was dropped
+  if (!gameState.isAIGame && isConnected()) {
+    setTimeout(() => {
+      if (gameState) sendMessage({ type: 'state', state: gameState });
+    }, 500);
+  }
   // Schedule AI turn after state broadcast (async to avoid recursion)
   if (gameState.isAIGame) {
     setTimeout(() => checkAITurn(), 100);
@@ -425,14 +454,22 @@ export function handleAction(playerId: string, action: string, payload?: unknown
       const config = payload as PartyConfig;
       const player = gameState.players.find(p => p.id === playerId);
       if (player) {
+        // Skip duplicate submissions (idempotent — avoids duplicate log entries on recovery)
+        const alreadySubmitted = player.party.partyName === config.partyName
+          && player.party.partyName !== 'Default Party'
+          && player.party.partyName !== 'Opposition';
+
         player.party = config;
         player.name = config.leaderName;
-        addLogEntry(gameState, `${config.partyName} (${config.leaderName}) ready`, 'info');
-        addNewsItem(gameState, `${config.partyName} launches with manifesto: ${config.manifesto.join(', ')}`, 'general');
 
-        // Check if both players have submitted
+        if (!alreadySubmitted) {
+          addLogEntry(gameState, `${config.partyName} (${config.leaderName}) ready`, 'info');
+          addNewsItem(gameState, `${config.partyName} launches with manifesto: ${config.manifesto.join(', ')}`, 'general');
+        }
+
+        // Check if both players have submitted — only advance if still in party_creation
         const allReady = gameState.players.every(p => p.party.partyName !== 'Default Party' && p.party.partyName !== 'Opposition');
-        if (allReady) {
+        if (allReady && gameState.phase === 'party_creation') {
           // Initialize parliament with caretaker distribution (includes bot parties)
           gameState.parliament = createInitialParliament(gameState.players, gameState.botParties);
           gameState.regionalSatisfaction = computeRegionalSatisfaction(

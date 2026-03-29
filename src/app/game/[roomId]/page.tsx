@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { useGameStore } from '@/lib/store';
 import { useGameActions } from '@/lib/useGameActions';
-import { loadPersistedState, restoreGame, setOnStateChange } from '@/lib/gameHost';
+import { loadPersistedState, restoreGame, setOnStateChange, handleAction as hostHandleAction } from '@/lib/gameHost';
 import { GameState } from '@/lib/engine/types';
 import { Lobby } from '@/components/Lobby';
 import { PartyCreator } from '@/components/PartyCreator';
@@ -89,6 +89,27 @@ export default function GamePage() {
       </div>
     );
   }
+
+  // Recovery: detect stuck party_creation phase where both parties are already created
+  const recoveryAttempted = useRef(false);
+  useEffect(() => {
+    if (!gameState || recoveryAttempted.current) return;
+    if (gameState.phase !== 'party_creation') return;
+    if (gameState.players.length < 2) return;
+    if (mode !== 'host' && mode !== 'ai_host') return;
+
+    const allReady = gameState.players.every(
+      p => p.party.partyName !== 'Default Party' && p.party.partyName !== 'Opposition'
+    );
+    if (allReady) {
+      recoveryAttempted.current = true;
+      // Both parties exist but phase is stuck — re-submit to trigger the allReady check
+      const myPlayer = gameState.players.find(p => p.id === playerId);
+      if (myPlayer) {
+        hostHandleAction(playerId ?? 'host', 'submitPartyConfig', myPlayer.party);
+      }
+    }
+  }, [gameState, mode, playerId]);
 
   if (!gameState) {
     return (
