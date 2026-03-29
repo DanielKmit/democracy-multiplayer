@@ -6,7 +6,8 @@ import { POLICY_MAP } from '@/lib/engine/policies';
 
 export function BillsPanel() {
   const { gameState } = useGameStore();
-  if (!gameState || gameState.activeBills.length === 0) return null;
+  const delayedPolicies = gameState?.delayedPolicies ?? [];
+  if (!gameState || (gameState.activeBills.length === 0 && delayedPolicies.length === 0)) return null;
 
   return (
     <div className="space-y-2">
@@ -14,6 +15,27 @@ export function BillsPanel() {
         <span className="w-1.5 h-1.5 rounded-full bg-game-accent" />
         Recent Bills
       </h4>
+
+      {/* D4: Show delayed policies pending implementation */}
+      {delayedPolicies.length > 0 && (
+        <div className="space-y-1">
+          {delayedPolicies.map((dp, i) => {
+            const policy = POLICY_MAP.get(dp.policyId);
+            return (
+              <div key={`delayed-${i}`} className="glass-card p-2 ring-1 ring-amber-800/30">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-amber-300">
+                    ⏳ {policy?.name ?? dp.policyId}: {dp.originalValue} → {dp.newValue}
+                  </span>
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-900/50 text-amber-400 border border-amber-700/50">
+                    {dp.turnsRemaining} turn{dp.turnsRemaining !== 1 ? 's' : ''} left
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
       {gameState.activeBills.slice(-5).reverse().map(bill => {
         const policy = POLICY_MAP.get(bill.policyId);
         const passed = bill.status === 'passed';

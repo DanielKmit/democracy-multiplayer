@@ -31,6 +31,7 @@ import {
   recalculateAfterPolicyChange,
 } from './engine/simulation';
 import { POLICY_MAP } from './engine/policies';
+import { VOTER_GROUPS } from './engine/voters';
 import { rollForEvent } from './engine/events';
 import { calculateBudget } from './engine/budget';
 import { createInitialParliament, allocateSeats, voteBill } from './engine/parliament';
@@ -108,14 +109,16 @@ function recalculate(state: GameState) {
     // Per-party approval ratings
     state.approvalRating = computeAllApprovalRatings(state.voterSatisfaction, state.activeEffects);
 
-    // Apply event approval impact to ruling party only
+    // Apply event approval impact to ruling party only (one-time, not stacking)
     const ruling = state.players.find(p => p.role === 'ruling');
     if (ruling) {
+      if (!state.appliedEvents) state.appliedEvents = [];
       for (const effect of state.activeEffects) {
-        if (effect.type === 'event' && effect.data.approvalImpact) {
+        if (effect.type === 'event' && effect.data.approvalImpact && !state.appliedEvents.includes(effect.id)) {
           state.approvalRating[ruling.id] = Math.max(0, Math.min(100,
             (state.approvalRating[ruling.id] ?? 50) + (effect.data.approvalImpact as number)
           ));
+          state.appliedEvents.push(effect.id);
         }
       }
       state.rulingApproval = state.approvalRating[ruling.id] ?? 50;
@@ -131,7 +134,7 @@ function recalculate(state: GameState) {
 
   // Compute vote shares (adds up to 100% across all parties)
   if (state.voterSatisfaction && Object.keys(state.voterSatisfaction).length > 0) {
-    state.voteShares = computeVoteShares(state.voterSatisfaction);
+    state.voteShares = computeVoteShares(state.voterSatisfaction, state.voterCynicism);
   }
 
   if (state.budget.debtToGdp > 200) {
@@ -394,8 +397,8 @@ export function handleAction(playerId: string, action: string, payload?: unknown
       if (!policy) return;
 
       const currentValue = gameState.policies[billData.policyId] ?? 50;
-      const diff = Math.abs(billData.proposedValue - currentValue);
-      const cost = player.role === 'ruling' ? Math.ceil(diff / 10) : Math.ceil(diff / 10) + 1; // Opposition pays +1 PC
+      const steps = Math.max(1, Math.round(Math.abs(billData.proposedValue - currentValue) / 25));
+      const cost = player.role === 'ruling' ? steps : steps + 1; // Opposition pays +1 PC
 
       if (cost > player.politicalCapital) {
         addLogEntry(gameState, `Not enough PC to propose bill (need ${cost}, have ${player.politicalCapital})`, 'info');
@@ -442,18 +445,18 @@ export function handleAction(playerId: string, action: string, payload?: unknown
       const billBadge = isOppositionBill ? '[Opposition Bill] ' : '';
 
       if (votedBill.status === 'passed') {
-        // Apply the policy change
+        // D4: Policy changes are delayed by 2 turns
         const oldVal = gameState.policies[votedBill.policyId];
-        gameState.policies[votedBill.policyId] = votedBill.proposedValue;
-
-        // Recalculate and get impact notification
-        const impactMsg = recalculateAfterPolicyChange(
-          gameState, votedBill.policyId, oldVal, votedBill.proposedValue
-        );
+        gameState.delayedPolicies.push({
+          policyId: votedBill.policyId,
+          originalValue: oldVal,
+          newValue: votedBill.proposedValue,
+          turnsRemaining: 2,
+          source: 'bill',
+        });
 
         addLogEntry(gameState, `✅ ${billBadge}${votedBill.title} PASSED (${votedBill.votesFor}-${votedBill.votesAgainst})`, 'ruling');
-        addNewsItem(gameState, `📋 ${billBadge}${votedBill.title} passed! ${voteDetails}`, 'bill');
-        addNewsItem(gameState, `📊 Impact: ${impactMsg}`, 'general');
+        addNewsItem(gameState, `📋 ${billBadge}${votedBill.title} passed! ${voteDetails} (takes effect in 2 turns)`, 'bill');
       } else {
         addLogEntry(gameState, `❌ ${billBadge}${votedBill.title} FAILED (${votedBill.votesFor}-${votedBill.votesAgainst})`, 'ruling');
         addNewsItem(gameState, `📋 ${billBadge}${votedBill.title} rejected. ${voteDetails}`, 'bill');
@@ -571,7 +574,18 @@ export function handleAction(playerId: string, action: string, payload?: unknown
               const bonuses = gameState.campaignBonuses[player.id] ?? {};
               bonuses[`promise_${action.promisePolicyId}`] = (bonuses[`promise_${action.promisePolicyId}`] ?? 0) + 5;
               gameState.campaignBonuses[player.id] = bonuses;
-              addLogEntry(gameState, `📢 ${player.party.partyName} promises to ${action.promiseDirection} ${action.promisePolicyId}`, 'info');
+              // D4: Track pledge for broken promise detection
+              if (!gameState.pledges) gameState.pledges = [];
+              const direction = (action.promiseDirection === 'increase' || action.promiseDirection === 'decrease')
+                ? action.promiseDirection : 'increase';
+              gameState.pledges.push({
+                playerId: player.id,
+                policyId: action.promisePolicyId,
+                direction: direction as 'increase' | 'decrease',
+                madeOnTurn: gameState.turn,
+              });
+              addLogEntry(gameState, `📢 ${player.party.partyName} promises to ${direction} ${action.promisePolicyId}`, 'info');
+              addNewsItem(gameState, `📢 Campaign pledge: ${player.party.partyName} promises to ${direction} ${POLICY_MAP.get(action.promisePolicyId)?.name ?? action.promisePolicyId}`, 'election');
             }
             break;
           }
@@ -778,8 +792,12 @@ function handleEndTurnPhase(playerId?: string) {
       // After first election, end pre-election phase
       gameState.isPreElection = false;
 
-      // Reset campaign bonuses
+      // Reset campaign bonuses and campaign active effects
       gameState.campaignBonuses = {};
+      gameState.activeEffects = gameState.activeEffects.filter(e => {
+        const d = e.data as Record<string, unknown>;
+        return d.type !== 'campaign_visit' && d.type !== 'campaign' && d.type !== 'rally';
+      });
 
       // Don't assign ruling/opposition yet — that happens after coalition negotiation
       // The winner just has the most seats among human players, but needs 51+ with coalition
@@ -897,6 +915,19 @@ function handleEndTurnPhase(playerId?: string) {
         for (const key of Object.keys(gameState.cabinet.ministers)) {
           gameState.cabinet.ministers[key as MinistryId] = null;
         }
+        // Reset consecutive ruling counter on power change
+        gameState.consecutiveRulingPartyElections = 1;
+      } else {
+        // Same party stays in power
+        gameState.consecutiveRulingPartyElections = (gameState.consecutiveRulingPartyElections ?? 0) + 1;
+        // D4: Cynicism increases when same party rules for 5+ elections
+        if (gameState.consecutiveRulingPartyElections >= 5) {
+          if (!gameState.voterCynicism) gameState.voterCynicism = {};
+          for (const group of VOTER_GROUPS) {
+            gameState.voterCynicism[group.id] = Math.min(100, (gameState.voterCynicism[group.id] ?? 0) + 8);
+          }
+          addNewsItem(gameState, `😤 Voter fatigue: ${formateur.party.partyName} in power for ${gameState.consecutiveRulingPartyElections} terms — cynicism rises`, 'general');
+        }
       }
     }
 
@@ -921,14 +952,17 @@ function handleEndTurnPhase(playerId?: string) {
           );
           Object.assign(bill, votedBill);
           if (votedBill.status === 'passed') {
+            // D4: delayed policy implementation
             const oldVal = gameState.policies[votedBill.policyId];
-            gameState.policies[votedBill.policyId] = votedBill.proposedValue;
-            const impactMsg = recalculateAfterPolicyChange(
-              gameState, votedBill.policyId, oldVal, votedBill.proposedValue
-            );
+            gameState.delayedPolicies.push({
+              policyId: votedBill.policyId,
+              originalValue: oldVal,
+              newValue: votedBill.proposedValue,
+              turnsRemaining: 2,
+              source: 'bill',
+            });
             addLogEntry(gameState, `✅ ${votedBill.title} PASSED (${votedBill.votesFor}-${votedBill.votesAgainst})`, 'ruling');
-            addNewsItem(gameState, `📋 ${votedBill.title} passed in parliament!`, 'bill');
-            addNewsItem(gameState, `📊 Impact: ${impactMsg}`, 'general');
+            addNewsItem(gameState, `📋 ${votedBill.title} passed! (takes effect in 2 turns)`, 'bill');
           } else {
             addLogEntry(gameState, `❌ ${votedBill.title} FAILED (${votedBill.votesFor}-${votedBill.votesAgainst})`, 'ruling');
             addNewsItem(gameState, `📋 ${votedBill.title} rejected by parliament`, 'bill');
@@ -970,14 +1004,17 @@ function handleEndTurnPhase(playerId?: string) {
         }).join(', ');
 
         if (votedBill.status === 'passed') {
+          // D4: delayed policy implementation
           const oldVal = gameState.policies[votedBill.policyId];
-          gameState.policies[votedBill.policyId] = votedBill.proposedValue;
-          const impactMsg = recalculateAfterPolicyChange(
-            gameState, votedBill.policyId, oldVal, votedBill.proposedValue
-          );
+          gameState.delayedPolicies.push({
+            policyId: votedBill.policyId,
+            originalValue: oldVal,
+            newValue: votedBill.proposedValue,
+            turnsRemaining: 2,
+            source: 'bill',
+          });
           addLogEntry(gameState, `✅ ${votedBill.title} PASSED (${votedBill.votesFor}-${votedBill.votesAgainst})`, 'ruling');
-          addNewsItem(gameState, `📋 ${votedBill.title} passed! ${voteDetails}`, 'bill');
-          addNewsItem(gameState, `📊 Impact: ${impactMsg}`, 'general');
+          addNewsItem(gameState, `📋 ${votedBill.title} passed! ${voteDetails} (takes effect in 2 turns)`, 'bill');
         } else {
           addLogEntry(gameState, `❌ ${votedBill.title} FAILED (${votedBill.votesFor}-${votedBill.votesAgainst})`, 'ruling');
           addNewsItem(gameState, `📋 ${votedBill.title} rejected. ${voteDetails}`, 'bill');

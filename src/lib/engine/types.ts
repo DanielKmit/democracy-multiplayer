@@ -245,7 +245,7 @@ export interface SituationDefinition {
   icon: string;
   category: 'economic' | 'social' | 'security' | 'environment';
   severity: SituationSeverity;
-  triggerCondition: (policies: Record<string, number>, sim: SimulationState, turnsSinceStart: number) => boolean;
+  triggerCondition: (policies: Record<string, number>, sim: SimulationState, turnsSinceStart: number, budget?: BudgetState) => boolean;
   effects: Partial<Record<SimVarKey, number>>;
   voterEffects: Record<string, number>;   // groupId -> satisfaction modifier
   cascades?: string[];                     // other situation IDs this can trigger
@@ -405,13 +405,25 @@ export interface ShadowMinister {
   effectiveness: number;
 }
 
-// Delayed policy effect
+// Delayed policy effect (D4-style: policies take time to implement)
 export interface DelayedPolicy {
   policyId: string;
   originalValue: number;
   newValue: number;
   turnsRemaining: number;
+  source?: 'bill' | 'opposition_delay'; // Track why it's delayed
 }
+
+// Pledge tracking (campaign promises)
+export interface Pledge {
+  playerId: string;
+  policyId: string;
+  direction: 'increase' | 'decrease';
+  madeOnTurn: number;
+}
+
+// Voter cynicism per group
+export type VoterCynicism = Record<string, number>; // groupId -> 0-100
 
 // Pending motion
 export interface PendingMotion {
@@ -667,6 +679,12 @@ export interface GameState {
   isPreElection: boolean;  // true during first 5 turns
   voteShares: Record<string, number>;  // partyId -> vote % (sums to 100)
   campaignActedThisTurn: Record<string, boolean>;  // playerId -> has acted this campaign turn
+  // D4 Features
+  pledges: Pledge[];                                // Campaign promises made by players
+  voterCynicism: VoterCynicism;                     // Per voter group cynicism (0-100)
+  appliedEvents: string[];                          // Event IDs already applied (prevent stacking)
+  consecutiveLowApprovalTurns: number;              // Track consecutive low approval turns for cynicism
+  consecutiveRulingPartyElections: number;          // Same party in power counter
 }
 
 // ---- Peer Messages ----

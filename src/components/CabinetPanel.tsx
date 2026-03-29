@@ -67,6 +67,9 @@ export function CabinetPanel() {
                       {politician.initials}
                     </div>
                     <span className="text-xs text-slate-200 truncate">{politician.name}</span>
+                    <span className={`text-[10px] ml-1 ${politician.loyalty < 3 ? 'text-red-400' : politician.loyalty < 5 ? 'text-orange-400' : 'text-emerald-400'}`}>
+                      ♥{politician.loyalty}
+                    </span>
                     <span className="text-[10px] text-yellow-400 ml-auto">★{effComp}</span>
                   </div>
                 ) : (

@@ -25,13 +25,15 @@ import {
   CoalitionDemand,
   CoalitionPromise,
   CampaignAction,
+  Pledge,
+  VoterCynicism,
 } from './types';
 import { POLICIES, POLICY_MAP } from './policies';
 import { VOTER_GROUPS } from './voters';
 import { REGIONS, REGION_MAP } from './regions';
 import { rollForEvent } from './events';
 import { calculateBudget } from './budget';
-import { getInitialPoliticianPool } from './politicians';
+import { getInitialPoliticianPool, getPoliticianById } from './politicians';
 import { createInitialParliament } from './parliament';
 import { createInitialExtremism, updateExtremism } from './extremism';
 import { checkSituations, shouldResolveSituation } from './situations';
@@ -404,6 +406,7 @@ export function computeAllApprovalRatings(
  */
 export function computeVoteShares(
   allVoterSatisfaction: Record<string, Record<string, number>>,
+  voterCynicism?: VoterCynicism,
 ): Record<string, number> {
   const voteShares: Record<string, number> = {};
   const partyIds = Object.keys(allVoterSatisfaction);
@@ -425,10 +428,14 @@ export function computeVoteShares(
       totalSat += sat;
     }
 
-    // Convert to proportional share for this group, weighted by population
+    // D4: Cynicism reduces voter turnout — fewer total votes from this group
+    const cynicism = voterCynicism?.[group.id] ?? 0;
+    const turnoutMultiplier = 1 - (cynicism / 200); // 0 cynicism = 100%, 100 cynicism = 50%
+
+    // Convert to proportional share for this group, weighted by population and turnout
     if (totalSat > 0) {
       for (const pid of partyIds) {
-        voteShares[pid] += (partySats[pid] / totalSat) * group.populationShare * 100;
+        voteShares[pid] += (partySats[pid] / totalSat) * group.populationShare * 100 * turnoutMultiplier;
       }
     }
   }
@@ -764,6 +771,12 @@ export function createInitialGameState(roomId: string): GameState {
     isPreElection: true,
     voteShares: {},
     campaignActedThisTurn: {},
+    // D4 Features
+    pledges: [],
+    voterCynicism: {},
+    appliedEvents: [],
+    consecutiveLowApprovalTurns: 0,
+    consecutiveRulingPartyElections: 0,
   };
 }
 
@@ -786,16 +799,24 @@ export function applyPolicyChanges(state: GameState, changes: PolicyChange[]): s
     const policy = POLICY_MAP.get(change.policyId);
     if (!policy) continue;
 
-    const diff = Math.abs(change.newValue - change.oldValue);
-    const cost = Math.ceil(diff / 10);
+    // Cost = 1 PC per policy level step (Off/Low/Medium/High/Maximum = 25pts each)
+    const steps = Math.round(Math.abs(change.newValue - change.oldValue) / 25);
+    const cost = Math.max(1, steps); // minimum 1 PC for any change
     if (totalCost + cost > ruling.politicalCapital) {
       log.push(`Not enough PC to change ${policy.name}`);
       continue;
     }
 
     totalCost += cost;
-    state.policies[change.policyId] = clamp(change.newValue, 0, 100);
-    log.push(`${policy.name}: ${change.oldValue} → ${change.newValue} (${cost} PC)`);
+    // D4: Policy changes don't take effect immediately — delayed by 2 turns
+    state.delayedPolicies.push({
+      policyId: change.policyId,
+      originalValue: change.oldValue,
+      newValue: clamp(change.newValue, 0, 100),
+      turnsRemaining: 2,
+      source: 'bill',
+    });
+    log.push(`${policy.name}: ${change.oldValue} → ${change.newValue} (${cost} PC, takes effect in 2 turns)`);
   }
 
   ruling.politicalCapital -= totalCost;
@@ -1265,7 +1286,7 @@ export function recalculateAfterPolicyChange(
       state.activeEffects, state.ngoAlliances ?? [], state.botParties,
     );
     state.approvalRating = computeAllApprovalRatings(state.voterSatisfaction, state.activeEffects);
-    state.voteShares = computeVoteShares(state.voterSatisfaction);
+    state.voteShares = computeVoteShares(state.voterSatisfaction, state.voterCynicism);
 
     const ruling = state.players.find(p => p.role === 'ruling');
     if (ruling) {
@@ -1345,12 +1366,12 @@ export function advancePhase(state: GameState): void {
 
       // Check/resolve situations
       const activeSitIds = state.activeSituations.map(s => s.id);
-      const newSits = checkSituations(state.policies, state.simulation, activeSitIds, state.consecutiveLowEnvRegulations);
+      const newSits = checkSituations(state.policies, state.simulation, activeSitIds, state.consecutiveLowEnvRegulations, state.budget);
       for (const sitId of newSits) {
         state.activeSituations.push({ id: sitId, turnsActive: 0, acknowledged: false });
       }
       state.activeSituations = state.activeSituations.filter(s => {
-        if (shouldResolveSituation(s.id, state.policies, state.simulation, state.consecutiveLowEnvRegulations)) {
+        if (shouldResolveSituation(s.id, state.policies, state.simulation, state.consecutiveLowEnvRegulations, state.budget)) {
           if (s.turnsActive >= 2) return false;
         }
         s.turnsActive++;
@@ -1360,16 +1381,24 @@ export function advancePhase(state: GameState): void {
       // Update extremism
       state.extremism = updateExtremism(state.extremism, state.policies, state.simulation);
 
-      // Process delayed policies
+      // Process delayed policies (D4: policies take 2 turns to implement)
+      let policyChanged = false;
       state.delayedPolicies = (state.delayedPolicies ?? []).filter(dp => {
         dp.turnsRemaining--;
         if (dp.turnsRemaining <= 0) {
           state.policies[dp.policyId] = dp.newValue;
-          addNewsItem(state, `Delayed policy ${POLICY_MAP.get(dp.policyId)?.name} now takes effect`, 'bill');
+          const policyName = POLICY_MAP.get(dp.policyId)?.name ?? dp.policyId;
+          addNewsItem(state, `📋 ${policyName} reform now takes effect (${dp.originalValue} → ${dp.newValue})`, 'bill');
+          policyChanged = true;
           return false;
         }
         return true;
       });
+
+      // D4: Check minister resignations when policies actually change
+      if (policyChanged) {
+        checkMinisterResignations(state);
+      }
 
       // Process pending motions
       state.motionsPending = (state.motionsPending ?? []).filter(m => {
@@ -1386,6 +1415,66 @@ export function advancePhase(state: GameState): void {
         }
         return true;
       });
+
+      // D4: Update voter cynicism
+      if (!state.voterCynicism) state.voterCynicism = {};
+      const rulingPlayer = state.players.find(p => p.role === 'ruling');
+      const currentRulingApproval = rulingPlayer ? (state.approvalRating[rulingPlayer.id] ?? 50) : 50;
+
+      // Increase cynicism when approval very low for extended periods
+      if (currentRulingApproval < 30) {
+        state.consecutiveLowApprovalTurns = (state.consecutiveLowApprovalTurns ?? 0) + 1;
+        if (state.consecutiveLowApprovalTurns >= 3) {
+          for (const group of VOTER_GROUPS) {
+            state.voterCynicism[group.id] = Math.min(100, (state.voterCynicism[group.id] ?? 0) + 3);
+          }
+        }
+      } else {
+        state.consecutiveLowApprovalTurns = 0;
+        // Slowly decay cynicism when things are going well
+        for (const group of VOTER_GROUPS) {
+          if ((state.voterCynicism[group.id] ?? 0) > 0) {
+            state.voterCynicism[group.id] = Math.max(0, (state.voterCynicism[group.id] ?? 0) - 1);
+          }
+        }
+      }
+
+      // D4: Check broken pledges (8 turn deadline)
+      if (!state.pledges) state.pledges = [];
+      const brokenPledges = state.pledges.filter(pledge => {
+        if (state.turn - pledge.madeOnTurn > 8) {
+          // Check if the pledge was fulfilled
+          const currentVal = state.policies[pledge.policyId] ?? 50;
+          const policy = POLICY_MAP.get(pledge.policyId);
+          // Find the value when the pledge was made (approximate via originalValue in delayed or just baseline)
+          const fulfilled = pledge.direction === 'increase'
+            ? currentVal > 50 // rough check — did it go up from default
+            : currentVal < 50;
+          return !fulfilled;
+        }
+        return false;
+      });
+
+      if (brokenPledges.length > 0) {
+        for (const pledge of brokenPledges) {
+          const policy = POLICY_MAP.get(pledge.policyId);
+          const policyName = policy?.name ?? pledge.policyId;
+          // Increase cynicism for affected voter groups
+          for (const group of VOTER_GROUPS) {
+            if (group.policyPreferences[pledge.policyId] !== undefined) {
+              state.voterCynicism[group.id] = Math.min(100, (state.voterCynicism[group.id] ?? 0) + 10);
+            }
+          }
+          addNewsItem(state, `💔 Broken Promise: ${policyName} was never ${pledge.direction}d as promised`, 'general');
+          // Opposition can call out broken pledges
+          const rulingP = state.players.find(p => p.role === 'ruling');
+          if (rulingP) {
+            modifyRulingApproval(state, -5);
+          }
+        }
+        // Remove fulfilled/expired pledges
+        state.pledges = state.pledges.filter(p => state.turn - p.madeOnTurn <= 8);
+      }
 
       // Reset question time
       state.questionTimeUsed = false;
@@ -1419,7 +1508,7 @@ export function advancePhase(state: GameState): void {
         state.activeEffects, state.ngoAlliances ?? [], state.botParties
       );
       state.approvalRating = computeAllApprovalRatings(state.voterSatisfaction, state.activeEffects);
-      state.voteShares = computeVoteShares(state.voterSatisfaction);
+      state.voteShares = computeVoteShares(state.voterSatisfaction, state.voterCynicism);
 
       // Give PC
       const rulingApprovalVal = getRulingApproval(state);
@@ -1477,6 +1566,66 @@ export function advancePhase(state: GameState): void {
 
   if (currentIndex >= 0 && currentIndex < phaseOrder.length - 1) {
     state.phase = phaseOrder[currentIndex + 1];
+  }
+}
+
+// D4: Check if ministers resign over policy changes
+export function checkMinisterResignations(state: GameState): void {
+  if (!state.cabinet) return;
+  const { ministers, availablePool } = state.cabinet;
+
+  // Map ministry to relevant policy domains
+  const MINISTRY_POLICY_MAP: Record<string, string[]> = {
+    health: ['healthcare', 'drug_policy'],
+    education: ['education', 'tech_research'],
+    finance: ['income_tax', 'corporate_tax', 'govt_spending', 'trade_openness'],
+    defense: ['military', 'border_security', 'intelligence'],
+    interior: ['police', 'immigration', 'civil_rights'],
+    environment: ['env_regulations', 'renewables', 'carbon_tax'],
+    justice: ['civil_rights', 'press_freedom', 'drug_policy', 'gun_control'],
+    foreign: ['foreign_aid', 'trade_openness', 'immigration'],
+  };
+
+  for (const [ministryId, polId] of Object.entries(ministers)) {
+    if (!polId) continue;
+    const politician = availablePool.find(p => p.id === polId);
+    if (!politician) continue;
+
+    const relevantPolicies = MINISTRY_POLICY_MAP[ministryId] ?? [];
+    let ideologicalConflict = 0;
+
+    for (const policyId of relevantPolicies) {
+      const policyVal = state.policies[policyId] ?? 50;
+      // Check if policy value clashes with politician's ideology
+      // Economic policies: high value = left-wing (more spending/tax), low = right-wing
+      const isEconPolicy = ['income_tax', 'corporate_tax', 'govt_spending', 'minimum_wage', 'trade_openness'].includes(policyId);
+      const isSocialPolicy = ['civil_rights', 'press_freedom', 'immigration', 'drug_policy'].includes(policyId);
+
+      if (isEconPolicy) {
+        // High policy value vs low economicLean = conflict (left policy, right politician)
+        const diff = Math.abs(policyVal - politician.economicLean);
+        ideologicalConflict += diff * 0.3;
+      }
+      if (isSocialPolicy) {
+        const diff = Math.abs(policyVal - politician.socialLean);
+        ideologicalConflict += diff * 0.3;
+      }
+    }
+
+    // High conflict + low loyalty = resignation risk
+    if (ideologicalConflict > 25) {
+      // Reduce loyalty
+      politician.loyalty = Math.max(0, politician.loyalty - Math.floor(ideologicalConflict / 15));
+
+      if (politician.loyalty < 3) {
+        // Minister resigns!
+        ministers[ministryId as keyof typeof ministers] = null;
+        const policyName = relevantPolicies[0] ? (POLICY_MAP.get(relevantPolicies[0])?.name ?? ministryId) : ministryId;
+        addNewsItem(state, `🚪 ${politician.name} resigns as Minister of ${ministryId} over ${policyName} policy!`, 'cabinet');
+        addLogEntry(state, `Minister ${politician.name} resigns from ${ministryId}!`, 'cabinet');
+        modifyRulingApproval(state, -3);
+      }
+    }
   }
 }
 

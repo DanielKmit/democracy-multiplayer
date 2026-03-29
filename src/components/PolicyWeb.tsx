@@ -121,12 +121,27 @@ export function PolicyWeb() {
         })(),
       });
 
-      // Edges from sim vars
+      // Edges from sim vars to voter groups
       for (const [simKey, weight] of Object.entries(group.concerns)) {
         edges.push({
           from: `sim_${simKey}`, to: `voter_${group.id}`,
           weight: Math.abs(weight!) * 12, positive: weight! > 0,
         });
+      }
+
+      // Direct edges from policies to voter groups (via policy preferences)
+      for (const [policyId, idealVal] of Object.entries(group.policyPreferences)) {
+        const currentVal = gameState.policies[policyId] ?? 50;
+        const distance = Math.abs(currentVal - idealVal);
+        // Only show connections for policies where the group has strong preferences
+        if (Math.abs(idealVal - 50) > 15) {
+          const isAligned = distance < 30; // policy is close to what they want
+          edges.push({
+            from: `pol_${policyId}`, to: `voter_${group.id}`,
+            weight: Math.max(1, (100 - distance) * 0.06),
+            positive: isAligned,
+          });
+        }
       }
     });
 
@@ -236,7 +251,7 @@ export function PolicyWeb() {
                 x1={from.x} y1={from.y} x2={to.x} y2={to.y}
                 stroke={edge.positive ? '#22C55E' : '#EF4444'}
                 strokeWidth={Math.max(0.5, Math.min(edge.weight * 0.5, 4))}
-                opacity={activeNodeId ? (isHighlighted ? 0.6 : 0.04) : 0.1}
+                opacity={activeNodeId ? (isHighlighted ? 0.7 : 0.05) : 0.25}
                 className="transition-opacity duration-200"
               />
             );

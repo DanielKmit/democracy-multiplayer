@@ -1,4 +1,4 @@
-import { SituationDefinition, SimulationState } from './types';
+import { SituationDefinition, SimulationState, BudgetState } from './types';
 
 export const SITUATIONS: SituationDefinition[] = [
   // ===== ECONOMIC =====
@@ -9,7 +9,9 @@ export const SITUATIONS: SituationDefinition[] = [
     icon: '💸',
     category: 'economic',
     severity: 'critical',
-    triggerCondition: (_p, sim) => sim.gdpGrowth < -2 || false,
+    // Triggers when debt > 150% GDP AND deficit > 5% of GDP (~22.5B on 450B base)
+    triggerCondition: (_p, sim, _turns, budget) =>
+      (budget?.debtToGdp ?? 0) > 150 && (budget?.deficit ?? 0) > (450 * (1 + sim.gdpGrowth / 100)) * 0.05,
     effects: { gdpGrowth: -2, unemployment: 3, inflation: 2 },
     voterEffects: { business: -15, workers: -10 },
     cascades: ['brain_drain'],
@@ -407,7 +409,8 @@ export function checkSituations(
   policies: Record<string, number>,
   sim: SimulationState,
   activeSituationIds: string[],
-  turnsSinceStart: number
+  turnsSinceStart: number,
+  budget?: BudgetState
 ): string[] {
   const triggered: string[] = [];
   
@@ -416,7 +419,7 @@ export function checkSituations(
     if (activeSituationIds.includes(situation.id)) continue;
     
     try {
-      if (situation.triggerCondition(policies, sim, turnsSinceStart)) {
+      if (situation.triggerCondition(policies, sim, turnsSinceStart, budget)) {
         triggered.push(situation.id);
       }
     } catch {
@@ -436,13 +439,14 @@ export function shouldResolveSituation(
   id: string,
   policies: Record<string, number>,
   sim: SimulationState,
-  turnsSinceStart: number
+  turnsSinceStart: number,
+  budget?: BudgetState
 ): boolean {
   const situation = getSituationById(id);
   if (!situation) return true;
   
   try {
-    return !situation.triggerCondition(policies, sim, turnsSinceStart);
+    return !situation.triggerCondition(policies, sim, turnsSinceStart, budget);
   } catch {
     return false;
   }
