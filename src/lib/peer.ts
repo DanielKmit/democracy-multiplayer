@@ -86,7 +86,8 @@ function initPusher(): PusherClient {
 function subscribeToChannel(roomCode: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const p = initPusher();
-    channelName = `private-game-${roomCode}`;
+    // Use presence channel for member detection
+    channelName = `presence-game-${roomCode}`;
 
     channel = p.subscribe(channelName);
 

@@ -30,9 +30,20 @@ export async function POST(req: NextRequest) {
 
     console.log('[Pusher Auth] Authorizing:', { socket_id, channel_name });
 
-    // Authorize the user for the private channel
-    // Note: authorizeChannel is deprecated, use authenticate instead
-    const authResponse = pusher.authorizeChannel(socket_id, channel_name);
+    // Check if it's a presence channel
+    const isPresence = channel_name.startsWith('presence-');
+    
+    let authResponse;
+    if (isPresence) {
+      // For presence channels, provide user data
+      authResponse = pusher.authorizeChannel(socket_id, channel_name, {
+        user_id: socket_id,
+        user_info: { name: 'Player' }
+      });
+    } else {
+      // For private channels
+      authResponse = pusher.authorizeChannel(socket_id, channel_name);
+    }
     
     console.log('[Pusher Auth] Success:', authResponse);
     return Response.json(authResponse);
