@@ -19,17 +19,30 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { socket_id, channel_name } = body;
 
+    if (!socket_id || !channel_name) {
+      return Response.json(
+        { error: 'Missing socket_id or channel_name' },
+        { status: 400 }
+      );
+    }
+
     console.log('[Pusher Auth] Authorizing:', { socket_id, channel_name });
 
     // Authorize the user for the private channel
-    const auth = pusher.authorizeChannel(socket_id, channel_name);
+    // Note: authorizeChannel is deprecated, use authenticate instead
+    const authResponse = pusher.authorizeChannel(socket_id, channel_name);
     
-    console.log('[Pusher Auth] Success:', auth);
-    return Response.json(auth);
-  } catch (error) {
+    console.log('[Pusher Auth] Success:', authResponse);
+    return Response.json(authResponse);
+  } catch (error: any) {
     console.error('[Pusher Auth] Error:', error);
+    console.error('[Pusher Auth] Stack:', error?.stack);
     return Response.json(
-      { error: 'Authorization failed', details: error instanceof Error ? error.message : String(error) },
+      { 
+        error: 'Authorization failed', 
+        details: error instanceof Error ? error.message : String(error),
+        stack: error?.stack 
+      },
       { status: 500 }
     );
   }
