@@ -13,12 +13,12 @@ export function createInitialParliament(players: Player[], botParties?: BotParty
   // With 2 human + 4 bot = 6 parties
   const allParties: { id: string; color: string; share: number }[] = [];
 
-  // Human players get ~30-32 each
+  // Human players get equal shares (~28% each), no inherent advantage
   if (players[0]) {
     allParties.push({
       id: players[0].id,
       color: PARTY_COLORS[players[0].party.partyColor],
-      share: 0.32,
+      share: 0.28,
     });
   }
   if (players[1]) {
@@ -29,11 +29,11 @@ export function createInitialParliament(players: Player[], botParties?: BotParty
     });
   }
 
-  // Bot parties
+  // Bot parties — more competitive distribution
   const botShares: Record<string, number> = {
-    bot_green: 0.12,
-    bot_national: 0.11,
-    bot_workers: 0.10,
+    bot_green: 0.14,
+    bot_national: 0.12,
+    bot_workers: 0.11,
     bot_freemarket: 0.07,
   };
 

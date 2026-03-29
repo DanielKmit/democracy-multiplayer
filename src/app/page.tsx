@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useGameStore } from '@/lib/store';
 import { createRoom, joinRoom, onMessage, onPeerConnect, onPeerDisconnect, sendMessage } from '@/lib/peer';
-import { initGame, handleClientJoin, handleAction, setOnStateChange } from '@/lib/gameHost';
+import { initGame, handleClientJoin, handleAction, setOnStateChange, loadPersistedState, restoreGame, clearPersistedState } from '@/lib/gameHost';
 import { GameState } from '@/lib/engine/types';
 
 export default function Home() {
@@ -15,6 +15,41 @@ export default function Home() {
   const [mode, setModeLocal] = useState<'menu' | 'create' | 'join'>('menu');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [hasSavedGame, setHasSavedGame] = useState(false);
+  const [savedRoomId, setSavedRoomId] = useState<string | null>(null);
+
+  // Check for saved game on mount
+  useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = loadPersistedState();
+      if (saved && saved.phase !== 'game_over') {
+        setHasSavedGame(true);
+        setSavedRoomId(saved.roomId);
+      }
+    }
+  });
+
+  const handleResume = () => {
+    const saved = loadPersistedState();
+    if (!saved) { setErrorMsg('No saved game found'); return; }
+    if (saved.phase === 'game_over') { clearPersistedState(); setHasSavedGame(false); return; }
+
+    setLoading(true);
+    setPlayerName(saved.players[0]?.name ?? 'Player');
+    setPlayerId('host');
+    setRoomId(saved.roomId);
+    setMode('host');
+    setConnected(true);
+
+    const state = restoreGame(saved);
+    setGameState(state);
+
+    setOnStateChange((newState: GameState) => {
+      useGameStore.getState().setGameState(newState);
+    });
+
+    router.push(`/game/${saved.roomId}`);
+  };
 
   const handleCreate = async () => {
     if (!name.trim()) { setErrorMsg('Enter your name'); return; }
@@ -113,6 +148,15 @@ export default function Home() {
 
         {mode === 'menu' && (
           <div className="space-y-4 animate-fade-in">
+            {hasSavedGame && (
+              <button
+                onClick={handleResume}
+                disabled={loading}
+                className="w-full p-4 bg-emerald-600 hover:bg-emerald-500 rounded-xl text-lg font-semibold transition-all hover:scale-[1.02] active:scale-[0.98] ring-2 ring-emerald-400/50"
+              >
+                ▶️ Resume Game {savedRoomId ? `(${savedRoomId})` : ''}
+              </button>
+            )}
             <button
               onClick={() => setModeLocal('create')}
               className="w-full p-4 bg-blue-600 hover:bg-blue-500 rounded-xl text-lg font-semibold transition-all hover:scale-[1.02] active:scale-[0.98]"

@@ -1307,9 +1307,13 @@ export function advancePhase(state: GameState): void {
     return;
   }
 
-  // Skip bill voting if no bills
+  // After ruling phase: go to bill_voting if there are drafting bills, else skip to resolution
   if (state.phase === 'ruling') {
-    state.phase = 'resolution';
+    if (state.activeBills.some(b => b.status === 'drafting')) {
+      state.phase = 'bill_voting';
+    } else {
+      state.phase = 'resolution';
+    }
     return;
   }
 

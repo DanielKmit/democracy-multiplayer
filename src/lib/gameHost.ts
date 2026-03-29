@@ -40,6 +40,41 @@ import { sendMessage } from './peer';
 let gameState: GameState | null = null;
 let onStateChange: ((state: GameState) => void) | null = null;
 
+const STORAGE_KEY = 'democracy_game_state';
+
+function persistState() {
+  if (typeof window === 'undefined') return;
+  if (gameState) {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(gameState));
+    } catch {
+      // Storage full or unavailable — ignore
+    }
+  }
+}
+
+export function loadPersistedState(): GameState | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) return JSON.parse(raw) as GameState;
+  } catch {
+    // Corrupted data — ignore
+  }
+  return null;
+}
+
+export function clearPersistedState() {
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem(STORAGE_KEY);
+}
+
+export function restoreGame(savedState: GameState): GameState {
+  gameState = savedState;
+  broadcastState();
+  return gameState;
+}
+
 function recalculate(state: GameState) {
   state.simulation = computeSimulation(state.policies, state.activeEffects);
   state.budget = calculateBudget(state.policies, state.simulation, state.budget.debtTotal ?? 200);
@@ -106,6 +141,7 @@ function recalculate(state: GameState) {
 
 function broadcastState() {
   if (!gameState) return;
+  persistState();
   sendMessage({ type: 'state', state: gameState });
   if (onStateChange) onStateChange({ ...gameState });
 }
@@ -509,6 +545,16 @@ export function handleAction(playerId: string, action: string, payload?: unknown
       const player = gameState.players.find(p => p.id === playerId);
       if (!player) break;
 
+      // Prevent double-approach: check if player already made an offer to this party
+      const existingOffer = gameState.coalitionOffers.find(
+        o => o.fromPlayerId === playerId && o.toBotPartyId === offer.toBotPartyId
+      );
+      if (existingOffer) {
+        addLogEntry(gameState, `You already approached ${botParty.name}`, 'info');
+        broadcastState();
+        break;
+      }
+
       // Evaluate the offer based on ideology alignment
       const econDiff = Math.abs(player.party.economicAxis - botParty.economicAxis);
       const socialDiff = Math.abs(player.party.socialAxis - botParty.socialAxis);
@@ -531,6 +577,16 @@ export function handleAction(playerId: string, action: string, payload?: unknown
       acceptChance = Math.min(0.95, Math.max(0.05, acceptChance));
       const accepted = Math.random() < acceptChance;
 
+      // Track the offer (accepted or rejected) to prevent double-approach
+      const trackedOffer: import('./engine/types').CoalitionOffer = {
+        fromPlayerId: playerId,
+        toBotPartyId: botParty.id,
+        promises: offer.promises,
+        accepted,
+        rejected: !accepted,
+      };
+      gameState.coalitionOffers.push(trackedOffer);
+
       if (accepted) {
         gameState.coalitionPartners.push({
           botPartyId: botParty.id,
@@ -546,6 +602,48 @@ export function handleAction(playerId: string, action: string, payload?: unknown
         addNewsItem(gameState, `${botParty.name} rejects ${player.party.partyName}'s coalition overture`, 'election');
       }
 
+      broadcastState();
+      break;
+    }
+
+    case 'appointShadowMinister': {
+      const { ministryId, politicianId } = payload as { ministryId: MinistryId; politicianId: string };
+      const opp = gameState.players.find(p => p.role === 'opposition');
+      if (!opp || opp.id !== playerId) return;
+
+      if (!gameState.shadowCabinet) gameState.shadowCabinet = {} as Record<MinistryId, string | null>;
+      gameState.shadowCabinet[ministryId] = politicianId;
+      const pol = gameState.cabinet.availablePool.find(p => p.id === politicianId);
+      if (pol) {
+        addLogEntry(gameState, `Shadow cabinet: ${pol.name} shadowing ${ministryId}`, 'opposition');
+      }
+      broadcastState();
+      break;
+    }
+
+    case 'poachCoalitionPartner': {
+      const botPartyId = payload as string;
+      const player = gameState.players.find(p => p.id === playerId);
+      if (!player) return;
+
+      // Can only poach during opposition phase
+      const existingPartner = gameState.coalitionPartners.find(cp => cp.botPartyId === botPartyId);
+      if (!existingPartner) {
+        addLogEntry(gameState, `${botPartyId} is not in any coalition`, 'info');
+        broadcastState();
+        break;
+      }
+
+      // Low chance of success — depends on partner satisfaction
+      const poachChance = (100 - existingPartner.satisfaction) / 200; // 0-50% based on dissatisfaction
+      if (Math.random() < poachChance) {
+        gameState.coalitionPartners = gameState.coalitionPartners.filter(cp => cp.botPartyId !== botPartyId);
+        const bot = gameState.botParties.find(b => b.id === botPartyId);
+        addLogEntry(gameState, `🔀 ${bot?.name ?? botPartyId} leaves the coalition!`, 'opposition');
+        addNewsItem(gameState, `Coalition crisis: ${bot?.name ?? botPartyId} breaks away!`, 'general');
+      } else {
+        addLogEntry(gameState, `${gameState.botParties.find(b => b.id === botPartyId)?.name ?? botPartyId} stays loyal to the coalition`, 'info');
+      }
       broadcastState();
       break;
     }
@@ -729,9 +827,36 @@ function handleEndTurnPhase() {
     broadcastState();
   } else if (gameState.phase === 'ruling') {
     gameState.pendingPolicyChanges = [];
-    advancePhase(gameState);
+    advancePhase(gameState); // -> bill_voting (if bills exist) or resolution
+
+    if ((gameState.phase as string) === 'bill_voting') {
+      // Process any active bills that haven't been voted yet
+      for (const bill of gameState.activeBills) {
+        if (bill.status === 'drafting') {
+          const votedBill = voteBill(
+            bill,
+            gameState.parliament,
+            bill.authorId,
+            gameState.players,
+            gameState.botParties,
+            gameState.policies,
+          );
+          Object.assign(bill, votedBill);
+          if (votedBill.status === 'passed') {
+            gameState.policies[votedBill.policyId] = votedBill.proposedValue;
+            addLogEntry(gameState, `✅ ${votedBill.title} PASSED (${votedBill.votesFor}-${votedBill.votesAgainst})`, 'ruling');
+            addNewsItem(gameState, `📋 ${votedBill.title} passed in parliament!`, 'bill');
+          } else {
+            addLogEntry(gameState, `❌ ${votedBill.title} FAILED (${votedBill.votesFor}-${votedBill.votesAgainst})`, 'ruling');
+            addNewsItem(gameState, `📋 ${votedBill.title} rejected by parliament`, 'bill');
+          }
+        }
+      }
+      advancePhase(gameState); // bill_voting -> resolution
+    }
+
     recalculate(gameState);
-    advancePhase(gameState);
+    advancePhase(gameState); // resolution -> opposition
     addLogEntry(gameState, 'Ruling party passed. Opposition phase.', 'info');
     broadcastState();
   } else if (gameState.phase === 'opposition') {
@@ -795,4 +920,5 @@ export function getGameState(): GameState | null {
 export function cleanupGame() {
   gameState = null;
   onStateChange = null;
+  clearPersistedState();
 }

@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { useGameStore } from '@/lib/store';
 import { useGameActions } from '@/lib/useGameActions';
+import { loadPersistedState, restoreGame, setOnStateChange } from '@/lib/gameHost';
+import { GameState } from '@/lib/engine/types';
 import { Lobby } from '@/components/Lobby';
 import { PartyCreator } from '@/components/PartyCreator';
 import { TopBar } from '@/components/TopBar';
@@ -36,9 +38,27 @@ export default function GamePage() {
 
   useEffect(() => {
     if (!mode || mode === 'none') {
-      setDisconnected(true);
+      // Try to restore from localStorage before declaring disconnected
+      const saved = loadPersistedState();
+      if (saved && saved.roomId === roomId && saved.phase !== 'game_over') {
+        const store = useGameStore.getState();
+        store.setPlayerId('host');
+        store.setPlayerName(saved.players[0]?.name ?? 'Player');
+        store.setRoomId(saved.roomId);
+        store.setMode('host');
+        store.setConnected(true);
+
+        const state = restoreGame(saved);
+        store.setGameState(state);
+
+        setOnStateChange((newState: GameState) => {
+          useGameStore.getState().setGameState(newState);
+        });
+      } else {
+        setDisconnected(true);
+      }
     }
-  }, [mode]);
+  }, [mode, roomId]);
 
   if (disconnected) {
     return (
