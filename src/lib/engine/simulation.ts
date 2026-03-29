@@ -1387,6 +1387,8 @@ export function proposeBotBills(state: GameState): void {
       lobbyInfluence: {},
       whipBonus: 0,
       publicPressure: 0,
+      constitutionalScore: 70,
+      turnProposed: state.turn,
     };
 
     // Import voteBill from parliament — we'll call it from gameHost where it's available
@@ -1776,14 +1778,22 @@ export function advancePhase(state: GameState): void {
           }
         }
 
-        // Apply scandal approval effects
+        // Apply scandal approval & reputation effects each turn
+        // approvalImpact is already negative; spun scandals already have halved values
+        // We apply a fraction per turn so the total over the scandal's lifetime roughly equals the full impact
         for (const scandal of state.activeScandals) {
           if (scandal.exposed && !scandal.coveredUp) {
             const target = state.players.find(p => p.id === scandal.targetPlayerId);
             if (target) {
-              const impact = scandal.spun ? Math.round(scandal.approvalImpact * 0.3) : Math.round(scandal.approvalImpact * 0.5);
+              // Per-turn approval drain: full impact spread over remaining turns, min -1
+              const perTurnApproval = Math.min(-1, Math.ceil(scandal.approvalImpact / Math.max(1, scandal.turnsRemaining)));
               if (state.approvalRating[target.id] !== undefined) {
-                state.approvalRating[target.id] = clamp(state.approvalRating[target.id] + impact, 0, 100);
+                state.approvalRating[target.id] = clamp(state.approvalRating[target.id] + perTurnApproval, 0, 100);
+              }
+              // Apply reputationImpact directly to reputation scores (was previously unused!)
+              if (state.reputation?.scores && state.reputation.scores[target.id] !== undefined) {
+                const perTurnRep = Math.min(-1, Math.ceil(scandal.reputationImpact / Math.max(1, scandal.turnsRemaining)));
+                state.reputation.scores[target.id] = Math.max(0, state.reputation.scores[target.id] + perTurnRep);
               }
             }
           }

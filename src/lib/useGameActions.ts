@@ -42,6 +42,16 @@ export function useGameActions() {
       dispatch('whipVotes', { billId, pcSpent }),
     campaignForBill: (billId: string, pcSpent: number, direction: 'support' | 'oppose') =>
       dispatch('campaignForBill', { billId, pcSpent, direction }),
+    vetoBill: (billId: string) =>
+      dispatch('vetoBill', { billId }),
+    challengeConstitutionality: (billId: string) =>
+      dispatch('challengeConstitutionality', { billId }),
+    overrideVeto: (billId: string) =>
+      dispatch('overrideVeto', { billId }),
+    proposeBillFromLibrary: (templateId: string) =>
+      dispatch('proposeBillFromLibrary', { templateId }),
+    callBillVote: (billId: string) =>
+      dispatch('callBillVote', { billId }),
     endTurnPhase: () => dispatch('endTurnPhase'),
   };
 }

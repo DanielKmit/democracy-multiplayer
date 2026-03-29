@@ -217,11 +217,13 @@ export interface ParliamentState {
 
 // ---- Bills / Laws ----
 
-export type BillStatus = 'drafting' | 'voting' | 'passed' | 'failed' | 'filibustered';
+export type BillStatus = 'pending' | 'drafting' | 'voting' | 'passed' | 'failed' | 'filibustered' | 'vetoed' | 'unconstitutional';
 
 export interface Bill {
   id: string;
   title: string;
+  description?: string;           // bill description for UI
+  category?: string;              // bill category for filtering
   policyId: string;
   proposedValue: number;
   currentValue: number;
@@ -236,6 +238,25 @@ export interface Bill {
   lobbyInfluence: Record<string, number>;   // partyId -> lobbying PC spent on this bill
   whipBonus: number;                        // ruling party whip bonus (0-30)
   publicPressure: number;                   // public campaign pressure (-20 to +20)
+  // Veto / Constitutional system
+  constitutionalScore: number;    // 0-100, how constitutional this bill is (higher = safer)
+  turnProposed: number;           // which turn the bill was proposed
+  vetoOverrideVotes?: { yes: number; no: number }; // override attempt if vetoed
+  fromTemplate?: string;          // bill library template id (if from library)
+}
+
+// ---- Bill Library Template ----
+
+export interface BillTemplate {
+  id: string;
+  name: string;
+  description: string;
+  category: 'economy' | 'healthcare' | 'education' | 'environment' | 'security' | 'social' | 'immigration';
+  policyChanges: { policyId: string; targetValue: number }[];
+  cost: number;                   // PC cost to propose
+  constitutionalScore: number;    // 0-100, how constitutionally safe
+  popularityEffects: { voterGroup: string; effect: number }[];
+  ideologyAlignment: { progressive: number; centrist: number; conservative: number };
 }
 
 // Parliament influence actions

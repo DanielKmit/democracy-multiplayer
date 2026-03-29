@@ -48,6 +48,7 @@ import { checkAssassination, updateExtremism } from './engine/extremism';
 import { rollForDilemma, getDilemmaById } from './engine/dilemmas';
 import { getSituationById } from './engine/situations';
 import { getEffectiveCompetence } from './engine/politicians';
+import { getBillTemplate, BILL_LIBRARY } from './engine/billLibrary';
 import { sendMessage, isConnected } from './peer';
 
 let gameState: GameState | null = null;
@@ -748,6 +749,8 @@ export function handleAction(playerId: string, action: string, payload?: unknown
         lobbyInfluence: {},
         whipBonus: 0,
         publicPressure: 0,
+        constitutionalScore: 70,
+        turnProposed: gameState.turn,
       };
 
       // Immediately run parliament vote
@@ -1252,6 +1255,332 @@ export function handleAction(playerId: string, action: string, payload?: unknown
       const dirLabel = campDir === 'support' ? 'supporting' : 'opposing';
       addLogEntry(gameState, `📢 ${campPlayer.party.partyName} launches public campaign ${dirLabel} "${campBill.title}" (${campPC} PC)`, 'info');
       addNewsItem(gameState, `📢 Public campaign: ${campPlayer.party.partyName} rallies public ${dirLabel} ${campBill.title}`, 'bill');
+      broadcastState();
+      break;
+    }
+
+    case 'proposeBillFromLibrary': {
+      const { templateId } = payload as { templateId: string };
+      const player = gameState.players.find(p => p.id === playerId);
+      if (!player) return;
+
+      // Either player can propose during their phase
+      if (gameState.phase === 'ruling' && player.role !== 'ruling') return;
+      if (gameState.phase === 'opposition' && player.role !== 'opposition') return;
+      if (gameState.phase !== 'ruling' && gameState.phase !== 'opposition') return;
+
+      const template = getBillTemplate(templateId);
+      if (!template) {
+        addLogEntry(gameState, 'Bill template not found', 'info');
+        broadcastState();
+        return;
+      }
+
+      const cost = player.role === 'ruling' ? template.cost : template.cost + 1;
+      if (cost > player.politicalCapital) {
+        addLogEntry(gameState, `Not enough PC to propose bill (need ${cost}, have ${player.politicalCapital})`, 'info');
+        broadcastState();
+        return;
+      }
+
+      // Check if bill is already active/passed
+      const alreadyActive = gameState.activeBills.some(
+        b => b.fromTemplate === templateId && (b.status === 'pending' || b.status === 'voting' || b.status === 'passed')
+      );
+      if (alreadyActive) {
+        addLogEntry(gameState, `This bill is already active or passed`, 'info');
+        broadcastState();
+        return;
+      }
+
+      player.politicalCapital -= cost;
+
+      // Create bill from template — use the first policy change as primary
+      const primaryChange = template.policyChanges[0];
+      const currentValue = gameState.policies[primaryChange.policyId] ?? 50;
+
+      const bill: Bill = {
+        id: `bill_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        title: template.name,
+        description: template.description,
+        category: template.category,
+        policyId: primaryChange.policyId,
+        proposedValue: primaryChange.targetValue,
+        currentValue,
+        authorId: player.id,
+        status: 'pending',
+        votesFor: 0,
+        votesAgainst: 0,
+        isEmergency: false,
+        lobbyInfluence: {},
+        whipBonus: 0,
+        publicPressure: 0,
+        constitutionalScore: template.constitutionalScore,
+        turnProposed: gameState.turn,
+        fromTemplate: templateId,
+      };
+
+      gameState.activeBills.push(bill);
+      addLogEntry(gameState, `📋 ${player.party.partyName} proposes: ${template.name} (${cost} PC)`, 'ruling');
+      addNewsItem(gameState, `📋 Parliament debates ${template.name}: ${template.description}`, 'bill');
+      broadcastState();
+      break;
+    }
+
+    case 'callBillVote': {
+      const { billId: voteBillId } = payload as { billId: string };
+      const player = gameState.players.find(p => p.id === playerId);
+      if (!player) return;
+
+      const bill = gameState.activeBills.find(b => b.id === voteBillId);
+      if (!bill || bill.status !== 'pending') {
+        addLogEntry(gameState, 'Bill not available for voting', 'info');
+        broadcastState();
+        return;
+      }
+
+      // Only bill author or ruling party can call the vote
+      if (bill.authorId !== playerId && player.role !== 'ruling') {
+        addLogEntry(gameState, 'Only the bill author or ruling party can call a vote', 'info');
+        broadcastState();
+        return;
+      }
+
+      // Run parliament vote
+      bill.status = 'voting';
+      const votedBill = voteBill(
+        bill,
+        gameState.parliament,
+        bill.authorId,
+        gameState.players,
+        gameState.botParties,
+        gameState.policies,
+      );
+      Object.assign(bill, votedBill);
+
+      const template = bill.fromTemplate ? getBillTemplate(bill.fromTemplate) : null;
+
+      // Generate vote summary
+      const voteDetails = Object.entries(votedBill.partyVotes ?? {}).map(([pid, v]) => {
+        const p = gameState!.players.find(pl => pl.id === pid);
+        const bot = gameState!.botParties.find(b => b.id === pid);
+        const name = p?.party.partyName ?? bot?.name ?? pid;
+        return `${name}: ${v.yes}Y/${v.no}N`;
+      }).join(', ');
+
+      if (votedBill.status === 'passed') {
+        // Apply all policy changes from template
+        if (template) {
+          for (const change of template.policyChanges) {
+            const oldVal = gameState.policies[change.policyId];
+            gameState.delayedPolicies.push({
+              policyId: change.policyId,
+              originalValue: oldVal,
+              newValue: change.targetValue,
+              turnsRemaining: 2,
+              source: 'bill',
+            });
+          }
+        } else {
+          const oldVal = gameState.policies[votedBill.policyId];
+          gameState.delayedPolicies.push({
+            policyId: votedBill.policyId,
+            originalValue: oldVal,
+            newValue: votedBill.proposedValue,
+            turnsRemaining: 2,
+            source: 'bill',
+          });
+        }
+
+        addLogEntry(gameState, `✅ ${votedBill.title} PASSED (${votedBill.votesFor}-${votedBill.votesAgainst})`, 'ruling');
+        addNewsItem(gameState, `🏛️ Parliament passes ${votedBill.title} ${votedBill.votesFor}-${votedBill.votesAgainst}! ${voteDetails}`, 'bill');
+      } else {
+        addLogEntry(gameState, `❌ ${votedBill.title} FAILED (${votedBill.votesFor}-${votedBill.votesAgainst})`, 'ruling');
+        addNewsItem(gameState, `🏛️ Parliament rejects ${votedBill.title} ${votedBill.votesFor}-${votedBill.votesAgainst}. ${voteDetails}`, 'bill');
+      }
+
+      recalculate(gameState);
+      broadcastState();
+      break;
+    }
+
+    case 'vetoBill': {
+      const { billId: vetoBillId } = payload as { billId: string };
+      const ruling = gameState.players.find(p => p.id === playerId && p.role === 'ruling');
+      if (!ruling) {
+        addLogEntry(gameState, 'Only the ruling party can veto bills', 'info');
+        broadcastState();
+        return;
+      }
+
+      if (ruling.politicalCapital < 3) {
+        addLogEntry(gameState, `Not enough PC to veto (need 3, have ${ruling.politicalCapital})`, 'info');
+        broadcastState();
+        return;
+      }
+
+      const vetoBill = gameState.activeBills.find(b => b.id === vetoBillId);
+      if (!vetoBill || (vetoBill.status !== 'passed' && vetoBill.status !== 'pending')) {
+        addLogEntry(gameState, 'Bill not available for veto', 'info');
+        broadcastState();
+        return;
+      }
+
+      // Can't veto your own bills
+      if (vetoBill.authorId === playerId) {
+        addLogEntry(gameState, 'Cannot veto your own bill', 'info');
+        broadcastState();
+        return;
+      }
+
+      ruling.politicalCapital -= 3;
+      vetoBill.status = 'vetoed';
+
+      // Remove delayed policy effects for this bill
+      if (vetoBill.fromTemplate) {
+        const template = getBillTemplate(vetoBill.fromTemplate);
+        if (template) {
+          for (const change of template.policyChanges) {
+            gameState.delayedPolicies = gameState.delayedPolicies.filter(
+              dp => !(dp.policyId === change.policyId && dp.newValue === change.targetValue)
+            );
+          }
+        }
+      } else {
+        gameState.delayedPolicies = gameState.delayedPolicies.filter(
+          dp => !(dp.policyId === vetoBill.policyId && dp.newValue === vetoBill.proposedValue)
+        );
+      }
+
+      addLogEntry(gameState, `🚫 VETO: ${ruling.party.partyName} vetoes "${vetoBill.title}" (3 PC)`, 'ruling');
+      addNewsItem(gameState, `🚫 VETO: Government blocks "${vetoBill.title}" — opposition may attempt override`, 'bill');
+      broadcastState();
+      break;
+    }
+
+    case 'overrideVeto': {
+      const { billId: overrideBillId } = payload as { billId: string };
+      const player = gameState.players.find(p => p.id === playerId);
+      if (!player) return;
+
+      const overrideBill = gameState.activeBills.find(b => b.id === overrideBillId && b.status === 'vetoed');
+      if (!overrideBill) {
+        addLogEntry(gameState, 'No vetoed bill to override', 'info');
+        broadcastState();
+        return;
+      }
+
+      // Need 2/3 majority (67 out of 100 seats)
+      const overrideResult = voteBill(
+        { ...overrideBill, status: 'voting', lobbyInfluence: {}, whipBonus: 0, publicPressure: 0 },
+        gameState.parliament,
+        overrideBill.authorId,
+        gameState.players,
+        gameState.botParties,
+        gameState.policies,
+      );
+
+      overrideBill.vetoOverrideVotes = { yes: overrideResult.votesFor, no: overrideResult.votesAgainst };
+
+      if (overrideResult.votesFor >= 67) {
+        // Override succeeds — bill passes
+        overrideBill.status = 'passed';
+        overrideBill.votesFor = overrideResult.votesFor;
+        overrideBill.votesAgainst = overrideResult.votesAgainst;
+
+        // Re-add delayed policy effects
+        const template = overrideBill.fromTemplate ? getBillTemplate(overrideBill.fromTemplate) : null;
+        if (template) {
+          for (const change of template.policyChanges) {
+            gameState.delayedPolicies.push({
+              policyId: change.policyId,
+              originalValue: gameState.policies[change.policyId],
+              newValue: change.targetValue,
+              turnsRemaining: 2,
+              source: 'bill',
+            });
+          }
+        } else {
+          gameState.delayedPolicies.push({
+            policyId: overrideBill.policyId,
+            originalValue: gameState.policies[overrideBill.policyId],
+            newValue: overrideBill.proposedValue,
+            turnsRemaining: 2,
+            source: 'bill',
+          });
+        }
+
+        addLogEntry(gameState, `⚡ VETO OVERRIDDEN! ${overrideBill.title} passes with ${overrideResult.votesFor}/100 votes (needed 67)`, 'ruling');
+        addNewsItem(gameState, `⚡ Parliament overrides veto on "${overrideBill.title}" ${overrideResult.votesFor}-${overrideResult.votesAgainst}!`, 'bill');
+      } else {
+        // Override fails — bill stays vetoed and is removed
+        addLogEntry(gameState, `🚫 Veto override FAILS for ${overrideBill.title} (${overrideResult.votesFor}/100, needed 67)`, 'ruling');
+        addNewsItem(gameState, `🚫 Veto on "${overrideBill.title}" upheld — override attempt fails ${overrideResult.votesFor}-${overrideResult.votesAgainst}`, 'bill');
+      }
+
+      broadcastState();
+      break;
+    }
+
+    case 'challengeConstitutionality': {
+      const { billId: constBillId } = payload as { billId: string };
+      const player = gameState.players.find(p => p.id === playerId);
+      if (!player) return;
+
+      if (player.politicalCapital < 2) {
+        addLogEntry(gameState, `Not enough PC to challenge (need 2, have ${player.politicalCapital})`, 'info');
+        broadcastState();
+        return;
+      }
+
+      const constBill = gameState.activeBills.find(b =>
+        b.id === constBillId && (b.status === 'passed' || b.status === 'pending')
+      );
+      if (!constBill) {
+        addLogEntry(gameState, 'Bill not available for constitutional challenge', 'info');
+        broadcastState();
+        return;
+      }
+
+      player.politicalCapital -= 2;
+
+      // Constitutional court ruling — random chance based on bill's score
+      // Lower constitutionalScore = more likely to be struck down
+      const score = constBill.constitutionalScore ?? 70;
+      const strikeDownChance = (100 - score) / 100; // 0-1, higher = more likely unconstitutional
+      const isUnconstitutional = Math.random() < strikeDownChance;
+
+      if (isUnconstitutional) {
+        constBill.status = 'unconstitutional';
+
+        // Remove delayed policy effects
+        if (constBill.fromTemplate) {
+          const template = getBillTemplate(constBill.fromTemplate);
+          if (template) {
+            for (const change of template.policyChanges) {
+              gameState.delayedPolicies = gameState.delayedPolicies.filter(
+                dp => !(dp.policyId === change.policyId && dp.newValue === change.targetValue)
+              );
+            }
+          }
+        } else {
+          gameState.delayedPolicies = gameState.delayedPolicies.filter(
+            dp => !(dp.policyId === constBill.policyId && dp.newValue === constBill.proposedValue)
+          );
+        }
+
+        addLogEntry(gameState, `⚖️ UNCONSTITUTIONAL! Court strikes down "${constBill.title}" (score: ${score}/100)`, 'ruling');
+        addNewsItem(gameState, `⚖️ Constitutional Court rules "${constBill.title}" UNCONSTITUTIONAL — bill canceled`, 'bill');
+      } else {
+        addLogEntry(gameState, `⚖️ Constitutional challenge FAILS for "${constBill.title}" — court upholds (score: ${score}/100)`, 'ruling');
+        addNewsItem(gameState, `⚖️ Constitutional Court upholds "${constBill.title}" — challenge dismissed`, 'bill');
+
+        // Failed challenge costs credibility
+        if (player.role === 'opposition') {
+          gameState.oppositionCredibility = Math.max(0, (gameState.oppositionCredibility ?? 50) - 5);
+        }
+      }
+
       broadcastState();
       break;
     }

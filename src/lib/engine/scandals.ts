@@ -210,13 +210,19 @@ export function plantEvidence(
 
 /**
  * Spin a scandal — costs 2 PC, reduces impact by 50%.
+ * Uses Math.ceil for negative values to ensure magnitude is actually halved
+ * (Math.round(-1) would stay -1, Math.ceil(-3.5) = -3 which is correct for halving -7).
+ * Ensures minimum impact of -1 so spinning can never zero out a scandal.
  */
 export function spinScandal(scandal: Scandal): Scandal {
+  // For negative values: halve magnitude, ensure at least -1
+  const halvedApproval = Math.ceil(scandal.approvalImpact * 0.5);
+  const halvedReputation = Math.ceil(scandal.reputationImpact * 0.5);
   return {
     ...scandal,
     spun: true,
-    approvalImpact: Math.round(scandal.approvalImpact * 0.5),
-    reputationImpact: Math.round(scandal.reputationImpact * 0.5),
+    approvalImpact: Math.min(-1, halvedApproval),
+    reputationImpact: Math.min(-1, halvedReputation),
     turnsRemaining: Math.max(1, scandal.turnsRemaining - 1),
   };
 }
