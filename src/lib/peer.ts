@@ -62,47 +62,6 @@ let connectHandler: ConnectionHandler | null = null;
 let disconnectHandler: ConnectionHandler | null = null;
 let errorHandler: ErrorHandler | null = null;
 
-// ── BroadcastChannel (local/same-origin mode) ───────────────────
-// Used for same-machine testing (two tabs). Auto-detected or forced via URL param.
-let broadcastChannel: BroadcastChannel | null = null;
-let localRole: 'host' | 'client' | null = null;
-
-/**
- * Determine connection mode:
- * - `?local=true`  → force BroadcastChannel (local)
- * - `?local=false` → force PeerJS (online)
- * - localhost/127.0.0.1 → default to local
- * - Everything else → default to PeerJS (online)
- */
-export function shouldUseLocalMode(): boolean {
-  if (typeof window === 'undefined') return false;
-
-  const params = new URLSearchParams(window.location.search);
-  const localParam = params.get('local');
-  if (localParam === 'true') return true;
-  if (localParam === 'false') return false;
-
-  // Default: PeerJS (online mode) for real multiplayer
-  // Use ?local=true for same-machine testing
-  return false;
-}
-
-/** @deprecated Use shouldUseLocalMode(). Kept for API compat. */
-export function setLocalMode(_enabled: boolean) {
-  // no-op: mode is now auto-detected via URL param + hostname
-}
-
-export function isLocalMode(): boolean {
-  return shouldUseLocalMode();
-}
-
-/** Returns a user-friendly label for current connection mode */
-export function getConnectionModeLabel(): { emoji: string; label: string } {
-  return shouldUseLocalMode()
-    ? { emoji: '🖥️', label: 'Local Mode' }
-    : { emoji: '🌐', label: 'Online Mode' };
-}
-
 function generateRoomCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code = '';
@@ -167,63 +126,7 @@ async function createPeer(id: string): Promise<PeerType> {
   return new Peer(id, PEER_CONFIG) as unknown as PeerType;
 }
 
-function createRoomLocal(): Promise<string> {
-  return new Promise((resolve) => {
-    const roomCode = generateRoomCode();
-    localRole = 'host';
-    const channelName = `democracy-${roomCode}`;
-    console.log('[Peer] Host creating BroadcastChannel:', channelName);
-    broadcastChannel = new BroadcastChannel(channelName);
-
-    broadcastChannel.onmessage = (event) => {
-      const msg = event.data;
-      console.log('[Peer] Host received message:', msg?.type ?? (msg?.__localJoin ? 'handshake' : 'unknown'));
-      // Internal handshake: when client announces itself, notify connectHandler
-      if (msg?.__localJoin) {
-        console.log('[Peer] Host: client joined via BroadcastChannel');
-        if (connectHandler) connectHandler();
-        return;
-      }
-      // Ignore own messages (host → host)
-      if (msg?.__sender === 'host') return;
-      if (messageHandler) messageHandler(msg as PeerMessage);
-    };
-
-    console.log('[Peer] Host room created (local mode):', roomCode);
-    resolve(roomCode);
-  });
-}
-
-function joinRoomLocal(roomCode: string): Promise<void> {
-  return new Promise((resolve) => {
-    localRole = 'client';
-    const channelName = `democracy-${roomCode.toUpperCase()}`;
-    console.log('[Peer] Client joining BroadcastChannel:', channelName);
-    broadcastChannel = new BroadcastChannel(channelName);
-
-    broadcastChannel.onmessage = (event) => {
-      const msg = event.data;
-      // Ignore own messages and internal handshake
-      if (msg?.__sender === 'client') return;
-      if (msg?.__localJoin) return;
-      console.log('[Peer] Client received message:', msg?.type ?? 'unknown');
-      if (messageHandler) messageHandler(msg as PeerMessage);
-    };
-
-    // Tell the host we joined
-    console.log('[Peer] Client sending handshake to host');
-    broadcastChannel.postMessage({ __localJoin: true, __sender: 'client' });
-    // Simulate connected
-    setTimeout(() => {
-      console.log('[Peer] Client: connection established (local mode)');
-      if (connectHandler) connectHandler();
-    }, 50);
-    resolve();
-  });
-}
-
 export function createRoom(): Promise<string> {
-  if (isLocalMode()) return createRoomLocal();
   return new Promise(async (resolve, reject) => {
     const roomCode = generateRoomCode();
     const peerId = PEER_PREFIX + roomCode;
@@ -333,7 +236,6 @@ function sleep(ms: number): Promise<void> {
 }
 
 export async function joinRoom(roomCode: string): Promise<void> {
-  if (isLocalMode()) return joinRoomLocal(roomCode);
   let lastError: any;
 
   for (let attempt = 1; attempt <= JOIN_MAX_ATTEMPTS; attempt++) {
@@ -383,26 +285,16 @@ export function onPeerError(handler: ErrorHandler) {
 }
 
 export function sendMessage(msg: PeerMessage) {
-  if (broadcastChannel && isLocalMode()) {
-    broadcastChannel.postMessage({ ...msg, __sender: localRole });
-    return;
-  }
   if (connection && connection.open) {
     connection.send(msg);
   }
 }
 
 export function isConnected(): boolean {
-  if (isLocalMode() && broadcastChannel) return true;
   return connection !== null && connection.open;
 }
 
 export function destroyPeer() {
-  if (broadcastChannel) {
-    broadcastChannel.close();
-    broadcastChannel = null;
-    localRole = null;
-  }
   if (connection) {
     connection.close();
     connection = null;

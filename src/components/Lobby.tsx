@@ -6,7 +6,7 @@ import { useGameStore } from '@/lib/store';
 import { PARTY_COLORS } from '@/lib/engine/types';
 import { PartyLogoIcon } from './icons/PartyLogos';
 import { GameSettingsPanel } from './GameSettingsPanel';
-import { destroyPeer, getConnectionModeLabel } from '@/lib/peer';
+import { destroyPeer } from '@/lib/peer';
 
 const BASE_URL = 'https://democracy-game-omega.vercel.app';
 
@@ -45,8 +45,6 @@ export function Lobby({ roomId }: { roomId: string }) {
   const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(`Join my Democracy game! 🏛️\n${joinUrl}`)}`;
   const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(`Join my Democracy game! 🏛️ ${joinUrl}`)}`;
 
-  const connectionMode = getConnectionModeLabel();
-
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-950 relative">
       {/* Back / Leave button */}
@@ -56,11 +54,6 @@ export function Lobby({ roomId }: { roomId: string }) {
       >
         ← Back to Menu
       </button>
-
-      {/* Connection mode indicator */}
-      <div className="absolute top-4 right-4 px-3 py-1.5 text-xs text-slate-500 bg-slate-900/50 border border-slate-800 rounded-lg">
-        {connectionMode.emoji} {connectionMode.label}
-      </div>
 
       {/* Leave confirmation modal */}
       {showLeaveConfirm && (
