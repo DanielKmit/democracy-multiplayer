@@ -231,6 +231,7 @@ export interface Bill {
   votesAgainst: number;
   isEmergency: boolean;
   seatVotes?: Record<number, boolean>;  // seatId -> yes/no
+  partyVotes?: Record<string, { yes: number; no: number }>;  // partyId -> vote counts
 }
 
 // ---- Situations ----
@@ -664,6 +665,7 @@ export interface GameState {
   pendingCampaignActions: CampaignAction[];
   campaignBonuses: Record<string, Record<string, number>>; // playerId -> { regionId/groupId: bonus }
   isPreElection: boolean;  // true during first 5 turns
+  voteShares: Record<string, number>;  // partyId -> vote % (sums to 100)
 }
 
 // ---- Peer Messages ----

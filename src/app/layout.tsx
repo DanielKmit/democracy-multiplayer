@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
+import { DM_Sans } from 'next/font/google';
 import './globals.css';
 
-const inter = Inter({ subsets: ['latin'] });
+const dmSans = DM_Sans({ subsets: ['latin'], variable: '--font-body' });
 
 export const metadata: Metadata = {
   title: 'Democracy — Republic of Novaria',
@@ -16,7 +16,13 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="dark">
-      <body className={`${inter.className} bg-slate-950 text-slate-100 min-h-screen`}>
+      <head>
+        {/* Instrument Serif for display headings */}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+        <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
+      </head>
+      <body className={`${dmSans.className} bg-game-bg bg-dot-grid bg-gradient-mesh text-game-text min-h-screen`}>
         {children}
       </body>
     </html>

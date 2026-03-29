@@ -398,6 +398,53 @@ export function computeAllApprovalRatings(
 }
 
 /**
+ * Compute vote shares that sum to 100% across ALL parties (human + bot).
+ * For each voter group, each party gets a share proportional to their satisfaction.
+ * Then weighted by voter group population share.
+ */
+export function computeVoteShares(
+  allVoterSatisfaction: Record<string, Record<string, number>>,
+): Record<string, number> {
+  const voteShares: Record<string, number> = {};
+  const partyIds = Object.keys(allVoterSatisfaction);
+  if (partyIds.length === 0) return voteShares;
+
+  // Initialize
+  for (const pid of partyIds) {
+    voteShares[pid] = 0;
+  }
+
+  for (const group of VOTER_GROUPS) {
+    // Get each party's satisfaction with this group
+    const partySats: Record<string, number> = {};
+    let totalSat = 0;
+    for (const pid of partyIds) {
+      // Use max(1, sat) to avoid zero-division and give everyone at least a sliver
+      const sat = Math.max(1, allVoterSatisfaction[pid]?.[group.id] ?? 1);
+      partySats[pid] = sat;
+      totalSat += sat;
+    }
+
+    // Convert to proportional share for this group, weighted by population
+    if (totalSat > 0) {
+      for (const pid of partyIds) {
+        voteShares[pid] += (partySats[pid] / totalSat) * group.populationShare * 100;
+      }
+    }
+  }
+
+  // Normalize to exactly 100% (population shares should sum to 1.0 but just in case)
+  const total = Object.values(voteShares).reduce((a, b) => a + b, 0);
+  if (total > 0) {
+    for (const pid of partyIds) {
+      voteShares[pid] = Math.round((voteShares[pid] / total) * 1000) / 10; // one decimal
+    }
+  }
+
+  return voteShares;
+}
+
+/**
  * Legacy wrapper — single-party approval from flat satisfaction map.
  */
 export function computeApprovalRating(
@@ -462,34 +509,46 @@ export function computePoliticalCapital(
 
 // ---- Election ----
 
+/**
+ * Run election with ALL parties (human + bot) competing for seats.
+ * Bot parties get votes based on their voter satisfaction scores.
+ */
 export function runElection(
   regionalSatisfaction: Record<string, Record<string, number>>,
   players: Player[],
   turn: number,
   activeEffects: ActiveEffect[],
-  oppositionCampaignBonus: Record<string, number>
+  campaignBonuses: Record<string, Record<string, number>>,
+  allVoterSatisfaction?: Record<string, Record<string, number>>,
+  botParties?: BotParty[],
 ): ElectionResult {
   const seatResults: Record<string, Record<string, number>> = {};
   const voteShares: Record<string, Record<string, number>> = {};
   const regionWinners: Record<string, string> = {};
   const totalSeats: Record<string, number> = {};
 
-  for (const player of players) {
-    totalSeats[player.id] = 0;
+  // All party IDs (human + bot)
+  const allPartyIds = [
+    ...players.map(p => p.id),
+    ...(botParties ?? []).map(b => b.id),
+  ];
+  for (const pid of allPartyIds) {
+    totalSeats[pid] = 0;
   }
 
   for (const region of REGIONS) {
     const shares: Record<string, number> = {};
     seatResults[region.id] = {};
 
+    // Human players
     for (const player of players) {
       let share = regionalSatisfaction[region.id]?.[player.id] ?? 50;
 
-      // Campaign bonus from opposition
-      if (player.role === 'opposition') {
-        for (const groupId of region.dominantGroups) {
-          share += (oppositionCampaignBonus[groupId] ?? 0) * 0.5;
-        }
+      // Campaign bonuses for this player
+      const playerBonuses = campaignBonuses[player.id] ?? {};
+      share += (playerBonuses[region.id] ?? 0) * 0.5;
+      for (const groupId of region.dominantGroups) {
+        share += (playerBonuses[groupId] ?? 0) * 0.3;
       }
 
       // Coalition lock effects
@@ -505,7 +564,25 @@ export function runElection(
       shares[player.id] = Math.max(5, share);
     }
 
-    // Normalize shares to 100%
+    // Bot parties — derive regional support from voter satisfaction
+    for (const bot of (botParties ?? [])) {
+      let share = 0;
+      const botSat = allVoterSatisfaction?.[bot.id] ?? {};
+
+      // Weighted by which voter groups are in this region
+      for (const groupId of region.dominantGroups) {
+        share += (botSat[groupId] ?? 30) * 0.25;
+      }
+
+      // Ideology alignment with region
+      const econDiff = Math.abs(region.economicLean - bot.economicAxis);
+      const socialDiff = Math.abs(region.socialLean - bot.socialAxis);
+      share += (200 - econDiff - socialDiff) * 0.05;
+
+      shares[bot.id] = Math.max(3, share);
+    }
+
+    // Normalize to 100%
     const totalShares = Object.values(shares).reduce((a, b) => a + b, 0);
     const normalizedShares: Record<string, number> = {};
     for (const [pid, s] of Object.entries(shares)) {
@@ -516,7 +593,8 @@ export function runElection(
     // Allocate seats proportionally
     const regionSeats = allocateSeats(
       { [region.id]: normalizedShares },
-      players
+      players,
+      botParties,
     );
 
     for (const seat of regionSeats.seats) {
@@ -538,21 +616,22 @@ export function runElection(
 
   // Overall vote share
   const overallVoteShare: Record<string, number> = {};
-  for (const player of players) {
+  for (const pid of allPartyIds) {
     let totalWeightedShare = 0;
     for (const region of REGIONS) {
-      totalWeightedShare += (voteShares[region.id]?.[player.id] ?? 0) * region.populationShare;
+      totalWeightedShare += (voteShares[region.id]?.[pid] ?? 0) * region.populationShare;
     }
-    overallVoteShare[player.id] = Math.round(totalWeightedShare * 10) / 10;
+    overallVoteShare[pid] = Math.round(totalWeightedShare * 10) / 10;
   }
 
-  // Winner by seats
+  // Winner by seats (only human players can "win" and form government)
   let winnerPid = players[0]?.id ?? '';
-  let maxSeatsTotal = 0;
-  for (const [pid, seats] of Object.entries(totalSeats)) {
-    if (seats > maxSeatsTotal) {
-      maxSeatsTotal = seats;
-      winnerPid = pid;
+  let maxSeatsHuman = 0;
+  for (const player of players) {
+    const seats = totalSeats[player.id] ?? 0;
+    if (seats > maxSeatsHuman) {
+      maxSeatsHuman = seats;
+      winnerPid = player.id;
     }
   }
 
@@ -617,7 +696,7 @@ export function createInitialGameState(roomId: string): GameState {
     filibusteredPolicies: [],
     electionHistory: [],
     turnHistory: [],
-    turnsUntilElection: 8,
+    turnsUntilElection: 5, // First 5 turns are campaign, turn 6 = first election
     consecutiveLowEnvRegulations: 0,
     consecutiveHighSpending: 0,
     shadowCabinet: { finance: null, interior: null, defense: null, health: null, education: null, foreign: null, environment: null, justice: null },
@@ -636,6 +715,7 @@ export function createInitialGameState(roomId: string): GameState {
     pendingCampaignActions: [],
     campaignBonuses: {},
     isPreElection: true,
+    voteShares: {},
   };
 }
 
@@ -1056,12 +1136,29 @@ export function advancePhase(state: GameState): void {
   }
 
   if (state.phase === 'party_creation') {
-    state.phase = 'events';
+    // After party creation, start campaign phase (pre-election)
+    if (state.isPreElection) {
+      state.phase = 'campaigning';
+    } else {
+      state.phase = 'events';
+    }
+    return;
+  }
+
+  // Campaign phase: both players take campaign actions, then polling → next turn or election
+  if (state.phase === 'campaigning') {
+    state.phase = 'polling';
     return;
   }
 
   if (state.phase === 'government_formation') {
     state.phase = 'events';
+    return;
+  }
+
+  // Coalition negotiation → government formation
+  if (state.phase === 'coalition_negotiation') {
+    state.phase = 'government_formation';
     return;
   }
 
@@ -1095,10 +1192,9 @@ export function advancePhase(state: GameState): void {
       for (const sitId of newSits) {
         state.activeSituations.push({ id: sitId, turnsActive: 0, acknowledged: false });
       }
-      // Resolve situations whose conditions are no longer met
       state.activeSituations = state.activeSituations.filter(s => {
         if (shouldResolveSituation(s.id, state.policies, state.simulation, state.consecutiveLowEnvRegulations)) {
-          if (s.turnsActive >= 2) return false; // Must be active at least 2 turns to resolve
+          if (s.turnsActive >= 2) return false;
         }
         s.turnsActive++;
         return true;
@@ -1122,7 +1218,6 @@ export function advancePhase(state: GameState): void {
       state.motionsPending = (state.motionsPending ?? []).filter(m => {
         m.turnsRemaining--;
         if (m.turnsRemaining <= 0) {
-          // Check if ruling addressed it
           const simVal = state.simulation[m.targetSimVar];
           const isBad = simVal < 40 || (m.targetSimVar === 'crime' && simVal > 60) ||
             (m.targetSimVar === 'unemployment' && simVal > 10);
@@ -1138,7 +1233,7 @@ export function advancePhase(state: GameState): void {
       // Reset question time
       state.questionTimeUsed = false;
 
-      // Campaign phase check
+      // Campaign phase check (last 3 turns before election)
       state.campaignPhase = state.turnsUntilElection <= 3;
 
       // Shadow cabinet PC bonus
@@ -1168,19 +1263,18 @@ export function advancePhase(state: GameState): void {
         let pc = computePoliticalCapital(
           player, partyApproval, rulingApprovalVal, state.cabinet
         );
-        // Campaign phase bonus
         if (state.campaignPhase) pc += 2;
+        // During pre-election campaign, all players get equal PC
+        if (state.isPreElection) pc = 5;
         player.politicalCapital += pc;
       }
 
-      // NGO alliance effects
-      for (const alliance of (state.ngoAlliances ?? [])) {
-        if (state.voterSatisfaction[alliance.groupId] !== undefined) {
-          // Already applied via voter satisfaction compute
-        }
+      // If still in pre-election campaign phase, go back to campaigning
+      if (state.isPreElection) {
+        state.phase = 'campaigning';
+      } else {
+        state.phase = 'events';
       }
-
-      state.phase = 'events';
     }
     return;
   }
@@ -1193,7 +1287,8 @@ export function advancePhase(state: GameState): void {
       state.turnsUntilElection = 8;
       state.filibusteredPolicies = [];
       advanceDate(state);
-      state.phase = 'government_formation';
+      // After election, go to coalition negotiation
+      state.phase = 'coalition_negotiation';
     }
     return;
   }

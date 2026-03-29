@@ -28,6 +28,8 @@ export function useGameActions() {
     fireMinister: (ministryId: MinistryId) => dispatch('fireMinister', { ministryId }),
     appointShadowMinister: (ministryId: MinistryId, politicianId: string) =>
       dispatch('appointShadowMinister', { ministryId, politicianId }),
+    submitBill: (policyId: string, proposedValue: number) =>
+      dispatch('submitBill', { policyId, proposedValue }),
     submitCoalitionOffer: (offer: CoalitionOffer) => dispatch('submitCoalitionOffer', offer),
     submitCampaignActions: (actions: CampaignAction[]) => dispatch('submitCampaignActions', actions),
     poachCoalitionPartner: (botPartyId: string) => dispatch('poachCoalitionPartner', botPartyId),

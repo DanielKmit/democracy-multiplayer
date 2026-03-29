@@ -1,5 +1,6 @@
 'use client';
 
+import { useMemo, useState } from 'react';
 import { useGameStore } from '@/lib/store';
 import { PARTY_COLORS } from '@/lib/engine/types';
 
@@ -9,22 +10,60 @@ interface Props {
 
 export function ParliamentHemicycle({ compact = false }: Props) {
   const { gameState } = useGameStore();
+  const [hoveredParty, setHoveredParty] = useState<string | null>(null);
+
   if (!gameState || !gameState.parliament.seats.length) return null;
 
   const { seats, seatsByParty } = gameState.parliament;
   const totalSeats = seats.length;
 
-  // Sort seats by party for visual grouping
-  const sortedSeats = [...seats].sort((a, b) => {
-    if (a.partyId === b.partyId) return a.id - b.id;
-    // Ruling party on left
-    const ruling = gameState.players.find(p => p.role === 'ruling');
-    if (a.partyId === ruling?.id) return -1;
-    if (b.partyId === ruling?.id) return 1;
-    return a.partyId.localeCompare(b.partyId);
-  });
+  // Build a unified party list (human + bot) with colors
+  const allParties = useMemo(() => {
+    const parties: { id: string; name: string; color: string; seats: number; isBot: boolean }[] = [];
 
-  // Calculate seat positions in hemicycle
+    for (const player of gameState.players) {
+      parties.push({
+        id: player.id,
+        name: player.party.partyName,
+        color: PARTY_COLORS[player.party.partyColor],
+        seats: seatsByParty[player.id] ?? 0,
+        isBot: false,
+      });
+    }
+
+    for (const bot of gameState.botParties) {
+      parties.push({
+        id: bot.id,
+        name: bot.name,
+        color: bot.color,
+        seats: seatsByParty[bot.id] ?? 0,
+        isBot: true,
+      });
+    }
+
+    // Sort: ruling party first, then by seat count desc
+    const ruling = gameState.players.find(p => p.role === 'ruling');
+    parties.sort((a, b) => {
+      if (a.id === ruling?.id) return -1;
+      if (b.id === ruling?.id) return 1;
+      return b.seats - a.seats;
+    });
+
+    return parties;
+  }, [gameState.players, gameState.botParties, seatsByParty]);
+
+  // Sort seats by party for visual grouping
+  const sortedSeats = useMemo(() => {
+    const partyOrder = allParties.map(p => p.id);
+    return [...seats].sort((a, b) => {
+      const aIdx = partyOrder.indexOf(a.partyId);
+      const bIdx = partyOrder.indexOf(b.partyId);
+      if (aIdx !== bIdx) return aIdx - bIdx;
+      return a.id - b.id;
+    });
+  }, [seats, allParties]);
+
+  // Layout
   const rows = compact ? 4 : 6;
   const centerX = compact ? 100 : 200;
   const centerY = compact ? 85 : 170;
@@ -32,7 +71,6 @@ export function ParliamentHemicycle({ compact = false }: Props) {
   const radiusStep = compact ? 14 : 18;
   const seatRadius = compact ? 3.5 : 5;
 
-  // Distribute seats across rows
   const seatsPerRow: number[] = [];
   let remaining = totalSeats;
   for (let r = 0; r < rows; r++) {
@@ -57,15 +95,18 @@ export function ParliamentHemicycle({ compact = false }: Props) {
       const x = centerX - radius * Math.cos(angle);
       const y = centerY - radius * Math.sin(angle);
 
+      const isHovered = hoveredParty === seat.partyId;
+
       seatElements.push(
         <circle
           key={seat.id}
           cx={x}
           cy={y}
-          r={seatRadius}
+          r={isHovered ? seatRadius + 1 : seatRadius}
           fill={seat.partyColor}
-          opacity={0.85}
-          className="transition-all duration-300"
+          opacity={hoveredParty ? (isHovered ? 1 : 0.2) : 0.85}
+          className="transition-all duration-200"
+          style={isHovered ? { filter: `drop-shadow(0 0 4px ${seat.partyColor})` } : undefined}
         />
       );
       seatIndex++;
@@ -82,27 +123,30 @@ export function ParliamentHemicycle({ compact = false }: Props) {
         <path
           d={`M ${centerX - minRadius - (rows * radiusStep)},${centerY} A ${minRadius + rows * radiusStep},${minRadius + rows * radiusStep} 0 0 1 ${centerX + minRadius + (rows * radiusStep)},${centerY}`}
           fill="none"
-          stroke="#1e293b"
+          stroke="rgba(255,255,255,0.05)"
           strokeWidth="1"
         />
         {seatElements}
       </svg>
 
-      {/* Seat counts */}
-      <div className={`flex justify-center gap-4 ${compact ? 'mt-1' : 'mt-2'}`}>
-        {gameState.players.map(player => {
-          const playerSeats = seatsByParty[player.id] ?? 0;
-          return (
-            <div key={player.id} className="flex items-center gap-1.5 text-xs">
-              <div
-                className="w-3 h-3 rounded-full"
-                style={{ backgroundColor: PARTY_COLORS[player.party.partyColor] }}
-              />
-              <span className="text-slate-300">{player.party.partyName}:</span>
-              <span className="font-bold text-slate-100">{playerSeats}</span>
-            </div>
-          );
-        })}
+      {/* ALL party seat counts */}
+      <div className={`flex flex-wrap justify-center gap-x-3 gap-y-1 ${compact ? 'mt-1' : 'mt-2'}`}>
+        {allParties.filter(p => p.seats > 0).map(party => (
+          <div
+            key={party.id}
+            className="flex items-center gap-1.5 text-xs cursor-pointer transition-opacity"
+            onMouseEnter={() => setHoveredParty(party.id)}
+            onMouseLeave={() => setHoveredParty(null)}
+            style={{ opacity: hoveredParty ? (hoveredParty === party.id ? 1 : 0.4) : 1 }}
+          >
+            <div
+              className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+              style={{ backgroundColor: party.color }}
+            />
+            <span className="text-game-secondary whitespace-nowrap">{compact && party.name.length > 10 ? party.name.slice(0, 8) + '…' : party.name}:</span>
+            <span className="font-bold text-white">{party.seats}</span>
+          </div>
+        ))}
       </div>
     </div>
   );

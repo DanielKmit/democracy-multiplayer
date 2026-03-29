@@ -1,21 +1,86 @@
 @import "tailwindcss";
 
 :root {
+  /* Political Dark Theme */
+  --game-bg: #0a0e1a;
+  --game-card: #111827;
+  --game-border: rgba(255, 255, 255, 0.05);
+  --game-accent: #3b82f6;
+  --game-opposition: #ef4444;
+  --game-success: #10b981;
+  --game-warning: #f59e0b;
+  --game-text: #e2e8f0;
+  --game-secondary: #94a3b8;
+  --game-muted: #64748b;
+
+  /* Legacy compat */
   --ruling-blue: #3B82F6;
   --opposition-red: #EF4444;
-  --bg-primary: #020617;
-  --bg-secondary: #0f172a;
-  --bg-card: #1e293b;
-  --border: #334155;
-  --text-primary: #f1f5f9;
+  --bg-primary: #0a0e1a;
+  --bg-secondary: #111827;
+  --bg-card: #111827;
+  --border: rgba(255, 255, 255, 0.05);
+  --text-primary: #e2e8f0;
   --text-secondary: #94a3b8;
   --text-muted: #64748b;
 }
 
+/* Utility classes for design system */
+.bg-game-bg { background-color: var(--game-bg); }
+.bg-game-card { background-color: var(--game-card); }
+.border-game-border { border-color: var(--game-border); }
+.text-game-text { color: var(--game-text); }
+.text-game-secondary { color: var(--game-secondary); }
+.text-game-muted { color: var(--game-muted); }
+.text-game-accent { color: var(--game-accent); }
+.bg-game-accent { background-color: var(--game-accent); }
+
+/* Glass morphism cards */
+.glass-card {
+  background: rgba(17, 24, 39, 0.8);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  transition: all 0.2s ease;
+}
+
+.glass-card:hover {
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Primary button */
+.btn-primary {
+  background: var(--game-accent);
+  color: white;
+  transition: all 0.2s ease;
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.15);
+}
+
+.btn-primary:hover {
+  background: #2563eb;
+  box-shadow: 0 0 30px rgba(59, 130, 246, 0.25);
+}
+
+/* Font classes */
+.font-display {
+  font-family: 'Instrument Serif', Georgia, serif;
+}
+
+.font-body {
+  font-family: 'DM Sans', system-ui, sans-serif;
+}
+
+/* Background atmosphere — subtle dot grid */
+.bg-dot-grid {
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar { width: 5px; }
-::-webkit-scrollbar-track { background: var(--bg-primary); }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-track { background: var(--game-bg); }
+::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); }
 
 /* Animations */
 @keyframes fadeIn {
@@ -43,18 +108,48 @@
   50% { box-shadow: 0 0 15px rgba(249, 115, 22, 0.5); }
 }
 
+@keyframes pulse-red {
+  0%, 100% { box-shadow: 0 0 4px rgba(239, 68, 68, 0.2); }
+  50% { box-shadow: 0 0 15px rgba(239, 68, 68, 0.5); }
+}
+
+@keyframes gradientMesh {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes countUp {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 .animate-fade-in { animation: fadeIn 0.3s ease-out; }
 .animate-slide-in { animation: slideIn 0.3s ease-out; }
 .animate-slide-in-right { animation: slideInFromRight 0.3s ease-out; }
 .pulse-glow { animation: pulse-glow 2s infinite; }
 .pulse-crisis { animation: pulse-crisis 2s infinite; }
+.pulse-red { animation: pulse-red 2s infinite; }
+.animate-count-up { animation: countUp 0.4s ease-out; }
+
+/* Gradient mesh background (very subtle) */
+.bg-gradient-mesh {
+  background: linear-gradient(135deg, rgba(59,130,246,0.03) 0%, transparent 30%, rgba(239,68,68,0.02) 60%, transparent 100%);
+  background-size: 200% 200%;
+  animation: gradientMesh 30s ease infinite;
+}
 
 /* Satisfaction bar animation */
 .satisfaction-bar { transition: width 0.5s ease-out; }
 
-/* Card hover */
-.game-card { transition: all 0.2s ease; }
-.game-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); }
+/* Card hover — smooth */
+.game-card {
+  transition: all 0.2s ease;
+}
+.game-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
 
 /* News ticker */
 @keyframes ticker {
@@ -67,7 +162,35 @@
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
 /* Select styling */
-select { color: #f1f5f9; background-color: #334155; }
+select {
+  color: var(--game-text);
+  background-color: var(--game-card);
+}
 
 /* SVG interactivity */
 svg text { user-select: none; }
+
+/* Glow effects on interactive elements */
+.glow-blue {
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.15);
+}
+
+.glow-red {
+  box-shadow: 0 0 20px rgba(239, 68, 68, 0.15);
+}
+
+.glow-green {
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.15);
+}
+
+/* Turn transition overlay */
+.turn-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 14, 26, 0.9);
+  z-index: 100;
+  animation: fadeIn 0.3s ease-out;
+}

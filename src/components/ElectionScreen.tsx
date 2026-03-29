@@ -18,7 +18,15 @@ export function ElectionScreen() {
   const latestElection = gameState.electionHistory[gameState.electionHistory.length - 1];
   if (!latestElection) return null;
 
-  const myPlayer = gameState.players.find(p => p.id === playerId);
+  // Build ALL parties list
+  const allParties: { id: string; name: string; color: string }[] = [
+    ...gameState.players.map(p => ({
+      id: p.id, name: p.party.partyName, color: PARTY_COLORS[p.party.partyColor],
+    })),
+    ...gameState.botParties.map(b => ({
+      id: b.id, name: b.name, color: b.color,
+    })),
+  ];
 
   useEffect(() => {
     if (revealIndex < REGIONS.length) {
@@ -31,21 +39,20 @@ export function ElectionScreen() {
   }, [revealIndex]);
 
   const mySeats = latestElection.totalSeats[playerId ?? ''] ?? 0;
-  const won = mySeats >= 51;
 
   return (
-    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-8">
-      <h1 className="text-3xl font-bold mb-2">🗳️ Election Results</h1>
-      <p className="text-slate-400 mb-8">Republic of Novaria — Turn {latestElection.turn}</p>
+    <div className="min-h-screen bg-game-bg flex flex-col items-center justify-center p-8 overflow-y-auto">
+      <h1 className="text-3xl font-bold font-display mb-2">🗳️ Election Results</h1>
+      <p className="text-game-secondary mb-8">Republic of Novaria — Turn {latestElection.turn}</p>
 
       {/* Region by region results */}
       <div className="w-full max-w-3xl space-y-3 mb-8">
         {REGIONS.map((region, i) => {
           if (i >= revealIndex) {
             return (
-              <div key={region.id} className="p-3 bg-slate-800/30 border border-slate-700 rounded-lg opacity-30">
-                <div className="text-sm text-slate-500">{region.name} ({region.seats} seats)</div>
-                <div className="w-full h-4 bg-slate-700 rounded-full mt-1" />
+              <div key={region.id} className="p-3 glass-card rounded-xl opacity-30">
+                <div className="text-sm text-game-muted">{region.name} ({region.seats} seats)</div>
+                <div className="w-full h-4 bg-game-border rounded-full mt-1" />
               </div>
             );
           }
@@ -54,32 +61,37 @@ export function ElectionScreen() {
           const regionSeats = latestElection.seatResults[region.id] ?? {};
 
           return (
-            <div key={region.id} className="p-3 bg-slate-800/50 border border-slate-700 rounded-lg animate-slide-in">
+            <div key={region.id} className="p-3 glass-card rounded-xl animate-slide-in">
               <div className="flex justify-between text-sm mb-1">
-                <span className="text-slate-300 font-medium">{region.name}</span>
-                <span className="text-xs text-slate-500">{region.seats} seats</span>
+                <span className="text-white font-medium">{region.name}</span>
+                <span className="text-xs text-game-muted">{region.seats} seats</span>
               </div>
-              <div className="w-full h-5 bg-slate-700 rounded-full overflow-hidden flex mb-1">
-                {gameState.players.map(player => {
-                  const share = regionVotes[player.id] ?? 0;
+              {/* Stacked vote bar */}
+              <div className="w-full h-5 bg-game-border rounded-full overflow-hidden flex mb-1">
+                {allParties.map(party => {
+                  const share = regionVotes[party.id] ?? 0;
+                  if (share < 1) return null;
                   return (
                     <div
-                      key={player.id}
+                      key={party.id}
                       className="h-full transition-all duration-700"
-                      style={{
-                        width: `${share}%`,
-                        backgroundColor: PARTY_COLORS[player.party.partyColor],
-                      }}
+                      style={{ width: `${share}%`, backgroundColor: party.color }}
                     />
                   );
                 })}
               </div>
-              <div className="flex justify-between text-xs">
-                {gameState.players.map(player => (
-                  <span key={player.id} style={{ color: PARTY_COLORS[player.party.partyColor] }}>
-                    {player.party.partyName}: {regionSeats[player.id] ?? 0} seats ({(regionVotes[player.id] ?? 0).toFixed(1)}%)
-                  </span>
-                ))}
+              {/* Per-party seat counts */}
+              <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
+                {allParties.map(party => {
+                  const seats = regionSeats[party.id] ?? 0;
+                  if (seats === 0) return null;
+                  const vote = regionVotes[party.id] ?? 0;
+                  return (
+                    <span key={party.id} style={{ color: party.color }}>
+                      {party.name}: {seats} ({vote.toFixed(1)}%)
+                    </span>
+                  );
+                })}
               </div>
             </div>
           );
@@ -89,38 +101,38 @@ export function ElectionScreen() {
       {/* Final Result */}
       {revealed && (
         <div className="text-center animate-fade-in max-w-lg">
-          <div className="text-6xl mb-4">{won ? '🎉' : '😔'}</div>
-
           {/* Parliament hemicycle */}
-          <div className="mb-4">
+          <div className="mb-6">
             <ParliamentHemicycle />
           </div>
 
-          {/* Seat totals */}
-          <div className="flex justify-center gap-8 mb-4">
-            {gameState.players.map(player => (
-              <div key={player.id} className="text-center">
-                <div className="text-2xl font-bold" style={{ color: PARTY_COLORS[player.party.partyColor] }}>
-                  {latestElection.totalSeats[player.id] ?? 0}
+          {/* Seat totals — ALL parties */}
+          <div className="flex flex-wrap justify-center gap-4 mb-6">
+            {allParties
+              .sort((a, b) => (latestElection.totalSeats[b.id] ?? 0) - (latestElection.totalSeats[a.id] ?? 0))
+              .map(party => (
+                <div key={party.id} className="text-center glass-card px-4 py-2 rounded-xl">
+                  <div className="text-2xl font-bold" style={{ color: party.color }}>
+                    {latestElection.totalSeats[party.id] ?? 0}
+                  </div>
+                  <div className="text-xs text-game-secondary">{party.name}</div>
                 </div>
-                <div className="text-xs text-slate-400">{player.party.partyName}</div>
-              </div>
-            ))}
+              ))}
           </div>
 
-          <p className="text-xl font-bold mb-2">
-            {latestElection.swapped ? '🔄 Power changes hands!' : '🏛️ Government retained!'}
+          <p className="text-xl font-bold font-display mb-2">
+            No party has a majority — coalition negotiation begins!
           </p>
 
-          <div className="text-sm text-slate-400 mb-6">
-            Election {gameState.electionHistory.length} of 3
+          <div className="text-sm text-game-muted mb-6">
+            Election {gameState.electionHistory.length} of 3 • Need 51 seats for majority
           </div>
 
           <button
             onClick={endTurnPhase}
-            className="px-8 py-3 bg-blue-600 hover:bg-blue-500 rounded-lg font-semibold transition-all"
+            className="btn-primary px-8 py-3 rounded-lg font-semibold"
           >
-            {gameState.electionHistory.length >= 3 ? 'See Final Results' : 'Continue →'}
+            {gameState.electionHistory.length >= 3 ? 'See Final Results' : 'Begin Coalition Talks →'}
           </button>
         </div>
       )}
