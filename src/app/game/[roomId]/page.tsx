@@ -77,14 +77,26 @@ export default function GamePage() {
     }
   }, [mode]);
 
-  // Host: listen for action messages from client
+  // Host: listen for all messages from client (actions + playerInfo)
+  // Also re-register connect handler to ensure it works after page navigation
   useEffect(() => {
     if (mode !== 'host') return;
     
-    const { onMessage } = require('@/lib/peer');
-    onMessage((msg: { type: string; action?: string; payload?: unknown }) => {
+    const { onMessage, onPeerConnect } = require('@/lib/peer');
+
+    onPeerConnect(() => {
+      console.log('[Game] Peer connected (host side)');
+      useGameStore.getState().setConnected(true);
+    });
+
+    onMessage((msg: { type: string; action?: string; payload?: unknown; name?: string }) => {
       if (msg.type === 'action' && msg.action) {
         hostHandleAction('client', msg.action, msg.payload);
+      } else if (msg.type === 'playerInfo' && msg.name) {
+        // Handle late-arriving playerInfo (e.g. client joined after host navigated here)
+        console.log('[Game] Received playerInfo from client:', msg.name);
+        const { handleClientJoin } = require('@/lib/gameHost');
+        handleClientJoin(msg.name);
       }
     });
   }, [mode]);

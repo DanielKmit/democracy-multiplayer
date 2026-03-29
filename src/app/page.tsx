@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useGameStore } from '@/lib/store';
-import { createRoom, joinRoom, onMessage, onPeerConnect, onPeerDisconnect, sendMessage, setLocalMode as setPeerLocalMode, isLocalMode } from '@/lib/peer';
+import { createRoom, joinRoom, onMessage, onPeerConnect, onPeerDisconnect, sendMessage } from '@/lib/peer';
 import { initGame, initAIGame, handleClientJoin, handleAction, setOnStateChange, loadPersistedState, restoreGame, clearPersistedState } from '@/lib/gameHost';
 import { GameState, PartyConfig, PartyColor, PartyLogo, MANIFESTO_OPTIONS, ManifestoOption } from '@/lib/engine/types';
 import { AIIdeology, AI_PARTY_PRESETS } from '@/lib/engine/ai';
@@ -20,8 +20,6 @@ export default function Home() {
   const [errorMsg, setErrorMsg] = useState('');
   const [hasSavedGame, setHasSavedGame] = useState(false);
   const [savedRoomId, setSavedRoomId] = useState<string | null>(null);
-  const [localTestMode, setLocalTestMode] = useState(false);
-
   // AI setup state
   const [aiIdeology, setAiIdeology] = useState<AIIdeology>('center');
   const [partyName, setPartyName] = useState('');
@@ -97,11 +95,6 @@ export default function Home() {
     });
 
     router.push(`/game/${roomCode}`);
-  };
-
-  const handleToggleLocalMode = (enabled: boolean) => {
-    setLocalTestMode(enabled);
-    setPeerLocalMode(enabled);
   };
 
   const handleCreate = async () => {
@@ -398,15 +391,6 @@ export default function Home() {
                 className="w-full p-3 bg-slate-800 border border-slate-700 rounded-lg text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-blue-500"
               />
             </div>
-            <label className="flex items-center gap-2 text-sm text-slate-400 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={localTestMode}
-                onChange={(e) => handleToggleLocalMode(e.target.checked)}
-                className="accent-blue-500"
-              />
-              🖥️ Local test mode <span className="text-slate-600">(same computer)</span>
-            </label>
             <button onClick={handleCreate} disabled={loading}
               className="w-full p-4 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 rounded-xl text-lg font-semibold transition-all">
               {loading ? 'Creating...' : '👥 Create Game Room'}
@@ -434,15 +418,6 @@ export default function Home() {
                 className="w-full p-3 bg-slate-800 border border-slate-700 rounded-lg text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-blue-500 tracking-[0.3em] text-center text-xl font-mono"
               />
             </div>
-            <label className="flex items-center gap-2 text-sm text-slate-400 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={localTestMode}
-                onChange={(e) => handleToggleLocalMode(e.target.checked)}
-                className="accent-blue-500"
-              />
-              🖥️ Local test mode <span className="text-slate-600">(same computer)</span>
-            </label>
             <button onClick={handleJoin} disabled={loading}
               className="w-full p-4 bg-red-600 hover:bg-red-500 disabled:bg-slate-700 rounded-xl text-lg font-semibold transition-all">
               {loading ? 'Joining...' : '🔗 Join Game'}

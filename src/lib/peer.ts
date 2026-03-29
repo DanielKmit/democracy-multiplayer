@@ -62,17 +62,19 @@ let connectHandler: ConnectionHandler | null = null;
 let disconnectHandler: ConnectionHandler | null = null;
 let errorHandler: ErrorHandler | null = null;
 
-// ── BroadcastChannel (local test mode) ──────────────────────────
-let localMode = false;
+// ── BroadcastChannel (local/same-origin mode) ───────────────────
+// Always use BroadcastChannel for same-origin connections (two tabs on same machine).
+// This avoids PeerJS signaling server issues entirely for local play.
 let broadcastChannel: BroadcastChannel | null = null;
 let localRole: 'host' | 'client' | null = null;
 
-export function setLocalMode(enabled: boolean) {
-  localMode = enabled;
+/** @deprecated Local mode is now always-on. This is a no-op kept for API compat. */
+export function setLocalMode(_enabled: boolean) {
+  // no-op: local mode is always enabled
 }
 
 export function isLocalMode(): boolean {
-  return localMode;
+  return true;
 }
 
 function generateRoomCode(): string {
@@ -143,12 +145,16 @@ function createRoomLocal(): Promise<string> {
   return new Promise((resolve) => {
     const roomCode = generateRoomCode();
     localRole = 'host';
-    broadcastChannel = new BroadcastChannel(`democracy-${roomCode}`);
+    const channelName = `democracy-${roomCode}`;
+    console.log('[Peer] Host creating BroadcastChannel:', channelName);
+    broadcastChannel = new BroadcastChannel(channelName);
 
     broadcastChannel.onmessage = (event) => {
       const msg = event.data;
+      console.log('[Peer] Host received message:', msg?.type ?? (msg?.__localJoin ? 'handshake' : 'unknown'));
       // Internal handshake: when client announces itself, notify connectHandler
       if (msg?.__localJoin) {
+        console.log('[Peer] Host: client joined via BroadcastChannel');
         if (connectHandler) connectHandler();
         return;
       }
@@ -157,6 +163,7 @@ function createRoomLocal(): Promise<string> {
       if (messageHandler) messageHandler(msg as PeerMessage);
     };
 
+    console.log('[Peer] Host room created (local mode):', roomCode);
     resolve(roomCode);
   });
 }
@@ -164,20 +171,25 @@ function createRoomLocal(): Promise<string> {
 function joinRoomLocal(roomCode: string): Promise<void> {
   return new Promise((resolve) => {
     localRole = 'client';
-    broadcastChannel = new BroadcastChannel(`democracy-${roomCode.toUpperCase()}`);
+    const channelName = `democracy-${roomCode.toUpperCase()}`;
+    console.log('[Peer] Client joining BroadcastChannel:', channelName);
+    broadcastChannel = new BroadcastChannel(channelName);
 
     broadcastChannel.onmessage = (event) => {
       const msg = event.data;
       // Ignore own messages and internal handshake
       if (msg?.__sender === 'client') return;
       if (msg?.__localJoin) return;
+      console.log('[Peer] Client received message:', msg?.type ?? 'unknown');
       if (messageHandler) messageHandler(msg as PeerMessage);
     };
 
     // Tell the host we joined
+    console.log('[Peer] Client sending handshake to host');
     broadcastChannel.postMessage({ __localJoin: true, __sender: 'client' });
     // Simulate connected
     setTimeout(() => {
+      console.log('[Peer] Client: connection established (local mode)');
       if (connectHandler) connectHandler();
     }, 50);
     resolve();
@@ -185,7 +197,7 @@ function joinRoomLocal(roomCode: string): Promise<void> {
 }
 
 export function createRoom(): Promise<string> {
-  if (localMode) return createRoomLocal();
+  if (isLocalMode()) return createRoomLocal();
   return new Promise(async (resolve, reject) => {
     const roomCode = generateRoomCode();
     const peerId = PEER_PREFIX + roomCode;
@@ -295,7 +307,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 export async function joinRoom(roomCode: string): Promise<void> {
-  if (localMode) return joinRoomLocal(roomCode);
+  if (isLocalMode()) return joinRoomLocal(roomCode);
   let lastError: any;
 
   for (let attempt = 1; attempt <= JOIN_MAX_ATTEMPTS; attempt++) {
@@ -345,7 +357,7 @@ export function onPeerError(handler: ErrorHandler) {
 }
 
 export function sendMessage(msg: PeerMessage) {
-  if (broadcastChannel && localMode) {
+  if (broadcastChannel && isLocalMode()) {
     broadcastChannel.postMessage({ ...msg, __sender: localRole });
     return;
   }
@@ -355,7 +367,7 @@ export function sendMessage(msg: PeerMessage) {
 }
 
 export function isConnected(): boolean {
-  if (localMode && broadcastChannel) return true;
+  if (isLocalMode() && broadcastChannel) return true;
   return connection !== null && connection.open;
 }
 
