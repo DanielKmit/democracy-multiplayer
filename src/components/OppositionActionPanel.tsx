@@ -87,6 +87,109 @@ const CATEGORY_LABELS: Record<string, { label: string; icon: string }> = {
   campaign: { label: 'Election Campaign', icon: '🗳️' },
 };
 
+interface RecommendedAction {
+  emoji: string;
+  label: string;
+  cost: number;
+  action: OppositionAction;
+}
+
+function getRecommendedActions(gs: GameState): RecommendedAction[] {
+  const recs: RecommendedAction[] = [];
+  const rulingApproval = gs.rulingApproval ?? 50;
+
+  // If ruling approval < 40: recommend Vote of No Confidence
+  if (rulingApproval < 35) {
+    recs.push({
+      emoji: '⚡',
+      label: 'Call Vote of No Confidence',
+      cost: 4,
+      action: { type: 'vote_of_no_confidence', cost: 4 },
+    });
+  }
+
+  // If corruption is high or scandal situation active
+  if (gs.simulation.corruption > 40 || (gs.policies.intelligence ?? 30) < 30) {
+    recs.push({
+      emoji: '🔍',
+      label: 'Leak Scandal — corruption is ripe',
+      cost: 3,
+      action: { type: 'leak_scandal', cost: 3 },
+    });
+  }
+
+  // If election soon: media campaign in swing regions
+  if (gs.turnsUntilElection <= 3 && gs.campaignPhase) {
+    recs.push({
+      emoji: '📺',
+      label: 'Run Ads targeting swing voters',
+      cost: 2,
+      action: { type: 'run_ads', cost: 2, targetGroupId: 'workers' },
+    });
+  }
+
+  // If broken pledges exist
+  if ((gs.pledges ?? []).some(p => gs.turn - p.madeOnTurn > 6)) {
+    recs.push({
+      emoji: '💔',
+      label: 'Call Out Broken Promise',
+      cost: 2,
+      action: { type: 'media_attack', cost: 2, targetSimVar: 'corruption' as SimVarKey },
+    });
+  }
+
+  // If extremism > 60
+  const maxExtremism = Math.max(gs.extremism.far_left, gs.extremism.far_right, gs.extremism.religious, gs.extremism.eco);
+  if (maxExtremism > 60) {
+    recs.push({
+      emoji: '🎤',
+      label: 'Question Time on Security',
+      cost: 0,
+      action: { type: 'question_time', cost: 0, targetSimVar: 'nationalSecurity' as SimVarKey, topic: 'nationalSecurity' },
+    });
+  }
+
+  // If unemployment > 12
+  if (gs.simulation.unemployment > 12) {
+    recs.push({
+      emoji: '📺',
+      label: 'Media Attack on Unemployment',
+      cost: 2,
+      action: { type: 'media_attack', cost: 2, targetSimVar: 'unemployment' as SimVarKey },
+    });
+  }
+
+  // Fallback: Campaign targeting weakest voter group
+  if (recs.length < 3) {
+    // Find voter group where ruling party is weakest
+    const ruling = gs.players.find(p => p.role === 'ruling');
+    if (ruling && gs.voterSatisfaction[ruling.id]) {
+      const weakest = Object.entries(gs.voterSatisfaction[ruling.id])
+        .sort(([, a], [, b]) => (a as number) - (b as number))[0];
+      if (weakest) {
+        recs.push({
+          emoji: '📢',
+          label: `Campaign — target ${weakest[0]} (${weakest[1]}% sat)`,
+          cost: 1,
+          action: { type: 'campaign', cost: 1, targetGroupId: weakest[0] },
+        });
+      }
+    }
+  }
+
+  // Default filler
+  if (recs.length < 3) {
+    recs.push({
+      emoji: '📋',
+      label: 'Table Motion on Economy',
+      cost: 1,
+      action: { type: 'table_motion', cost: 1, targetSimVar: 'gdpGrowth' as SimVarKey, topic: 'Economy' },
+    });
+  }
+
+  return recs.slice(0, 3);
+}
+
 export function OppositionActionPanel() {
   const { gameState, playerId, pendingOppositionActions, addOppositionAction, removeOppositionAction, clearOppositionActions, getPendingOppositionCost } = useGameStore();
   const { submitOppositionActions, endTurnPhase } = useGameActions();
@@ -148,6 +251,38 @@ export function OppositionActionPanel() {
         {credibility < 30 && (
           <p className="text-[9px] text-red-400 mt-1">⚠️ Low credibility — actions cost 1.5x</p>
         )}
+      </div>
+
+      {/* Recommended Actions */}
+      <div className="p-3 border-b border-slate-700/50 bg-amber-950/10">
+        <div className="flex items-center justify-between mb-2">
+          <h4 className="text-[10px] font-bold text-amber-400 uppercase tracking-wider">💡 Recommended</h4>
+          <button
+            onClick={() => {
+              // Toggle auto-pilot — will be handled by parent
+              if (typeof window !== 'undefined') {
+                const event = new CustomEvent('toggleAutoPilot');
+                window.dispatchEvent(event);
+              }
+            }}
+            className={`text-[9px] px-2 py-0.5 rounded-full border transition-all ${
+              gameState.autoPilotOpposition
+                ? 'bg-amber-600/20 border-amber-600 text-amber-300'
+                : 'border-slate-600 text-slate-500 hover:text-amber-400'
+            }`}
+          >
+            {gameState.autoPilotOpposition ? '🤖 Auto-Pilot ON' : '🤖 Auto-Pilot'}
+          </button>
+        </div>
+        <div className="space-y-1">
+          {getRecommendedActions(gameState).slice(0, 3).map((rec, i) => (
+            <div key={i} className="flex items-center gap-2 text-[10px] p-1.5 rounded bg-slate-800/30 border border-slate-700/30">
+              <span className="text-amber-400">{rec.emoji}</span>
+              <span className="text-slate-300 flex-1">{rec.label}</span>
+              <span className="text-[9px] text-slate-500">{rec.cost} PC</span>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Category tabs */}

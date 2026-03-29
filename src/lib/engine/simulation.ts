@@ -37,6 +37,9 @@ import { getInitialPoliticianPool, getPoliticianById } from './politicians';
 import { createInitialParliament } from './parliament';
 import { createInitialExtremism, updateExtremism } from './extremism';
 import { checkSituations, shouldResolveSituation } from './situations';
+import { checkRegionalEvents, getRegionalEventById } from './regionalEvents';
+import { checkMediaEvents } from './mediaEvents';
+import { checkVoterGroupEvents } from './voterGroupEvents';
 
 // ---- Helpers ----
 
@@ -777,6 +780,8 @@ export function createInitialGameState(roomId: string): GameState {
     appliedEvents: [],
     consecutiveLowApprovalTurns: 0,
     consecutiveRulingPartyElections: 0,
+    activeRegionalEvents: [],
+    autoPilotOpposition: false,
   };
 }
 
@@ -1380,6 +1385,136 @@ export function advancePhase(state: GameState): void {
 
       // Update extremism
       state.extremism = updateExtremism(state.extremism, state.policies, state.simulation);
+
+      // === ASSASSINATION MECHANICS ===
+      const intelligenceBudget = state.policies.intelligence ?? 30;
+      const extremistGroups: { key: 'far_left' | 'far_right' | 'religious' | 'eco'; name: string }[] = [
+        { key: 'far_left', name: 'Far-Left Extremists' },
+        { key: 'far_right', name: 'Far-Right Extremists' },
+        { key: 'religious', name: 'Religious Extremists' },
+        { key: 'eco', name: 'Eco-Terrorists' },
+      ];
+      for (const group of extremistGroups) {
+        const threat = state.extremism[group.key];
+        if (threat > 80) {
+          const successChance = ((threat - 80) / 100) * (1 - intelligenceBudget / 100);
+          if (Math.random() < successChance) {
+            // Assassination succeeds
+            state.extremism.assassinationSucceeded = true;
+            state.extremism.assassinationAttempted = true;
+            const rulingPlayer = state.players.find(p => p.role === 'ruling');
+            const rulingName = rulingPlayer?.party.partyName ?? 'the government';
+            addNewsItem(state, `💀 Assassination Attempt Succeeds — Leader of ${rulingName} eliminated by ${group.name}!`, 'event');
+            addLogEntry(state, `💀 ASSASSINATION! ${group.name} have assassinated the leader!`, 'event');
+            state.turnsUntilElection = 0; // Force snap election
+            break; // Only one attempt per turn
+          } else {
+            // Assassination foiled
+            state.extremism.assassinationAttempted = true;
+            state.extremism[group.key] = Math.max(0, state.extremism[group.key] - 30);
+            addNewsItem(state, `🚨 Assassination Plot Foiled by Intelligence Services — ${group.name} threat reduced`, 'event');
+            addLogEntry(state, `🚨 Assassination attempt by ${group.name} FOILED!`, 'event');
+          }
+        }
+      }
+
+      // === REGIONAL EVENTS ===
+      if (!state.activeRegionalEvents) state.activeRegionalEvents = [];
+      // Tick existing regional events
+      state.activeRegionalEvents = state.activeRegionalEvents.filter(re => {
+        re.turnsRemaining--;
+        return re.turnsRemaining > 0;
+      });
+      // Check for new regional events
+      const activeRegIds = state.activeRegionalEvents.map(re => re.id);
+      const newRegEvents = checkRegionalEvents(state.policies, state.simulation, activeRegIds);
+      for (const eventId of newRegEvents) {
+        const eventDef = getRegionalEventById(eventId);
+        if (eventDef) {
+          state.activeRegionalEvents.push({
+            id: eventDef.id,
+            regionId: eventDef.regionId,
+            name: eventDef.name,
+            description: eventDef.description,
+            icon: eventDef.icon,
+            turnsRemaining: eventDef.duration,
+          });
+          // Apply sim effects
+          for (const [key, val] of Object.entries(eventDef.effects)) {
+            (state.simulation as unknown as Record<string, number>)[key] =
+              ((state.simulation as unknown as Record<string, number>)[key] ?? 0) + (val as number);
+          }
+          // Apply regional satisfaction impact
+          if (state.regionalSatisfaction[eventDef.regionId]) {
+            for (const playerId of Object.keys(state.regionalSatisfaction[eventDef.regionId])) {
+              state.regionalSatisfaction[eventDef.regionId][playerId] = clamp(
+                (state.regionalSatisfaction[eventDef.regionId][playerId] ?? 50) + eventDef.satisfactionImpact,
+                0, 100
+              );
+            }
+          }
+          const regionName = eventDef.regionId.charAt(0).toUpperCase() + eventDef.regionId.slice(1);
+          addNewsItem(state, `${eventDef.icon} [${regionName}] ${eventDef.name}: ${eventDef.description}`, 'event');
+          addLogEntry(state, `${eventDef.icon} Regional: ${eventDef.name} in ${regionName}`, 'event');
+        }
+      }
+
+      // === MEDIA EVENTS ===
+      const mediaEvent = checkMediaEvents(state.policies, state.simulation);
+      if (mediaEvent) {
+        state.activeEffects.push({
+          type: 'media_event',
+          id: `media_${mediaEvent.id}_${Date.now()}`,
+          turnsRemaining: mediaEvent.duration,
+          data: {
+            effects: mediaEvent.effects,
+            approvalImpact: mediaEvent.approvalImpact,
+            voterGroupEffects: mediaEvent.voterGroupEffects ?? {},
+          },
+        });
+        // Apply approval impact to ruling party
+        const rulingP = state.players.find(p => p.role === 'ruling');
+        if (rulingP && state.approvalRating[rulingP.id] !== undefined) {
+          state.approvalRating[rulingP.id] = clamp(
+            state.approvalRating[rulingP.id] + mediaEvent.approvalImpact, 0, 100
+          );
+          state.rulingApproval = state.approvalRating[rulingP.id];
+        }
+        // Apply voter group effects
+        if (mediaEvent.voterGroupEffects && rulingP) {
+          for (const [groupId, delta] of Object.entries(mediaEvent.voterGroupEffects)) {
+            if (state.voterSatisfaction[rulingP.id]?.[groupId] !== undefined) {
+              state.voterSatisfaction[rulingP.id][groupId] = clamp(
+                state.voterSatisfaction[rulingP.id][groupId] + delta, 0, 100
+              );
+            }
+          }
+        }
+        addNewsItem(state, `${mediaEvent.icon} ${mediaEvent.name}: ${mediaEvent.description}`, 'event');
+        addLogEntry(state, `${mediaEvent.icon} Media: ${mediaEvent.name}`, 'event');
+      }
+
+      // === VOTER GROUP EVENTS ===
+      const voterGroupEvts = checkVoterGroupEvents(state.policies, state.simulation);
+      for (const evt of voterGroupEvts) {
+        // Apply satisfaction delta to this group for ALL parties
+        for (const [partyId, groupSats] of Object.entries(state.voterSatisfaction)) {
+          if (groupSats[evt.groupId] !== undefined) {
+            state.voterSatisfaction[partyId][evt.groupId] = clamp(
+              groupSats[evt.groupId] + evt.satisfactionDelta, 0, 100
+            );
+          }
+        }
+        state.activeEffects.push({
+          type: 'voter_group_event',
+          id: `vge_${evt.id}_${Date.now()}`,
+          turnsRemaining: 2,
+          data: { groupId: evt.groupId, delta: evt.satisfactionDelta, name: evt.name },
+        });
+        const sentiment = evt.satisfactionDelta > 0 ? '📈' : '📉';
+        addNewsItem(state, `${evt.icon} ${evt.name}: ${evt.description} ${sentiment}`, 'event');
+        addLogEntry(state, `${evt.icon} ${evt.name} (${evt.groupId} ${evt.satisfactionDelta > 0 ? '+' : ''}${evt.satisfactionDelta}%)`, 'event');
+      }
 
       // Process delayed policies (D4: policies take 2 turns to implement)
       let policyChanged = false;

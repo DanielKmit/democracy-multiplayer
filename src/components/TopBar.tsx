@@ -1,7 +1,9 @@
 'use client';
 
+import { useRef } from 'react';
 import { useGameStore } from '@/lib/store';
-import { PARTY_COLORS } from '@/lib/engine/types';
+import { PARTY_COLORS, GameState } from '@/lib/engine/types';
+import { restoreGame } from '@/lib/gameHost';
 
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -20,7 +22,8 @@ const phaseLabels: Record<string, string> = {
 };
 
 export function TopBar() {
-  const { gameState, playerId } = useGameStore();
+  const { gameState, playerId, setGameState } = useGameStore();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   if (!gameState) return null;
 
   const myPlayer = gameState.players.find(p => p.id === playerId);
@@ -30,6 +33,36 @@ export function TopBar() {
   const dateStr = `${MONTH_NAMES[gameState.date.month - 1]} ${gameState.date.year}`;
 
   const myVoteShare = myPlayer ? (gameState.voteShares?.[myPlayer.id] ?? 0) : 0;
+
+  const handleSaveGame = () => {
+    const json = JSON.stringify(gameState, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const dateStamp = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = `novaria-save-${dateStamp}-turn${gameState.turn}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleLoadGame = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const loaded = JSON.parse(reader.result as string) as GameState;
+        const restored = restoreGame(loaded);
+        setGameState(restored);
+      } catch {
+        alert('Failed to load save file — invalid format.');
+      }
+    };
+    reader.readAsText(file);
+    // Reset input so same file can be loaded again
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
 
   return (
     <div className="glass-card rounded-none border-x-0 border-t-0 px-4 py-2.5">
@@ -108,6 +141,31 @@ export function TopBar() {
               {isRuling ? '🏛️' : gameState.isPreElection ? '📢' : '⚔️'} {myPlayer.party.partyName}
             </div>
           )}
+
+          {/* Save/Load */}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={handleSaveGame}
+              className="text-[10px] px-2 py-1 rounded glass-card text-game-secondary hover:text-white transition-colors"
+              title="Save Game"
+            >
+              💾
+            </button>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="text-[10px] px-2 py-1 rounded glass-card text-game-secondary hover:text-white transition-colors"
+              title="Load Game"
+            >
+              📂
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json"
+              onChange={handleLoadGame}
+              className="hidden"
+            />
+          </div>
         </div>
       </div>
     </div>

@@ -88,7 +88,24 @@ export function NovariMap() {
                 <feMergeNode in="SourceGraphic" />
               </feMerge>
             </filter>
+            <filter id="eventGlow">
+              <feGaussianBlur stdDeviation="5" result="blur" />
+              <feMerge>
+                <feMergeNode in="blur" />
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
           </defs>
+          <style>{`
+            @keyframes pulse-event {
+              0%, 100% { opacity: 0.3; }
+              50% { opacity: 0.6; }
+            }
+            .region-event-pulse {
+              animation: pulse-event 2s ease-in-out infinite;
+            }
+          `}</style>
 
           {REGIONS.map(region => {
             const path = REGION_PATHS[region.id];
@@ -97,6 +114,8 @@ export function NovariMap() {
             const isHovered = hovered === region.id;
             const isSelected = selectedRegion === region.id;
             const label = LABEL_POS[region.id];
+            const regionEvents = (gameState.activeRegionalEvents ?? []).filter(e => e.regionId === region.id);
+            const hasEvent = regionEvents.length > 0;
 
             return (
               <g key={region.id}
@@ -105,12 +124,23 @@ export function NovariMap() {
                 onMouseLeave={() => setHovered(null)}
                 onClick={() => setSelectedRegion(selectedRegion === region.id ? null : region.id)}
               >
+                {/* Event pulse overlay */}
+                {hasEvent && (
+                  <path
+                    d={path}
+                    fill={regionEvents[0].icon.includes('🔥') || regionEvents[0].icon.includes('⛏️') || regionEvents[0].icon.includes('✊') ? '#EF4444' : '#FBBF24'}
+                    fillOpacity={0.2}
+                    stroke="none"
+                    className="region-event-pulse pointer-events-none"
+                    filter="url(#eventGlow)"
+                  />
+                )}
                 <path
                   d={path}
                   fill={color}
-                  fillOpacity={isHovered || isSelected ? 0.5 : 0.25}
-                  stroke={isSelected ? '#fff' : isHovered ? '#94a3b8' : '#334155'}
-                  strokeWidth={isSelected ? 2.5 : isHovered ? 2 : 1.2}
+                  fillOpacity={isHovered || isSelected ? 0.5 : hasEvent ? 0.35 : 0.25}
+                  stroke={hasEvent ? '#FBBF24' : isSelected ? '#fff' : isHovered ? '#94a3b8' : '#334155'}
+                  strokeWidth={hasEvent ? 2 : isSelected ? 2.5 : isHovered ? 2 : 1.2}
                   className="transition-all duration-200"
                   filter={isSelected ? 'url(#glow)' : undefined}
                 />
@@ -125,6 +155,13 @@ export function NovariMap() {
                       fill="#64748b" fontSize="9" className="pointer-events-none select-none">
                       {region.seats} seats • {(region.populationShare * 100).toFixed(0)}%
                     </text>
+                    {/* Event badge */}
+                    {hasEvent && (
+                      <text x={label.x + 45} y={label.y - 10} textAnchor="middle"
+                        fontSize="16" className="pointer-events-none select-none">
+                        {regionEvents[0].icon}
+                      </text>
+                    )}
                   </>
                 )}
               </g>
@@ -220,6 +257,28 @@ export function NovariMap() {
                 })}
               </div>
             </div>
+
+            {/* Active Regional Events */}
+            {(gameState.activeRegionalEvents ?? []).filter(e => e.regionId === selected.id).length > 0 && (
+              <div>
+                <div className="text-[9px] text-slate-500 uppercase mb-1.5">Active Events</div>
+                <div className="space-y-1.5">
+                  {(gameState.activeRegionalEvents ?? [])
+                    .filter(e => e.regionId === selected.id)
+                    .map(evt => (
+                      <div key={evt.id} className="p-2 bg-amber-950/20 border border-amber-800/30 rounded-lg">
+                        <div className="flex items-center gap-1.5 text-xs text-amber-300 font-medium">
+                          <span>{evt.icon}</span>
+                          <span>{evt.name}</span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 mt-0.5">{evt.description}</p>
+                        <span className="text-[9px] text-slate-500">{evt.turnsRemaining} turns remaining</span>
+                      </div>
+                    ))
+                  }
+                </div>
+              </div>
+            )}
 
             {/* Key issues */}
             <div>

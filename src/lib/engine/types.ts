@@ -329,10 +329,21 @@ export interface BudgetState {
 // ---- Active Effects ----
 
 export interface ActiveEffect {
-  type: 'event' | 'media_attack' | 'coalition' | 'filibuster' | 'dilemma';
+  type: 'event' | 'media_attack' | 'coalition' | 'filibuster' | 'dilemma' | 'media_event' | 'voter_group_event';
   id: string;
   turnsRemaining: number;
   data: Record<string, unknown>;
+}
+
+// ---- Regional Events (active) ----
+
+export interface ActiveRegionalEvent {
+  id: string;
+  regionId: string;
+  name: string;
+  description: string;
+  icon: string;
+  turnsRemaining: number;
 }
 
 // ---- Turn Phases ----
@@ -685,6 +696,10 @@ export interface GameState {
   appliedEvents: string[];                          // Event IDs already applied (prevent stacking)
   consecutiveLowApprovalTurns: number;              // Track consecutive low approval turns for cynicism
   consecutiveRulingPartyElections: number;          // Same party in power counter
+  // Regional & Media Events
+  activeRegionalEvents: ActiveRegionalEvent[];      // Currently active regional events
+  // Opposition auto-pilot
+  autoPilotOpposition: boolean;                     // Whether AI controls opposition
 }
 
 // ---- Peer Messages ----
