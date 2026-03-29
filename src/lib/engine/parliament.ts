@@ -1,4 +1,4 @@
-import { ParliamentState, ParliamentSeat, Bill, Player, BotParty, PARTY_COLORS } from './types';
+import { ParliamentState, ParliamentSeat, Bill, Player, BotParty, CoalitionPartner, PARTY_COLORS } from './types';
 import { REGIONS } from './regions';
 
 /**
@@ -161,6 +161,7 @@ export function voteBill(
   botParties: BotParty[],
   policyValues: Record<string, number>,
   oppositionPlayerVote?: 'support' | 'oppose' | null,
+  coalitionPartners?: CoalitionPartner[],
 ): Bill {
   const updatedBill = {
     ...bill,
@@ -196,38 +197,86 @@ export function voteBill(
     }
   }
 
-  // Bot parties vote based on policy alignment + influence
+  // Build set of coalition partner IDs for quick lookup
+  const coalitionPartnerMap = new Map<string, CoalitionPartner>();
+  if (coalitionPartners) {
+    for (const cp of coalitionPartners) {
+      coalitionPartnerMap.set(cp.botPartyId, cp);
+    }
+  }
+
+  // Bot parties vote based on coalition loyalty OR policy alignment
   for (const bot of botParties) {
-    let yesProb = 0.35; // default slight opposition to change
-    
-    const pref = bot.policyPreferences[bill.policyId];
-    if (pref !== undefined) {
-      const currentValue = policyValues[bill.policyId] ?? 50;
-      const currentDist = Math.abs(currentValue - pref);
-      const proposedDist = Math.abs(bill.proposedValue - pref);
-      // Base probability from ideology alignment
-      if (proposedDist < currentDist) {
-        yesProb = 0.6 + (currentDist - proposedDist) / 200; // 60-90%
-      } else {
-        yesProb = 0.2 - (proposedDist - currentDist) / 400; // 5-20%
+    const coalitionInfo = coalitionPartnerMap.get(bot.id);
+    const isCoalitionPartner = !!coalitionInfo;
+
+    let yesProb: number;
+
+    if (isCoalitionPartner) {
+      // ── Coalition partner voting on ruling party's bill ──
+      // Base 80% YES, +up to 15% from satisfaction (loyalty), penalty for extreme ideology mismatch
+      const baseYesChance = 0.80;
+      const satisfaction = coalitionInfo!.satisfaction; // 0-100
+      const loyaltyBonus = (satisfaction / 100) * 0.15; // up to +15% at satisfaction 100
+
+      // Ideology penalty: if bill moves policy far from partner's preference
+      const pref = bot.policyPreferences[bill.policyId];
+      let ideologyPenalty = 0;
+      if (pref !== undefined) {
+        const proposedDist = Math.abs(bill.proposedValue - pref);
+        if (proposedDist > 50) {
+          ideologyPenalty = -0.20; // extreme mismatch: -20%
+        } else if (proposedDist > 35) {
+          ideologyPenalty = -0.10; // moderate mismatch: -10%
+        }
       }
+
+      yesProb = baseYesChance + loyaltyBonus + ideologyPenalty;
+
+      // Lobby influence still applies on top
+      const lobbyPC = lobbyInfluence[bot.id] ?? 0;
+      if (lobbyPC > 0) {
+        yesProb += lobbyPC * 0.10;
+      } else if (lobbyPC < 0) {
+        yesProb -= Math.abs(lobbyPC) * 0.10;
+      }
+
+      // Whip bonus still applies
+      yesProb += whipBonus / 100;
+
+      // Public pressure still applies
+      yesProb += publicPressure / 100;
+    } else {
+      // ── Non-coalition bot party (opposition/independent) — original logic ──
+      yesProb = 0.35; // default slight opposition to change
+      
+      const pref = bot.policyPreferences[bill.policyId];
+      if (pref !== undefined) {
+        const currentValue = policyValues[bill.policyId] ?? 50;
+        const currentDist = Math.abs(currentValue - pref);
+        const proposedDist = Math.abs(bill.proposedValue - pref);
+        // Base probability from ideology alignment
+        if (proposedDist < currentDist) {
+          yesProb = 0.6 + (currentDist - proposedDist) / 200; // 60-90%
+        } else {
+          yesProb = 0.2 - (proposedDist - currentDist) / 400; // 5-20%
+        }
+      }
+
+      // Lobby influence: +10% per PC spent on this party
+      const lobbyPC = lobbyInfluence[bot.id] ?? 0;
+      if (lobbyPC > 0) {
+        yesProb += lobbyPC * 0.10;
+      } else if (lobbyPC < 0) {
+        yesProb -= Math.abs(lobbyPC) * 0.10;
+      }
+
+      // Whip bonus: applies to coalition partners (+15% per whip level)
+      yesProb += whipBonus / 100;
+
+      // Public pressure: applies to all parties (+/-5% per unit)
+      yesProb += publicPressure / 100;
     }
-
-    // Lobby influence: +10% per PC spent on this party
-    const lobbyPC = lobbyInfluence[bot.id] ?? 0;
-    if (lobbyPC > 0) {
-      yesProb += lobbyPC * 0.10;
-    } else if (lobbyPC < 0) {
-      // Counter-lobbying (opposition lobbied against)
-      yesProb -= Math.abs(lobbyPC) * 0.10;
-    }
-
-    // Whip bonus: applies to coalition partners (+15% per whip level)
-    // whipBonus is 0-30, so up to +30% for coalition partners
-    yesProb += whipBonus / 100;
-
-    // Public pressure: applies to all parties (+/-5% per unit)
-    yesProb += publicPressure / 100;
 
     partyDecisions[bot.id] = Math.max(0.02, Math.min(0.98, yesProb));
   }

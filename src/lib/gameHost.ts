@@ -766,6 +766,8 @@ export function handleAction(playerId: string, action: string, payload?: unknown
         gameState.players,
         gameState.botParties,
         gameState.policies,
+        undefined,
+        gameState.coalitionPartners,
       );
 
       gameState.activeBills.push(votedBill);
@@ -1374,6 +1376,8 @@ export function handleAction(playerId: string, action: string, payload?: unknown
         gameState.players,
         gameState.botParties,
         gameState.policies,
+        undefined,
+        gameState.coalitionPartners,
       );
       Object.assign(bill, votedBill);
 
@@ -1497,6 +1501,8 @@ export function handleAction(playerId: string, action: string, payload?: unknown
         gameState.players,
         gameState.botParties,
         gameState.policies,
+        undefined,
+        gameState.coalitionPartners,
       );
 
       overrideBill.vetoOverrideVotes = { yes: overrideResult.votesFor, no: overrideResult.votesAgainst };
