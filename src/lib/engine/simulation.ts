@@ -149,10 +149,10 @@ function computeSinglePartySatisfaction(
       const simVal = simulation[varKey as SimVarKey];
       if (weight! > 0) {
         // Positive concern: higher is better (e.g., gdpGrowth, healthIndex)
-        score += (simVal - 50) * weight! * 0.25;
+        score += (simVal - 50) * weight! * 0.4;
       } else {
         // Negative concern: lower is better (e.g., unemployment, crime)
-        score += (50 - simVal) * Math.abs(weight!) * 0.25;
+        score += (50 - simVal) * Math.abs(weight!) * 0.4;
       }
     }
 
@@ -169,7 +169,8 @@ function computeSinglePartySatisfaction(
       const alignment = ((policyScore / policyCount) - 0.5) * 2; // -1 to +1
       // Ruling party gets full blame/credit for policy alignment
       // Opposition gets partial — voters know who's in charge
-      const weight = isRuling ? 20 : 5;
+      // Strong weights so policy changes produce VISIBLE voter satisfaction swings
+      const weight = isRuling ? 35 : 12;
       score += alignment * weight;
     }
 
@@ -260,6 +261,7 @@ export function computeAllVoterSatisfaction(
   activeEffects: ActiveEffect[],
   ngoAlliances: NGOAlliance[],
   botParties?: BotParty[],
+  campaignBonuses?: Record<string, Record<string, number>>,
 ): Record<string, Record<string, number>> {
   const allSatisfaction: Record<string, Record<string, number>> = {};
 
@@ -273,6 +275,40 @@ export function computeAllVoterSatisfaction(
       activeEffects,
       player.role === 'ruling' ? [] : ngoAlliances,
     );
+
+    // Apply campaign bonuses to voter satisfaction (visible during campaign)
+    const bonuses = campaignBonuses?.[player.id];
+    if (bonuses) {
+      for (const group of VOTER_GROUPS) {
+        // Direct voter group targeting (media blitz)
+        const groupBonus = bonuses[group.id] ?? 0;
+        if (groupBonus > 0) {
+          allSatisfaction[player.id][group.id] = clamp(
+            (allSatisfaction[player.id][group.id] ?? 50) + groupBonus * 0.8, 0, 100
+          );
+        }
+        // Promise bonuses affect groups that care about that policy
+        for (const [key, bonus] of Object.entries(bonuses)) {
+          if (key.startsWith('promise_') && bonus > 0) {
+            const policyId = key.replace('promise_', '');
+            if (group.policyPreferences[policyId] !== undefined) {
+              allSatisfaction[player.id][group.id] = clamp(
+                (allSatisfaction[player.id][group.id] ?? 50) + bonus * 0.5, 0, 100
+              );
+            }
+          }
+        }
+        // Regional rally bonuses affect groups dominant in that region
+        for (const region of REGIONS) {
+          const regionBonus = bonuses[region.id] ?? 0;
+          if (regionBonus > 0 && region.dominantGroups.includes(group.id)) {
+            allSatisfaction[player.id][group.id] = clamp(
+              (allSatisfaction[player.id][group.id] ?? 50) + regionBonus * 0.4, 0, 100
+            );
+          }
+        }
+      }
+    }
   }
 
   // Bot parties
@@ -600,13 +636,20 @@ export function runElection(
       // Base: regional satisfaction (weighted average of voter group satisfaction in region)
       let share = regionalSatisfaction[region.id]?.[player.id] ?? 50;
 
-      // Campaign bonuses — region-specific rallies (strong effect)
+      // Campaign bonuses — region-specific rallies (STRONG cumulative effect)
       const playerBonuses = campaignBonuses[player.id] ?? {};
-      share += (playerBonuses[region.id] ?? 0) * 0.8;
+      share += (playerBonuses[region.id] ?? 0) * 1.2;
 
       // Campaign bonuses — targeting dominant voter groups in this region
       for (const groupId of region.dominantGroups) {
-        share += (playerBonuses[groupId] ?? 0) * 0.5;
+        share += (playerBonuses[groupId] ?? 0) * 0.8;
+      }
+
+      // Campaign bonuses — promise effects (applied broadly)
+      for (const [key, bonus] of Object.entries(playerBonuses)) {
+        if (key.startsWith('promise_')) {
+          share += bonus * 0.3;
+        }
       }
 
       // Coalition lock effects
@@ -782,6 +825,7 @@ export function createInitialGameState(roomId: string): GameState {
     voteShares: {},
     campaignActedThisTurn: {},
     turnActedThisTurn: {},
+    phaseReady: {},
     // D4 Features
     pledges: [],
     voterCynicism: {},
@@ -803,6 +847,8 @@ export function createInitialGameState(roomId: string): GameState {
     activeSynergies: [],
     diplomaticRelations: createInitialRelations(),
     activeDiplomaticIncident: null,
+    liveVote: null,
+    blockedAppointments: [],
   };
 }
 
@@ -1216,6 +1262,190 @@ export function applyOppositionActions(state: GameState, actions: OppositionActi
         }
         break;
       }
+      // ===== D4 OPPOSITION POWERS =====
+      case 'call_early_election': {
+        // Costs 5 PC, needs 67/100 seats (2/3 majority)
+        const oppSeatsEarly = state.parliament.seatsByParty[opposition.id] ?? 0;
+        // Count coalition/allied seats
+        let oppAllySeats = oppSeatsEarly;
+        for (const bot of state.botParties) {
+          // Bots not in ruling coalition are potentially allies
+          const inRulingCoalition = state.coalitionPartners.some(cp => cp.botPartyId === bot.id);
+          if (!inRulingCoalition) {
+            oppAllySeats += state.parliament.seatsByParty[bot.id] ?? 0;
+          }
+        }
+        if (oppAllySeats >= 67) {
+          log.push('📢 EARLY ELECTION CALLED! 2/3 majority achieved. Election next turn!');
+          state.turnsUntilElection = 0;
+          addNewsItem(state, '📢 Parliament votes for early elections — campaign begins immediately!', 'election');
+        } else {
+          log.push(`📢 Early election motion FAILS — need 67 seats, opposition bloc has ${oppAllySeats}`);
+          state.oppositionCredibility = Math.max(0, (state.oppositionCredibility ?? 50) - 8);
+        }
+        break;
+      }
+      case 'block_cabinet': {
+        // Needs 51/100 seats — blocks next cabinet appointment
+        const oppSeatsBlock = state.parliament.seatsByParty[opposition.id] ?? 0;
+        let oppBlocSeats = oppSeatsBlock;
+        for (const bot of state.botParties) {
+          const inRulingCoalition = state.coalitionPartners.some(cp => cp.botPartyId === bot.id);
+          if (!inRulingCoalition) {
+            oppBlocSeats += state.parliament.seatsByParty[bot.id] ?? 0;
+          }
+        }
+        if (oppBlocSeats >= 51) {
+          log.push('🚫 Cabinet appointment BLOCKED! Ruling party must choose a different minister.');
+          // Block a random filled ministry
+          const filled = Object.entries(state.cabinet.ministers)
+            .filter(([, pid]) => pid !== null) as [string, string][];
+          if (filled.length > 0) {
+            const [ministryId] = filled[Math.floor(Math.random() * filled.length)];
+            state.cabinet.ministers[ministryId as import('./types').MinistryId] = null;
+            if (!state.blockedAppointments) state.blockedAppointments = [];
+            state.blockedAppointments.push(ministryId as import('./types').MinistryId);
+            log.push(`🚫 ${ministryId} minister dismissed by parliament vote!`);
+            addNewsItem(state, `🚫 Parliament blocks cabinet appointment — ${ministryId} minister removed`, 'general');
+          }
+        } else {
+          log.push(`🚫 Cabinet block FAILS — need 51 seats, opposition bloc has ${oppBlocSeats}`);
+        }
+        break;
+      }
+      case 'investigate_government': {
+        // Costs 2 PC, 30% chance to uncover scandal, -10 reputation
+        const ruling = state.players.find(p => p.role === 'ruling');
+        if (ruling) {
+          const uncovered = Math.random() < 0.30;
+          if (uncovered) {
+            // Create a scandal
+            if (!state.activeScandals) state.activeScandals = [];
+            state.activeScandals.push({
+              id: `scandal_invest_${Date.now()}`,
+              title: 'Government Investigation Reveals Wrongdoing',
+              description: 'Parliamentary investigation reveals misuse of public funds.',
+              type: 'corruption',
+              severity: 7,
+              targetPlayerId: ruling.id,
+              planted: false,
+              exposed: true,
+              coveredUp: false,
+              spun: false,
+              approvalImpact: -8,
+              reputationImpact: -10,
+              turnsRemaining: 4,
+            });
+            modifyRulingApproval(state, -10);
+            if (state.reputation?.scores) {
+              state.reputation.scores[ruling.id] = Math.max(0, (state.reputation.scores[ruling.id] ?? 60) - 10);
+            }
+            log.push('🔍 INVESTIGATION REVEALS SCANDAL! Ruling party reputation -10, approval -10%');
+            addNewsItem(state, '🔍 Parliamentary investigation uncovers government wrongdoing!', 'event');
+          } else {
+            log.push('🔍 Investigation found nothing. Government cleared (for now).');
+            state.oppositionCredibility = Math.max(0, (state.oppositionCredibility ?? 50) - 3);
+          }
+        }
+        break;
+      }
+      case 'filibuster_bill': {
+        // Costs 2 PC per bill, delays bill vote by 2 turns
+        if (action.targetBillId) {
+          const bill = state.activeBills.find(b => b.id === action.targetBillId);
+          if (bill && (bill.status === 'pending' || bill.status === 'voting')) {
+            bill.status = 'filibustered' as import('./types').BillStatus;
+            bill.filibusterTurns = 2;
+            log.push(`🚫 FILIBUSTER: "${bill.title}" delayed by 2 turns! Ruling party can force vote with 60% majority.`);
+            addNewsItem(state, `🚫 Opposition filibusters "${bill.title}" — vote delayed!`, 'bill');
+          } else {
+            log.push('No eligible bill to filibuster.');
+          }
+        }
+        break;
+      }
+      case 'propose_alt_budget': {
+        // Opposition proposes alternative budget
+        const rulingPlayer = state.players.find(p => p.role === 'ruling');
+        if (rulingPlayer) {
+          // Compare opposition's economic proposals with ruling party's
+          let oppSupport = 0;
+          let rulSupport = 0;
+          for (const group of VOTER_GROUPS) {
+            const oppSat = state.voterSatisfaction[opposition.id]?.[group.id] ?? 50;
+            const rulSat = state.voterSatisfaction[rulingPlayer.id]?.[group.id] ?? 50;
+            if (oppSat > rulSat) oppSupport++;
+            else rulSupport++;
+          }
+          if (oppSupport > rulSupport) {
+            modifyRulingApproval(state, -5);
+            log.push('📊 Opposition budget WINS popular support! Ruling approval -5%');
+            addNewsItem(state, '📊 Opposition proposes popular alternative budget — government embarrassed', 'general');
+          } else {
+            log.push('📊 Opposition budget rejected — government\'s budget preferred.');
+          }
+        }
+        break;
+      }
+      case 'media_campaign_against': {
+        // Costs 3 PC, -5% approval, -10% regional support
+        const rulingForMedia = state.players.find(p => p.role === 'ruling');
+        if (rulingForMedia) {
+          modifyRulingApproval(state, -5);
+          // Hit a random region
+          const regionKeys = Object.keys(state.regionalSatisfaction);
+          if (regionKeys.length > 0) {
+            const targetRegion = regionKeys[Math.floor(Math.random() * regionKeys.length)];
+            if (state.regionalSatisfaction[targetRegion]?.[rulingForMedia.id] !== undefined) {
+              state.regionalSatisfaction[targetRegion][rulingForMedia.id] = clamp(
+                state.regionalSatisfaction[targetRegion][rulingForMedia.id] - 10, 0, 100
+              );
+            }
+          }
+          log.push('📺 MEDIA CAMPAIGN: Negative ads hit ruling party! Approval -5%, regional support -10%');
+          addNewsItem(state, '📺 Opposition launches devastating media campaign against government', 'general');
+        }
+        break;
+      }
+      case 'coalition_poaching': {
+        // Costs 4 PC, attempt to steal coalition partner
+        if (action.targetBotPartyId) {
+          const partner = state.coalitionPartners.find(cp => cp.botPartyId === action.targetBotPartyId);
+          if (partner) {
+            // Success chance based on partner satisfaction (lower sat = easier to poach)
+            const successChance = Math.max(0.05, (100 - partner.satisfaction) / 150);
+            if (Math.random() < successChance) {
+              state.coalitionPartners = state.coalitionPartners.filter(cp => cp.botPartyId !== action.targetBotPartyId);
+              const bot = state.botParties.find(b => b.id === action.targetBotPartyId);
+              log.push(`🔀 COALITION POACHED! ${bot?.name ?? action.targetBotPartyId} leaves the ruling coalition!`);
+              addNewsItem(state, `🔀 Coalition crisis: ${bot?.name ?? 'Coalition partner'} defects to opposition!`, 'election');
+            } else {
+              log.push(`🔀 Poaching attempt failed — ${state.botParties.find(b => b.id === action.targetBotPartyId)?.name ?? 'partner'} stays loyal.`);
+              state.oppositionCredibility = Math.max(0, (state.oppositionCredibility ?? 50) - 5);
+            }
+          } else {
+            log.push('No coalition partner found to poach.');
+          }
+        }
+        break;
+      }
+      case 'emergency_debate': {
+        // Costs 1 PC, forces immediate parliament session
+        const rulingForDebate = state.players.find(p => p.role === 'ruling');
+        if (rulingForDebate) {
+          const currentApproval = state.approvalRating[rulingForDebate.id] ?? 50;
+          if (currentApproval < 50) {
+            modifyRulingApproval(state, -3);
+            log.push('🏛️ EMERGENCY DEBATE: Public watches government stumble! Approval -3%');
+            addNewsItem(state, '🏛️ Emergency debate exposes government weakness — public disapproval grows', 'general');
+          } else {
+            log.push('🏛️ Emergency debate: Government handles well. No significant impact.');
+            // Still costs PC but no negative effect
+          }
+        }
+        break;
+      }
+
       case 'attack_broken_promise': {
         // Attack opponent's broken campaign promise
         if (action.targetPledgeIndex !== undefined && state.pledges) {
@@ -1340,7 +1570,7 @@ function recordSnapshot(state: GameState): void {
  */
 export function proposeBotBills(state: GameState): void {
   for (const bot of (state.botParties ?? [])) {
-    if (Math.random() > 0.20) continue; // 20% chance
+    if (Math.random() > 0.40) continue; // 40% chance per bot per turn
 
     // Pick a policy they care about — find one where current value differs from preference
     const policyEntries = Object.entries(bot.policyPreferences);
@@ -1426,6 +1656,7 @@ export function recalculateAfterPolicyChange(
     state.voterSatisfaction = computeAllVoterSatisfaction(
       state.players, state.policies, state.simulation,
       state.activeEffects, state.ngoAlliances ?? [], state.botParties,
+      state.campaignBonuses,
     );
     state.approvalRating = computeAllApprovalRatings(state.voterSatisfaction, state.activeEffects);
     state.voteShares = computeVoteShares(state.voterSatisfaction, state.voterCynicism);
@@ -1447,6 +1678,9 @@ export function recalculateAfterPolicyChange(
 }
 
 export function advancePhase(state: GameState): void {
+  // Clear phase-ready tracking on every phase transition
+  state.phaseReady = {};
+
   const phaseOrder: TurnPhase[] = ['events', 'dilemma', 'ruling', 'bill_voting', 'resolution', 'opposition', 'polling', 'election'];
   const currentIndex = phaseOrder.indexOf(state.phase);
 
@@ -1495,7 +1729,23 @@ export function advancePhase(state: GameState): void {
       state.filibusteredPolicies = [];
       state.pendingPolicyChanges = [];
       state.pendingOppositionActions = [];
-      state.activeBills = [];
+      // Keep active bills that are pending or passed — only clear failed/vetoed/unconstitutional from active list
+      state.activeBills = state.activeBills.filter(b =>
+        b.status === 'pending' || b.status === 'voting' || b.status === 'passed' || (b as { status: string }).status === 'filibustered'
+      );
+
+      // Bills stay pending until a player manually calls a vote via startLiveVote
+      // Tick filibustered bills — reduce their delay counter
+      for (const bill of state.activeBills) {
+        if ((bill as { status: string }).status === 'filibustered' && bill.filibusterTurns) {
+          bill.filibusterTurns--;
+          if (bill.filibusterTurns <= 0) {
+            bill.status = 'pending';
+            bill.filibusterTurns = undefined;
+            addLogEntry(state, `📋 Filibuster on "${bill.title}" expires — bill returns to pending`, 'info');
+          }
+        }
+      }
 
       tickActiveEffects(state);
 
@@ -1931,7 +2181,8 @@ export function advancePhase(state: GameState): void {
       // Recalculate voter satisfaction and vote shares every turn
       state.voterSatisfaction = computeAllVoterSatisfaction(
         state.players, state.policies, state.simulation,
-        state.activeEffects, state.ngoAlliances ?? [], state.botParties
+        state.activeEffects, state.ngoAlliances ?? [], state.botParties,
+        state.campaignBonuses,
       );
       state.approvalRating = computeAllApprovalRatings(state.voterSatisfaction, state.activeEffects);
       state.voteShares = computeVoteShares(state.voterSatisfaction, state.voterCynicism);
@@ -1983,9 +2234,9 @@ export function advancePhase(state: GameState): void {
     return;
   }
 
-  // After ruling phase: go to bill_voting if there are drafting bills, else skip to resolution
+  // After ruling phase: go to bill_voting if there are voting-ready bills, else skip to resolution
   if (state.phase === 'ruling') {
-    if (state.activeBills.some(b => b.status === 'drafting')) {
+    if (state.activeBills.some(b => b.status === 'drafting' || b.status === 'voting')) {
       state.phase = 'bill_voting';
     } else {
       state.phase = 'resolution';

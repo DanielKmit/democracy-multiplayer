@@ -15,7 +15,7 @@ interface ActionDef {
   description: string;
   emoji: string;
   category: 'parliamentary' | 'public' | 'blocking' | 'campaign';
-  needsTarget: 'policy' | 'group' | 'simvar' | 'region' | 'policy_value' | 'none';
+  needsTarget: 'policy' | 'group' | 'simvar' | 'region' | 'policy_value' | 'bill' | 'coalition_partner' | 'none';
   condition?: (gs: GameState) => boolean;
   conditionLabel?: string;
 }
@@ -83,6 +83,34 @@ const ACTION_DEFS: ActionDef[] = [
     needsTarget: 'none',
     condition: (gs) => (gs.pledges ?? []).some(p => p.status === 'broken' && !p.attackedBy && p.playerId !== gs.players.find(pl => pl.role === 'opposition')?.id),
     conditionLabel: 'Opponent has broken promises' },
+
+  // ===== D4 OPPOSITION POWERS =====
+  { type: 'call_early_election', name: 'Call Early Election', cost: 5, emoji: '📢', category: 'parliamentary',
+    description: 'Force early election. Needs 67/100 seats (2/3 majority). Fail = -8 credibility.',
+    needsTarget: 'none' },
+  { type: 'block_cabinet', name: 'Block Cabinet', cost: 3, emoji: '🚫', category: 'blocking',
+    description: 'Reject a ruling party minister appointment. Needs 51/100 seats.',
+    needsTarget: 'none' },
+  { type: 'investigate_government', name: 'Investigate Govt', cost: 2, emoji: '🔍', category: 'public',
+    description: '30% chance to uncover scandal. Damages ruling reputation -10.',
+    needsTarget: 'none' },
+  { type: 'filibuster_bill', name: 'Filibuster Bill', cost: 2, emoji: '⏱️', category: 'blocking',
+    description: 'Delay a specific bill vote by 2 turns. Ruling can force vote with 60% majority.',
+    needsTarget: 'bill' },
+  { type: 'propose_alt_budget', name: 'Alt. Budget', cost: 3, emoji: '📊', category: 'parliamentary',
+    description: 'Propose alternative budget. If more popular, ruling approval -5%.',
+    needsTarget: 'none' },
+  { type: 'media_campaign_against', name: 'Media Campaign', cost: 3, emoji: '📺', category: 'public',
+    description: 'Negative ads: ruling party -5% approval, -10% regional support.',
+    needsTarget: 'none' },
+  { type: 'coalition_poaching', name: 'Poach Coalition', cost: 4, emoji: '🔀', category: 'parliamentary',
+    description: 'Steal ruling party\'s coalition partner. Success based on partner loyalty.',
+    needsTarget: 'coalition_partner',
+    condition: (gs) => gs.coalitionPartners.length > 0,
+    conditionLabel: 'Ruling has coalition' },
+  { type: 'emergency_debate', name: 'Emergency Debate', cost: 1, emoji: '🏛️', category: 'parliamentary',
+    description: 'Force immediate parliament session. If ruling approval < 50%, damages -3%.',
+    needsTarget: 'none' },
 ];
 
 const SIM_VARS: { key: SimVarKey; label: string }[] = [
@@ -205,13 +233,15 @@ function getRecommendedActions(gs: GameState): RecommendedAction[] {
 
 export function OppositionActionPanel() {
   const { gameState, playerId, pendingOppositionActions, addOppositionAction, removeOppositionAction, clearOppositionActions, getPendingOppositionCost } = useGameStore();
-  const { submitOppositionActions, endTurnPhase } = useGameActions();
+  const { submitOppositionActions, endTurnPhase, readyPhase } = useGameActions();
   const [selectedAction, setSelectedAction] = useState<ActionDef | null>(null);
   const [targetPolicy, setTargetPolicy] = useState('');
   const [targetGroup, setTargetGroup] = useState('');
   const [targetSimVar, setTargetSimVar] = useState<SimVarKey>('unemployment');
   const [targetRegion, setTargetRegion] = useState('');
   const [proposedValue, setProposedValue] = useState(50);
+  const [targetBill, setTargetBill] = useState('');
+  const [targetCoalitionPartner, setTargetCoalitionPartner] = useState('');
   const [activeCategory, setActiveCategory] = useState<string>('parliamentary');
 
   if (!gameState) return null;
@@ -233,6 +263,8 @@ export function OppositionActionPanel() {
       action.proposedPolicyId = targetPolicy;
       action.proposedValue = proposedValue;
     }
+    if (selectedAction.needsTarget === 'bill' && targetBill) action.targetBillId = targetBill;
+    if (selectedAction.needsTarget === 'coalition_partner' && targetCoalitionPartner) action.targetBotPartyId = targetCoalitionPartner;
     // Plant evidence: randomly pick a scandal type
     if (selectedAction.type === 'plant_evidence') {
       const types: ('corruption' | 'personal' | 'policy')[] = ['corruption', 'personal', 'policy'];
@@ -389,6 +421,25 @@ export function OppositionActionPanel() {
               {REGIONS.map(r => <option key={r.id} value={r.id}>{r.name} ({r.seats} seats)</option>)}
             </select>
           )}
+          {selectedAction.needsTarget === 'bill' && (
+            <select value={targetBill} onChange={(e) => setTargetBill(e.target.value)}
+              className="w-full p-2 bg-slate-700 border border-slate-600 rounded-lg text-xs mb-2">
+              <option value="">Select bill...</option>
+              {(gameState.activeBills ?? []).filter(b => b.status === 'pending' || b.status === 'voting').map(b => (
+                <option key={b.id} value={b.id}>{b.title}</option>
+              ))}
+            </select>
+          )}
+          {selectedAction.needsTarget === 'coalition_partner' && (
+            <select value={targetCoalitionPartner} onChange={(e) => setTargetCoalitionPartner(e.target.value)}
+              className="w-full p-2 bg-slate-700 border border-slate-600 rounded-lg text-xs mb-2">
+              <option value="">Select coalition partner...</option>
+              {(gameState.coalitionPartners ?? []).map(cp => {
+                const bot = gameState.botParties.find(b => b.id === cp.botPartyId);
+                return <option key={cp.botPartyId} value={cp.botPartyId}>{bot?.name ?? cp.botPartyId} (satisfaction: {cp.satisfaction}%)</option>;
+              })}
+            </select>
+          )}
           {selectedAction.needsTarget === 'policy_value' && (
             <div className="space-y-2 mb-2">
               <select value={targetPolicy} onChange={(e) => setTargetPolicy(e.target.value)}
@@ -414,7 +465,9 @@ export function OppositionActionPanel() {
               (selectedAction.needsTarget === 'policy' && !targetPolicy) ||
               (selectedAction.needsTarget === 'group' && !targetGroup) ||
               (selectedAction.needsTarget === 'region' && !targetRegion) ||
-              (selectedAction.needsTarget === 'policy_value' && !targetPolicy)
+              (selectedAction.needsTarget === 'policy_value' && !targetPolicy) ||
+              (selectedAction.needsTarget === 'bill' && !targetBill) ||
+              (selectedAction.needsTarget === 'coalition_partner' && !targetCoalitionPartner)
             }
             className="w-full py-2 bg-red-600 hover:bg-red-500 disabled:bg-slate-700 rounded-lg text-xs font-medium transition-all">
             Add to Queue
@@ -449,10 +502,30 @@ export function OppositionActionPanel() {
           className="w-full py-2.5 bg-red-600 hover:bg-red-500 disabled:bg-slate-700 disabled:text-slate-500 rounded-lg text-sm font-semibold transition-all">
           Execute Actions
         </button>
-        <button onClick={handlePass}
-          className="w-full py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-xs text-slate-300 transition-all">
-          Pass Turn
-        </button>
+        {/* Ready status */}
+        {!gameState.isAIGame && gameState.players.length > 1 && (
+          <div className="flex items-center justify-center gap-2 py-1">
+            {gameState.players.map(p => (
+              <span key={p.id} className={`text-[10px] px-2 py-0.5 rounded-full ${
+                gameState.phaseReady?.[p.id]
+                  ? 'bg-emerald-900/50 text-emerald-400 border border-emerald-700/50'
+                  : 'bg-slate-800/50 text-slate-500 border border-slate-700/50'
+              }`}>
+                {gameState.phaseReady?.[p.id] ? '✅' : '⏳'} {p.party.partyName}
+              </span>
+            ))}
+          </div>
+        )}
+        {gameState.phaseReady?.[playerId ?? ''] ? (
+          <div className="w-full py-2 bg-slate-700 rounded-lg text-xs text-slate-400 text-center">
+            ⏳ Waiting for opponent...
+          </div>
+        ) : (
+          <button onClick={() => { readyPhase(); clearOppositionActions(); }}
+            className="w-full py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-xs text-slate-300 transition-all">
+            ✋ Ready — End Turn
+          </button>
+        )}
       </div>
     </div>
   );

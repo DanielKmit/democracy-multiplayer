@@ -31,7 +31,7 @@ function BillStatusBadge({ status }: { status: string }) {
 
 function BillCard({ bill, showActions }: { bill: Bill; showActions: boolean }) {
   const { gameState, playerId } = useGameStore();
-  const { lobbyBill, whipVotes, campaignForBill, vetoBill, challengeConstitutionality, overrideVeto, callBillVote } = useGameActions();
+  const { lobbyBill, whipVotes, campaignForBill, vetoBill, challengeConstitutionality, overrideVeto, startLiveVote, forceBillVote } = useGameActions();
   const [lobbyTarget, setLobbyTarget] = useState('');
   const [showLobby, setShowLobby] = useState(false);
 
@@ -72,6 +72,17 @@ function BillCard({ bill, showActions }: { bill: Bill; showActions: boolean }) {
       <div className="text-[10px] text-game-muted mb-1">
         by {authorName}
         {bill.votesFor > 0 && ` • ${bill.votesFor}–${bill.votesAgainst}`}
+        {bill.status === 'pending' && gameState && (
+          <span className="text-blue-400 ml-1">
+            🗳️ Ready for vote
+            {bill.lobbyInfluence && Object.keys(bill.lobbyInfluence).length > 0 && ' (lobbied)'}
+          </span>
+        )}
+        {(bill as { status: string }).status === 'filibustered' && bill.filibusterTurns && (
+          <span className="text-orange-400 ml-1">
+            ⏱️ Filibustered ({bill.filibusterTurns} turns left)
+          </span>
+        )}
         {bill.constitutionalScore !== undefined && bill.constitutionalScore < 60 && (
           <span className="text-red-400 ml-1">⚠️ Const. risk</span>
         )}
@@ -109,11 +120,27 @@ function BillCard({ bill, showActions }: { bill: Bill; showActions: boolean }) {
       {/* Action buttons */}
       {showActions && (
         <div className="flex flex-wrap gap-1 mt-1.5">
-          {/* Pending bills: call vote */}
-          {bill.status === 'pending' && (isMyBill || isRuling) && (
-            <button onClick={() => callBillVote(bill.id)}
-              className="text-[10px] px-2 py-0.5 rounded bg-blue-900/50 text-blue-300 border border-blue-700/50 hover:bg-blue-800/50">
+          {/* Pending bills: start live vote — any player can call during their turn */}
+          {bill.status === 'pending' && (isMyBill || isRuling || isOpposition) && (
+            <button onClick={() => startLiveVote(bill.id)}
+              className="text-[10px] px-2 py-0.5 rounded bg-blue-600/80 text-white border border-blue-500/50 hover:bg-blue-500/80 font-medium animate-pulse">
               🗳️ Call Vote
+            </button>
+          )}
+
+          {/* Voting bills: open parliament voting modal */}
+          {bill.status === 'voting' && (
+            <button onClick={() => startLiveVote(bill.id)}
+              className="text-[10px] px-2 py-0.5 rounded bg-blue-600/80 text-white border border-blue-500/50 hover:bg-blue-500/80 font-medium animate-pulse">
+              📜 Open Vote
+            </button>
+          )}
+
+          {/* Filibustered bills: ruling can force vote with 60% majority */}
+          {(bill as { status: string }).status === 'filibustered' && isRuling && (
+            <button onClick={() => forceBillVote(bill.id)}
+              className="text-[10px] px-2 py-0.5 rounded bg-orange-600/80 text-white border border-orange-500/50 hover:bg-orange-500/80 font-medium">
+              ⚡ Break Filibuster (60%+ needed)
             </button>
           )}
 
@@ -218,6 +245,8 @@ function ProposeBillTab() {
   const myPlayer = gameState.players.find(p => p.id === playerId);
   const pc = myPlayer?.politicalCapital ?? 0;
   const isRuling = myPlayer?.role === 'ruling';
+  const canPropose = (gameState.phase === 'ruling' && isRuling) ||
+                     (gameState.phase === 'opposition' && !isRuling);
 
   const bills = BILL_LIBRARY.filter(b => b.category === selectedCategory);
 
@@ -301,12 +330,12 @@ function ProposeBillTab() {
 
               <button
                 onClick={() => proposeBillFromLibrary(template.id)}
-                disabled={isActive || !canAfford}
+                disabled={isActive || !canAfford || !canPropose}
                 className="w-full text-[10px] py-1 rounded font-medium transition-all
                   bg-blue-900/50 text-blue-300 border border-blue-700/50
                   hover:bg-blue-800/50 disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                {isActive ? '✓ Already Active' : canAfford ? `📋 Propose (${cost} PC)` : `Needs ${cost} PC`}
+                {isActive ? '✓ Already Active' : !canPropose ? '⏳ Wait for your turn' : canAfford ? `📋 Propose (${cost} PC)` : `Needs ${cost} PC`}
               </button>
             </div>
           );
@@ -329,10 +358,10 @@ export function BillsPanel() {
 
   // Split bills: active (pending/passed), history (failed/vetoed/unconstitutional)
   const activeBills = gameState.activeBills.filter(b =>
-    b.status === 'pending' || b.status === 'voting' || b.status === 'passed'
+    b.status === 'pending' || b.status === 'voting' || b.status === 'passed' || (b as { status: string }).status === 'filibustered'
   );
   const historyBills = gameState.activeBills.filter(b =>
-    b.status === 'failed' || b.status === 'vetoed' || b.status === 'unconstitutional' || b.status === 'filibustered'
+    b.status === 'failed' || b.status === 'vetoed' || b.status === 'unconstitutional'
   );
 
   const pendingCount = activeBills.filter(b => b.status === 'pending').length;
@@ -345,12 +374,10 @@ export function BillsPanel() {
           className={`text-[10px] px-2 py-0.5 rounded transition-all ${tab === 'active' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:text-slate-300'}`}>
           📋 Bills {activeBills.length > 0 && `(${activeBills.length})`}
         </button>
-        {isMyTurn && (
-          <button onClick={() => setTab('propose')}
-            className={`text-[10px] px-2 py-0.5 rounded transition-all ${tab === 'propose' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:text-slate-300'}`}>
-            ➕ Propose
-          </button>
-        )}
+        <button onClick={() => setTab('propose')}
+          className={`text-[10px] px-2 py-0.5 rounded transition-all ${tab === 'propose' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:text-slate-300'}`}>
+          ➕ Propose
+        </button>
         <button onClick={() => setTab('history')}
           className={`text-[10px] px-2 py-0.5 rounded transition-all ${tab === 'history' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:text-slate-300'}`}>
           📜 History {historyBills.length > 0 && `(${historyBills.length})`}

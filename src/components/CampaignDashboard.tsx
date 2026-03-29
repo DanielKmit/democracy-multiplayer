@@ -171,7 +171,20 @@ export function CampaignDashboard() {
 
             {actionType === 'voter_promise' && (
               <div className="grid grid-cols-2 gap-3">
-                {POLICIES.slice(0, 16).map(policy => (
+                {POLICIES.slice(0, 16)
+                  .filter(policy => {
+                    // Filter out policies the player has already promised
+                    const pledges = gameState?.pledges ?? [];
+                    const alreadyPromised = pledges.some(
+                      p => p.playerId === playerId && p.policyId === policy.id
+                    );
+                    // Also filter policies already queued in pending actions
+                    const pendingPromise = pendingActions.some(
+                      a => a.type === 'voter_promise' && a.target === policy.id
+                    );
+                    return !alreadyPromised && !pendingPromise;
+                  })
+                  .map(policy => (
                   <button key={policy.id}
                     onClick={() => addAction({ type: 'voter_promise', cost: 1, label: `Promise: ${policy.name}`, target: policy.id })}
                     disabled={remaining < 1}
@@ -181,6 +194,14 @@ export function CampaignDashboard() {
                     <div className="text-xs text-amber-400 mt-1">⚡ 1 PC</div>
                   </button>
                 ))}
+                {POLICIES.slice(0, 16).every(policy => {
+                  const pledges = gameState?.pledges ?? [];
+                  return pledges.some(p => p.playerId === playerId && p.policyId === policy.id);
+                }) && (
+                  <div className="col-span-2 text-center text-sm text-game-muted py-4">
+                    ✅ You&apos;ve promised all available policies
+                  </div>
+                )}
               </div>
             )}
           </div>

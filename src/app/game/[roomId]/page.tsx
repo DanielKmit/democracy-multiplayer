@@ -34,6 +34,7 @@ import { PolicySynergiesPanel } from '@/components/PolicySynergiesPanel';
 import { VictoryProgress } from '@/components/VictoryProgress';
 import { DiplomacyPanel } from '@/components/DiplomacyPanel';
 import { PromisesPanel } from '@/components/PromisesPanel';
+import { ParliamentVoteModal } from '@/components/ParliamentVoteModal';
 
 export default function GamePage() {
   const params = useParams();
@@ -229,11 +230,18 @@ export default function GamePage() {
       {gameState.phase === 'events' && gameState.currentEvent && <EventModal />}
       {gameState.phase === 'dilemma' && gameState.activeDilemma && <DilemmaModal />}
       {gameState.phase === 'polling' && <PollingSummary />}
+      {gameState.liveVote && <ParliamentVoteModal />}
 
       {/* Main layout */}
       <div className="flex-1 flex overflow-hidden">
-        {/* LEFT: Events + Crises sidebar */}
-        <EventCards />
+        {/* LEFT: Events sidebar (Bills moved to center dashboard) */}
+        {(isRulingPhase || isOppositionPhase) ? (
+          <div className="w-64 border-r border-game-border bg-game-card/50 overflow-y-auto p-3 space-y-3 flex-shrink-0">
+            <EventCards inline />
+          </div>
+        ) : (
+          <EventCards />
+        )}
 
         {/* CENTER */}
         <div className="flex-1 flex flex-col overflow-hidden min-w-0">
@@ -289,6 +297,10 @@ export default function GamePage() {
           {isOppositionPhase && myRole === 'opposition' && (
             <div className="flex-1 flex flex-col overflow-hidden">
               <div className="flex items-center gap-2 p-2 border-b border-game-border bg-game-card/30">
+                <button onClick={() => setCenterView('bills')}
+                  className={`px-3 py-1 rounded text-xs transition-all ${centerView === 'bills' ? 'bg-game-accent text-white' : 'text-game-muted hover:text-game-secondary'}`}>
+                  📋 Bills
+                </button>
                 <button onClick={() => setCenterView('policy_web')}
                   className={`px-3 py-1 rounded text-xs transition-all ${showPolicyWeb ? 'bg-game-accent text-white' : 'text-game-muted hover:text-game-secondary'}`}>
                   🕸️ Policy Web
@@ -299,7 +311,9 @@ export default function GamePage() {
                 </button>
               </div>
               <div className="flex-1 overflow-hidden">
-                {showPolicyWeb ? <PolicyWeb /> : <NovariMap />}
+                {centerView === 'bills' ? (
+                  <div className="h-full overflow-y-auto p-4"><BillsPanel /></div>
+                ) : showPolicyWeb ? <PolicyWeb /> : <NovariMap />}
               </div>
             </div>
           )}
@@ -307,6 +321,10 @@ export default function GamePage() {
           {!['events', 'dilemma', 'ruling', 'resolution', 'opposition', 'government_formation', 'polling', 'campaigning', 'coalition_negotiation'].includes(gameState.phase) && (
             <div className="flex-1 flex flex-col overflow-hidden">
               <div className="flex items-center gap-2 p-2 border-b border-game-border bg-game-card/30">
+                <button onClick={() => setCenterView('bills')}
+                  className={`px-3 py-1 rounded text-xs transition-all ${centerView === 'bills' ? 'bg-game-accent text-white' : 'text-game-muted hover:text-game-secondary'}`}>
+                  📋 Bills
+                </button>
                 <button onClick={() => setCenterView('policy_web')}
                   className={`px-3 py-1 rounded text-xs transition-all ${showPolicyWeb ? 'bg-game-accent text-white' : 'text-game-muted hover:text-game-secondary'}`}>
                   🕸️ Policy Web
@@ -317,7 +335,9 @@ export default function GamePage() {
                 </button>
               </div>
               <div className="flex-1 overflow-hidden">
-                {showPolicyWeb ? <PolicyWeb /> : <NovariMap />}
+                {centerView === 'bills' ? (
+                  <div className="h-full overflow-y-auto p-4"><BillsPanel /></div>
+                ) : showPolicyWeb ? <PolicyWeb /> : <NovariMap />}
               </div>
             </div>
           )}
@@ -334,7 +354,6 @@ export default function GamePage() {
             <VictoryProgress />
             <ScandalPanel />
             <ReputationBar />
-            <BillsPanel />
             <PromisesPanel />
             <CabinetPanel />
             <DiplomacyPanel />

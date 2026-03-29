@@ -86,6 +86,10 @@ export function clearPersistedState() {
 export function restoreGame(savedState: GameState): GameState {
   gameState = savedState;
 
+  // Ensure phaseReady exists (backward compat with old saves)
+  if (!gameState.phaseReady) gameState.phaseReady = {};
+  if (gameState.liveVote && !gameState.liveVote.playerVotes) gameState.liveVote.playerVotes = {};
+
   // Phase recovery: if stuck in party_creation but both players have parties, advance
   if (gameState.phase === 'party_creation' && gameState.players.length >= 2) {
     const allReady = gameState.players.every(
@@ -197,6 +201,7 @@ function recalculate(state: GameState) {
       state.activeEffects,
       state.ngoAlliances ?? [],
       state.botParties,
+      state.campaignBonuses,
     );
 
     // Per-party approval ratings
@@ -907,11 +912,19 @@ export function handleAction(playerId: string, action: string, payload?: unknown
           }
           case 'voter_promise': {
             if (action.promisePolicyId) {
+              // Prevent duplicate promises for the same policy
+              if (!gameState.pledges) gameState.pledges = [];
+              const existingPledge = gameState.pledges.find(
+                p => p.playerId === player.id && p.policyId === action.promisePolicyId
+              );
+              if (existingPledge) {
+                addLogEntry(gameState, `⚠️ ${player.party.partyName} has already promised this policy`, 'info');
+                break;
+              }
               const bonuses = gameState.campaignBonuses[player.id] ?? {};
               bonuses[`promise_${action.promisePolicyId}`] = (bonuses[`promise_${action.promisePolicyId}`] ?? 0) + 5;
               gameState.campaignBonuses[player.id] = bonuses;
               // D4: Track pledge for broken promise detection
-              if (!gameState.pledges) gameState.pledges = [];
               const direction = (action.promiseDirection === 'increase' || action.promiseDirection === 'decrease')
                 ? action.promiseDirection : 'increase';
               gameState.pledges.push({
@@ -1174,7 +1187,7 @@ export function handleAction(playerId: string, action: string, payload?: unknown
       }
 
       const bill = gameState.activeBills.find(b => b.id === billId);
-      if (!bill || bill.status !== 'voting') {
+      if (!bill || (bill.status !== 'voting' && bill.status !== 'pending')) {
         addLogEntry(gameState, 'Bill not available for lobbying', 'info');
         broadcastState();
         return;
@@ -1209,7 +1222,7 @@ export function handleAction(playerId: string, action: string, payload?: unknown
       }
 
       const whipBill = gameState.activeBills.find(b => b.id === whipBillId);
-      if (!whipBill || whipBill.status !== 'voting') {
+      if (!whipBill || (whipBill.status !== 'voting' && whipBill.status !== 'pending')) {
         addLogEntry(gameState, 'Bill not available for whipping', 'info');
         broadcastState();
         return;
@@ -1239,7 +1252,7 @@ export function handleAction(playerId: string, action: string, payload?: unknown
       }
 
       const campBill = gameState.activeBills.find(b => b.id === campBillId);
-      if (!campBill || campBill.status !== 'voting') {
+      if (!campBill || (campBill.status !== 'voting' && campBill.status !== 'pending')) {
         addLogEntry(gameState, 'Bill not available for campaigning', 'info');
         broadcastState();
         return;
@@ -1264,10 +1277,14 @@ export function handleAction(playerId: string, action: string, payload?: unknown
       const player = gameState.players.find(p => p.id === playerId);
       if (!player) return;
 
-      // Either player can propose during their phase
-      if (gameState.phase === 'ruling' && player.role !== 'ruling') return;
-      if (gameState.phase === 'opposition' && player.role !== 'opposition') return;
-      if (gameState.phase !== 'ruling' && gameState.phase !== 'opposition') return;
+      // Player can propose during their active phase
+      const isPlayerPhase = (gameState.phase === 'ruling' && player.role === 'ruling') ||
+                            (gameState.phase === 'opposition' && player.role === 'opposition');
+      if (!isPlayerPhase) {
+        addLogEntry(gameState, 'You can only propose bills during your turn', 'info');
+        broadcastState();
+        return;
+      }
 
       const template = getBillTemplate(templateId);
       if (!template) {
@@ -1339,9 +1356,11 @@ export function handleAction(playerId: string, action: string, payload?: unknown
         return;
       }
 
-      // Only bill author or ruling party can call the vote
-      if (bill.authorId !== playerId && player.role !== 'ruling') {
-        addLogEntry(gameState, 'Only the bill author or ruling party can call a vote', 'info');
+      // Any player can call a vote during their turn phase
+      const isPlayersTurn = (gameState.phase === 'ruling' && player.role === 'ruling') ||
+                            (gameState.phase === 'opposition' && player.role === 'opposition');
+      if (!isPlayersTurn && bill.authorId !== playerId) {
+        addLogEntry(gameState, 'You can only call votes during your turn', 'info');
         broadcastState();
         return;
       }
@@ -1585,6 +1604,321 @@ export function handleAction(playerId: string, action: string, payload?: unknown
       break;
     }
 
+    case 'startLiveVote': {
+      // Start interactive voting session for a bill
+      const { billId: lvBillId } = payload as { billId: string };
+      const bill = gameState.activeBills.find(b => b.id === lvBillId);
+      if (!bill || (bill.status !== 'pending' && bill.status !== 'voting')) {
+        addLogEntry(gameState, 'Bill not available for live voting', 'info');
+        broadcastState();
+        return;
+      }
+
+      bill.status = 'voting';
+
+      // Compute initial vote intentions for each bot party
+      const intentions: Record<string, number> = {};
+      for (const bot of gameState.botParties) {
+        let yesProb = 0.35;
+        const pref = bot.policyPreferences[bill.policyId];
+        if (pref !== undefined) {
+          const currentValue = gameState.policies[bill.policyId] ?? 50;
+          const currentDist = Math.abs(currentValue - pref);
+          const proposedDist = Math.abs(bill.proposedValue - pref);
+          if (proposedDist < currentDist) {
+            yesProb = 0.6 + (currentDist - proposedDist) / 200;
+          } else {
+            yesProb = 0.2 - (proposedDist - currentDist) / 400;
+          }
+        }
+        intentions[bot.id] = Math.max(-1, Math.min(1, (yesProb - 0.5) * 2));
+      }
+
+      // Author's party always supports, other human opposes by default
+      for (const p of gameState.players) {
+        intentions[p.id] = p.id === bill.authorId ? 0.9 : -0.5;
+      }
+
+      gameState.liveVote = {
+        billId: bill.id,
+        bill,
+        partyIntentions: intentions,
+        lobbySpent: {},
+        readyPlayers: [],
+        playerVotes: {},
+        startedAt: Date.now(),
+        finalized: false,
+      };
+
+      addLogEntry(gameState, `🗳️ LIVE VOTE: "${bill.title}" goes to parliament! Lobby now!`, 'ruling');
+      addNewsItem(gameState, `🗳️ Parliament convenes to vote on "${bill.title}"`, 'bill');
+      broadcastState();
+      break;
+    }
+
+    case 'lobbyLiveVote': {
+      // Player lobbies a party during live vote
+      if (!gameState.liveVote || gameState.liveVote.finalized) return;
+      const { targetPartyId: lvTarget, pcSpent: lvPC, direction: lvDir } = payload as {
+        targetPartyId: string; pcSpent: number; direction: 'support' | 'oppose';
+      };
+      const lvPlayer = gameState.players.find(p => p.id === playerId);
+      if (!lvPlayer || lvPC < 1 || lvPC > lvPlayer.politicalCapital) return;
+
+      lvPlayer.politicalCapital -= lvPC;
+      gameState.liveVote.lobbySpent[playerId] = (gameState.liveVote.lobbySpent[playerId] ?? 0) + lvPC;
+
+      // Shift intention: each PC shifts by ~0.1
+      const shift = lvPC * 0.1 * (lvDir === 'support' ? 1 : -1);
+      gameState.liveVote.partyIntentions[lvTarget] = Math.max(-1, Math.min(1,
+        (gameState.liveVote.partyIntentions[lvTarget] ?? 0) + shift
+      ));
+
+      // Also update the bill's lobby influence for final calculation
+      const lvBill = gameState.activeBills.find(b => b.id === gameState!.liveVote!.billId);
+      if (lvBill) {
+        if (!lvBill.lobbyInfluence) lvBill.lobbyInfluence = {};
+        const influence = lvDir === 'support' ? lvPC : -lvPC;
+        lvBill.lobbyInfluence[lvTarget] = (lvBill.lobbyInfluence[lvTarget] ?? 0) + influence;
+      }
+
+      const botName = gameState.botParties.find(b => b.id === lvTarget)?.name ?? lvTarget;
+      const dirLabel = lvDir === 'support' ? 'support' : 'oppose';
+      addLogEntry(gameState, `🤝 ${lvPlayer.party.partyName} lobbied ${botName} to ${dirLabel} (${lvPC} PC)`, 'info');
+      broadcastState();
+      break;
+    }
+
+    case 'whipLiveVote': {
+      // Ruling party whips coalition during live vote
+      if (!gameState.liveVote || gameState.liveVote.finalized) return;
+      const { pcSpent: whipLvPC } = payload as { pcSpent: number };
+      const whipLvPlayer = gameState.players.find(p => p.id === playerId && p.role === 'ruling');
+      if (!whipLvPlayer || whipLvPC < 1 || whipLvPC > whipLvPlayer.politicalCapital) return;
+
+      whipLvPlayer.politicalCapital -= whipLvPC;
+      
+      // Shift all coalition partners toward yes
+      for (const cp of gameState.coalitionPartners) {
+        gameState.liveVote.partyIntentions[cp.botPartyId] = Math.max(-1, Math.min(1,
+          (gameState.liveVote.partyIntentions[cp.botPartyId] ?? 0) + whipLvPC * 0.15
+        ));
+      }
+
+      const lvBill = gameState.activeBills.find(b => b.id === gameState!.liveVote!.billId);
+      if (lvBill) {
+        lvBill.whipBonus = Math.min(30, (lvBill.whipBonus ?? 0) + whipLvPC * 15);
+      }
+
+      addLogEntry(gameState, `🏛️ ${whipLvPlayer.party.partyName} whips coalition partners (+${whipLvPC * 15}% loyalty)`, 'ruling');
+      broadcastState();
+      break;
+    }
+
+    case 'campaignLiveVote': {
+      // Public campaign during live vote — shifts all parties slightly
+      if (!gameState.liveVote || gameState.liveVote.finalized) return;
+      const { pcSpent: campLvPC, direction: campLvDir } = payload as { pcSpent: number; direction: 'support' | 'oppose' };
+      const campLvPlayer = gameState.players.find(p => p.id === playerId);
+      if (!campLvPlayer || campLvPC < 1 || campLvPC > campLvPlayer.politicalCapital) return;
+
+      campLvPlayer.politicalCapital -= campLvPC;
+      
+      // Shift ALL bot parties slightly
+      const campShift = campLvPC * 0.05 * (campLvDir === 'support' ? 1 : -1);
+      for (const bot of gameState.botParties) {
+        gameState.liveVote.partyIntentions[bot.id] = Math.max(-1, Math.min(1,
+          (gameState.liveVote.partyIntentions[bot.id] ?? 0) + campShift
+        ));
+      }
+
+      const lvBill = gameState.activeBills.find(b => b.id === gameState!.liveVote!.billId);
+      if (lvBill) {
+        const pressureDir = campLvDir === 'support' ? 1 : -1;
+        lvBill.publicPressure = Math.max(-20, Math.min(20, (lvBill.publicPressure ?? 0) + campLvPC * 5 * pressureDir));
+      }
+
+      const dirLabel = campLvDir === 'support' ? 'supporting' : 'opposing';
+      addLogEntry(gameState, `📢 ${campLvPlayer.party.partyName} campaigns ${dirLabel} the bill (${campLvPC} PC)`, 'info');
+      broadcastState();
+      break;
+    }
+
+    case 'readyLiveVote': {
+      // Player marks ready to finalize
+      if (!gameState.liveVote || gameState.liveVote.finalized) return;
+      if (!gameState.liveVote.readyPlayers.includes(playerId)) {
+        gameState.liveVote.readyPlayers.push(playerId);
+      }
+      broadcastState();
+      break;
+    }
+
+    case 'setPlayerVote': {
+      // Player sets their party's explicit vote (yes/no/null for abstain)
+      if (!gameState.liveVote || gameState.liveVote.finalized) return;
+      const { vote: pvChoice } = payload as { vote: 'yes' | 'no' | null };
+      if (pvChoice === null) {
+        delete gameState.liveVote.playerVotes[playerId];
+      } else {
+        gameState.liveVote.playerVotes[playerId] = pvChoice;
+      }
+      broadcastState();
+      break;
+    }
+
+    case 'finalizeLiveVote': {
+      // Actually run the vote and determine outcome
+      if (!gameState.liveVote || gameState.liveVote.finalized) return;
+
+      const finalBill = gameState.activeBills.find(b => b.id === gameState!.liveVote!.billId);
+      if (!finalBill) return;
+
+      // Convert intentions to actual votes
+      let votesFor = 0;
+      let votesAgainst = 0;
+      const partyVotes: Record<string, { yes: number; no: number }> = {};
+
+      for (const seat of gameState.parliament.seats) {
+        // Check if this party has an explicit player vote
+        const explicitVote = gameState.liveVote.playerVotes[seat.partyId];
+
+        let voteYes: boolean;
+        if (explicitVote === 'yes') {
+          voteYes = true;
+        } else if (explicitVote === 'no') {
+          voteYes = false;
+        } else {
+          // Use intention-based random voting for bot parties / abstaining players
+          const intention = gameState.liveVote.partyIntentions[seat.partyId] ?? 0;
+          const yesProb = Math.max(0.02, Math.min(0.98, (intention + 1) / 2));
+          voteYes = Math.random() < yesProb;
+        }
+
+        if (!partyVotes[seat.partyId]) partyVotes[seat.partyId] = { yes: 0, no: 0 };
+        if (voteYes) {
+          votesFor++;
+          partyVotes[seat.partyId].yes++;
+        } else {
+          votesAgainst++;
+          partyVotes[seat.partyId].no++;
+        }
+      }
+
+      finalBill.votesFor = votesFor;
+      finalBill.votesAgainst = votesAgainst;
+      finalBill.partyVotes = partyVotes;
+      finalBill.status = votesFor >= 51 ? 'passed' : 'failed';
+
+      gameState.liveVote.finalized = true;
+      gameState.liveVote.result = {
+        passed: finalBill.status === 'passed',
+        votesFor,
+        votesAgainst,
+        partyVotes,
+      };
+
+      const template = finalBill.fromTemplate ? getBillTemplate(finalBill.fromTemplate) : null;
+
+      // Generate vote summary
+      const lvVoteDetails = Object.entries(partyVotes).map(([pid, v]) => {
+        const p = gameState!.players.find(pl => pl.id === pid);
+        const bot = gameState!.botParties.find(b => b.id === pid);
+        const name = p?.party.partyName ?? bot?.name ?? pid;
+        return `${name}: ${v.yes}Y/${v.no}N`;
+      }).join(', ');
+
+      if (finalBill.status === 'passed') {
+        if (template) {
+          for (const change of template.policyChanges) {
+            gameState.delayedPolicies.push({
+              policyId: change.policyId,
+              originalValue: gameState.policies[change.policyId],
+              newValue: change.targetValue,
+              turnsRemaining: 2,
+              source: 'bill',
+            });
+          }
+        } else {
+          gameState.delayedPolicies.push({
+            policyId: finalBill.policyId,
+            originalValue: gameState.policies[finalBill.policyId],
+            newValue: finalBill.proposedValue,
+            turnsRemaining: 2,
+            source: 'bill',
+          });
+        }
+        addLogEntry(gameState, `✅ ${finalBill.title} PASSED (${votesFor}-${votesAgainst})`, 'ruling');
+        addNewsItem(gameState, `🏛️ Parliament passes ${finalBill.title} ${votesFor}-${votesAgainst}! ${lvVoteDetails}`, 'bill');
+      } else {
+        addLogEntry(gameState, `❌ ${finalBill.title} FAILED (${votesFor}-${votesAgainst})`, 'ruling');
+        addNewsItem(gameState, `🏛️ Parliament rejects ${finalBill.title} ${votesFor}-${votesAgainst}. ${lvVoteDetails}`, 'bill');
+      }
+
+      recalculate(gameState);
+      broadcastState();
+      break;
+    }
+
+    case 'dismissLiveVote': {
+      // Close the live vote modal after viewing results
+      gameState.liveVote = null;
+      broadcastState();
+      break;
+    }
+
+    case 'forceBillVote': {
+      // Ruling party forces vote on filibustered bill (needs 60% majority)
+      const { billId: forceBillId } = payload as { billId: string };
+      const forcePlayer = gameState.players.find(p => p.id === playerId && p.role === 'ruling');
+      if (!forcePlayer) return;
+
+      const forceBill = gameState.activeBills.find(b => b.id === forceBillId && (b as { status: string }).status === 'filibustered');
+      if (!forceBill) {
+        addLogEntry(gameState, 'No filibustered bill to force', 'info');
+        broadcastState();
+        return;
+      }
+
+      // Check if ruling coalition has 60+ seats
+      let rulingCoalitionSeats = gameState.parliament.seatsByParty[forcePlayer.id] ?? 0;
+      for (const cp of gameState.coalitionPartners) {
+        rulingCoalitionSeats += gameState.parliament.seatsByParty[cp.botPartyId] ?? 0;
+      }
+
+      if (rulingCoalitionSeats >= 60) {
+        forceBill.status = 'pending';
+        forceBill.filibusterTurns = undefined;
+        addLogEntry(gameState, `⚡ Filibuster broken! "${forceBill.title}" returns to pending status (${rulingCoalitionSeats} seats)`, 'ruling');
+        addNewsItem(gameState, `⚡ Government breaks filibuster on "${forceBill.title}" with ${rulingCoalitionSeats}% majority`, 'bill');
+      } else {
+        addLogEntry(gameState, `Cannot break filibuster — need 60 seats, coalition has ${rulingCoalitionSeats}`, 'info');
+      }
+      broadcastState();
+      break;
+    }
+
+    case 'readyPhase': {
+      // Player marks themselves as ready for the current phase
+      if (!gameState) return;
+      gameState.phaseReady[playerId] = true;
+
+      // For AI games, auto-ready the AI player
+      if (gameState.isAIGame && gameState.aiPlayerId) {
+        gameState.phaseReady[gameState.aiPlayerId] = true;
+      }
+
+      // Check if all players are ready
+      const allPlayersReady = gameState.players.every(p => gameState!.phaseReady[p.id]);
+      if (allPlayersReady) {
+        // Auto-advance the phase
+        handleEndTurnPhase(playerId);
+      } else {
+        broadcastState();
+      }
+      break;
+    }
+
     case 'endTurnPhase': {
       handleEndTurnPhase(playerId);
       break;
@@ -1783,7 +2117,7 @@ function handleEndTurnPhase(playerId?: string) {
 
     broadcastState();
   } else if (gameState.phase === 'ruling') {
-    // Mark ruling player as acted (passed without policy changes)
+    // Mark ruling player as acted
     if (playerId) {
       if (!gameState.turnActedThisTurn) gameState.turnActedThisTurn = {};
       gameState.turnActedThisTurn[playerId] = true;
@@ -1793,36 +2127,8 @@ function handleEndTurnPhase(playerId?: string) {
     advancePhase(gameState); // -> bill_voting (if bills exist) or resolution
 
     if ((gameState.phase as string) === 'bill_voting') {
-      // Process any active bills that haven't been voted yet
-      for (const bill of gameState.activeBills) {
-        if (bill.status === 'drafting') {
-          const votedBill = voteBill(
-            bill,
-            gameState.parliament,
-            bill.authorId,
-            gameState.players,
-            gameState.botParties,
-            gameState.policies,
-          );
-          Object.assign(bill, votedBill);
-          if (votedBill.status === 'passed') {
-            // D4: delayed policy implementation
-            const oldVal = gameState.policies[votedBill.policyId];
-            gameState.delayedPolicies.push({
-              policyId: votedBill.policyId,
-              originalValue: oldVal,
-              newValue: votedBill.proposedValue,
-              turnsRemaining: 2,
-              source: 'bill',
-            });
-            addLogEntry(gameState, `✅ ${votedBill.title} PASSED (${votedBill.votesFor}-${votedBill.votesAgainst})`, 'ruling');
-            addNewsItem(gameState, `📋 ${votedBill.title} passed! (takes effect in 2 turns)`, 'bill');
-          } else {
-            addLogEntry(gameState, `❌ ${votedBill.title} FAILED (${votedBill.votesFor}-${votedBill.votesAgainst})`, 'ruling');
-            addNewsItem(gameState, `📋 ${votedBill.title} rejected by parliament`, 'bill');
-          }
-        }
-      }
+      // No auto-vote — bills are voted on manually via startLiveVote + finalizeLiveVote
+      // Skip directly to resolution
       advancePhase(gameState); // bill_voting -> resolution
     }
 
@@ -1843,44 +2149,7 @@ function handleEndTurnPhase(playerId?: string) {
     // Bot parties propose bills (20% chance each)
     proposeBotBills(gameState);
 
-    // Vote on any bot-proposed bills
-    for (const bill of gameState.activeBills) {
-      if (bill.status === 'voting' && bill.authorId.startsWith('bot_')) {
-        const votedBill = voteBill(
-          bill,
-          gameState.parliament,
-          bill.authorId,
-          gameState.players,
-          gameState.botParties,
-          gameState.policies,
-        );
-        Object.assign(bill, votedBill);
-
-        const voteDetails = Object.entries(votedBill.partyVotes ?? {}).map(([pid, v]) => {
-          const p = gameState!.players.find(pl => pl.id === pid);
-          const bot = gameState!.botParties.find(b => b.id === pid);
-          const name = p?.party.partyName ?? bot?.name ?? pid;
-          return `${name}: ${v.yes}Y/${v.no}N`;
-        }).join(', ');
-
-        if (votedBill.status === 'passed') {
-          // D4: delayed policy implementation
-          const oldVal = gameState.policies[votedBill.policyId];
-          gameState.delayedPolicies.push({
-            policyId: votedBill.policyId,
-            originalValue: oldVal,
-            newValue: votedBill.proposedValue,
-            turnsRemaining: 2,
-            source: 'bill',
-          });
-          addLogEntry(gameState, `✅ ${votedBill.title} PASSED (${votedBill.votesFor}-${votedBill.votesAgainst})`, 'ruling');
-          addNewsItem(gameState, `📋 ${votedBill.title} passed! ${voteDetails} (takes effect in 2 turns)`, 'bill');
-        } else {
-          addLogEntry(gameState, `❌ ${votedBill.title} FAILED (${votedBill.votesFor}-${votedBill.votesAgainst})`, 'ruling');
-          addNewsItem(gameState, `📋 ${votedBill.title} rejected. ${voteDetails}`, 'bill');
-        }
-      }
-    }
+    // No auto-vote — bills are voted on manually via startLiveVote + finalizeLiveVote
 
     // Reset turn tracking for next turn
     gameState.turnActedThisTurn = {};

@@ -85,13 +85,38 @@ export function TopBar() {
             {phaseLabels[gameState.phase] ?? gameState.phase}
           </div>
 
-          {ruling && !gameState.isPreElection && (
-            <div className="flex items-center gap-1.5 text-xs">
-              <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: PARTY_COLORS[ruling.party.partyColor] }} />
-              <span className="text-game-muted">Gov:</span>
-              <span className="text-white font-medium">{ruling.party.partyName}</span>
-            </div>
-          )}
+          {ruling && !gameState.isPreElection && (() => {
+            const rulingSeats = gameState.parliament.seatsByParty[ruling.id] ?? 0;
+            const coalitionPartners = gameState.coalitionPartners ?? [];
+            const coalitionSeats = coalitionPartners.reduce((sum, cp) => sum + cp.seats, 0);
+            const totalCoalitionSeats = rulingSeats + coalitionSeats;
+
+            return (
+              <div className="flex items-center gap-2 text-xs">
+                <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: PARTY_COLORS[ruling.party.partyColor] }} />
+                <span className="text-game-muted">Gov:</span>
+                <span className="text-white font-medium">{ruling.party.partyName}</span>
+                <span className="text-slate-500">({rulingSeats})</span>
+                {coalitionPartners.length > 0 && (
+                  <>
+                    {coalitionPartners.map(cp => {
+                      const bot = gameState.botParties.find(b => b.id === cp.botPartyId);
+                      if (!bot) return null;
+                      return (
+                        <span key={cp.botPartyId} className="flex items-center gap-1">
+                          <span className="text-slate-600">+</span>
+                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: bot.color }} />
+                          <span className="text-slate-400">{bot.name}</span>
+                          <span className="text-slate-600">({cp.seats})</span>
+                        </span>
+                      );
+                    })}
+                    <span className="text-slate-500 font-medium">= {totalCoalitionSeats}/100</span>
+                  </>
+                )}
+              </div>
+            );
+          })()}
         </div>
 
         {/* Center: Key Stats */}

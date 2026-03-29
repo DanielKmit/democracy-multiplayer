@@ -15,7 +15,7 @@ const newsTypeIcons: Record<string, string> = {
   election: '🗳️', cabinet: '👔', general: '📢',
 };
 
-export function EventCards() {
+export function EventCards({ inline }: { inline?: boolean } = {}) {
   const { gameState } = useGameStore();
   if (!gameState) return null;
 
@@ -23,7 +23,7 @@ export function EventCards() {
   if (!hasContent) return null;
 
   return (
-    <div className="w-72 border-r border-slate-700/50 bg-slate-900/50 overflow-y-auto flex-shrink-0">
+    <div className={inline ? '' : 'w-72 border-r border-slate-700/50 bg-slate-900/50 overflow-y-auto flex-shrink-0'}>
       {/* Active Crises */}
       {gameState.activeSituations.length > 0 && (
         <div className="p-3">

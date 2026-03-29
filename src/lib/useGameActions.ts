@@ -52,6 +52,27 @@ export function useGameActions() {
       dispatch('proposeBillFromLibrary', { templateId }),
     callBillVote: (billId: string) =>
       dispatch('callBillVote', { billId }),
+    // Live vote actions
+    startLiveVote: (billId: string) =>
+      dispatch('startLiveVote', { billId }),
+    lobbyLiveVote: (targetPartyId: string, pcSpent: number, direction: 'support' | 'oppose') =>
+      dispatch('lobbyLiveVote', { targetPartyId, pcSpent, direction }),
+    whipLiveVote: (pcSpent: number) =>
+      dispatch('whipLiveVote', { pcSpent }),
+    campaignLiveVote: (pcSpent: number, direction: 'support' | 'oppose') =>
+      dispatch('campaignLiveVote', { pcSpent, direction }),
+    readyLiveVote: () =>
+      dispatch('readyLiveVote'),
+    setPlayerVote: (vote: 'yes' | 'no' | null) =>
+      dispatch('setPlayerVote', { vote }),
+    finalizeLiveVote: () =>
+      dispatch('finalizeLiveVote'),
+    dismissLiveVote: () =>
+      dispatch('dismissLiveVote'),
+    readyPhase: () =>
+      dispatch('readyPhase'),
+    forceBillVote: (billId: string) =>
+      dispatch('forceBillVote', { billId }),
     endTurnPhase: () => dispatch('endTurnPhase'),
   };
 }

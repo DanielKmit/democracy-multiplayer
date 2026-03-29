@@ -243,6 +243,7 @@ export interface Bill {
   turnProposed: number;           // which turn the bill was proposed
   vetoOverrideVotes?: { yes: number; no: number }; // override attempt if vetoed
   fromTemplate?: string;          // bill library template id (if from library)
+  filibusterTurns?: number;       // turns remaining on filibuster
 }
 
 // ---- Bill Library Template ----
@@ -435,7 +436,16 @@ export type OppositionActionType =
   | 'spin_scandal'
   | 'sign_trade_deal'
   | 'send_foreign_aid'
-  | 'attack_broken_promise';
+  | 'attack_broken_promise'
+  // D4 Opposition Powers
+  | 'call_early_election'
+  | 'block_cabinet'
+  | 'investigate_government'
+  | 'filibuster_bill'
+  | 'propose_alt_budget'
+  | 'media_campaign_against'
+  | 'coalition_poaching'
+  | 'emergency_debate';
 
 export interface OppositionAction {
   type: OppositionActionType;
@@ -453,6 +463,7 @@ export interface OppositionAction {
   targetNationId?: string;
   aidAmount?: number;
   targetPledgeIndex?: number;  // for attack_broken_promise: index into state.pledges
+  targetBotPartyId?: string;   // for coalition_poaching
 }
 
 // Shadow Cabinet
@@ -780,6 +791,27 @@ export const DEFAULT_GAME_SETTINGS: GameSettings = {
   coalitionMechanicsEnabled: true,
 };
 
+// ---- Live Parliament Vote ----
+
+export interface LiveVoteState {
+  billId: string;
+  bill: Bill;
+  /** Per-bot-party vote intention: positive = leaning yes, negative = leaning no */
+  partyIntentions: Record<string, number>;
+  /** PC spent by each player lobbying */
+  lobbySpent: Record<string, number>;
+  /** Which players have clicked "Ready to finalize" */
+  readyPlayers: string[];
+  /** Timestamp when voting started */
+  startedAt: number;
+  /** Explicit player vote choices (overrides intention-based random voting) */
+  playerVotes: Record<string, 'yes' | 'no'>;
+  /** Whether the vote has been finalized */
+  finalized: boolean;
+  /** Final result after finalization */
+  result?: { passed: boolean; votesFor: number; votesAgainst: number; partyVotes: Record<string, { yes: number; no: number }> };
+}
+
 // ---- Game State ----
 
 export interface GameState {
@@ -837,6 +869,7 @@ export interface GameState {
   voteShares: Record<string, number>;  // partyId -> vote % (sums to 100)
   campaignActedThisTurn: Record<string, boolean>;  // playerId -> has acted this campaign turn
   turnActedThisTurn: Record<string, boolean>;      // playerId -> has acted this governing turn (ruling/opp)
+  phaseReady: Record<string, boolean>;             // playerId -> has clicked "Ready" for current phase
   // D4 Features
   pledges: Pledge[];                                // Campaign promises made by players
   voterCynicism: VoterCynicism;                     // Per voter group cynicism (0-100)
@@ -865,6 +898,10 @@ export interface GameState {
   // International relations
   diplomaticRelations: DiplomaticRelation[];
   activeDiplomaticIncident: DiplomaticIncident | null;
+  // Live parliament voting
+  liveVote: LiveVoteState | null;
+  // Track which cabinet appointments were blocked
+  blockedAppointments: MinistryId[];
 }
 
 // ---- Peer Messages ----

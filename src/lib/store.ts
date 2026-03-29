@@ -23,7 +23,7 @@ interface GameStore {
   pendingOppositionActions: OppositionAction[];
 
   // UI state
-  centerView: 'policy_web' | 'map';
+  centerView: 'bills' | 'policy_web' | 'map';
   selectedNode: string | null;
   detailPanelOpen: boolean;
   detailPanelNodeId: string | null;
@@ -37,7 +37,7 @@ interface GameStore {
   setPartyConfig: (config: PartyConfig) => void;
   setGameState: (state: GameState) => void;
   setError: (error: string | null) => void;
-  setCenterView: (view: 'policy_web' | 'map') => void;
+  setCenterView: (view: 'bills' | 'policy_web' | 'map') => void;
   setSelectedNode: (id: string | null) => void;
   setDetailPanel: (nodeId: string | null) => void;
   addPolicyChange: (change: PolicyChange) => void;
@@ -62,7 +62,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   error: null,
   pendingPolicyChanges: [],
   pendingOppositionActions: [],
-  centerView: 'policy_web',
+  centerView: 'bills',
   selectedNode: null,
   detailPanelOpen: false,
   detailPanelNodeId: null,
@@ -124,7 +124,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     error: null,
     pendingPolicyChanges: [],
     pendingOppositionActions: [],
-    centerView: 'policy_web',
+    centerView: 'bills',
     selectedNode: null,
     detailPanelOpen: false,
     detailPanelNodeId: null,
