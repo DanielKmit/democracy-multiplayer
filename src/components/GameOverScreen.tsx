@@ -81,7 +81,7 @@ export function GameOverScreen() {
 
         <div className="space-y-3">
           <div className="text-sm text-slate-500 mb-4">
-            Final: GDP {gameState.simulation.gdpGrowth.toFixed(1)}% | Debt {gameState.budget.debtToGdp.toFixed(0)}% | Approval {gameState.approvalRating}%
+            Final: GDP {gameState.simulation.gdpGrowth.toFixed(1)}% | Debt {gameState.budget.debtToGdp.toFixed(0)}% | Ruling Approval {gameState.rulingApproval ?? 50}%
           </div>
           <a href="/" className="inline-block px-8 py-3 bg-blue-600 hover:bg-blue-500 rounded-lg font-semibold transition-all">
             Play Again

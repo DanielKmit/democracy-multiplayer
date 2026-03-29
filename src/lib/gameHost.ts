@@ -14,6 +14,8 @@ import {
   computeSimulation,
   computeVoterSatisfaction,
   computeApprovalRating,
+  computeAllVoterSatisfaction,
+  computeAllApprovalRatings,
   computePoliticalCapital,
   computeRegionalSatisfaction,
   applyPolicyChanges,
@@ -37,27 +39,53 @@ let onStateChange: ((state: GameState) => void) | null = null;
 
 function recalculate(state: GameState) {
   state.simulation = computeSimulation(state.policies, state.activeEffects);
-  state.budget = calculateBudget(state.policies, state.simulation, state.budget.debtToGdp);
-  state.voterSatisfaction = computeVoterSatisfaction(state.policies, state.simulation, state.activeEffects);
-  state.approvalRating = computeApprovalRating(state.voterSatisfaction, state.activeEffects);
-  state.oppositionVoteShare = 100 - state.approvalRating;
+  state.budget = calculateBudget(state.policies, state.simulation, state.budget.debtTotal ?? 200);
 
-  if (state.players.length >= 2) {
-    state.regionalSatisfaction = computeRegionalSatisfaction(
-      state.policies, state.voterSatisfaction, state.players
-    );
-  }
-
-  // Apply situation effects
+  // Apply situation effects to simulation
   for (const activeSit of state.activeSituations) {
     const sitDef = getSituationById(activeSit.id);
     if (sitDef) {
       for (const [key, val] of Object.entries(sitDef.effects)) {
         const k = key as keyof typeof state.simulation;
         if (state.simulation[k] !== undefined) {
-          (state.simulation as unknown as Record<string, number>)[k] += val * 0.5; // Half effect per turn
+          (state.simulation as unknown as Record<string, number>)[k] += val * 0.5;
         }
       }
+    }
+  }
+
+  // Per-party voter satisfaction
+  if (state.players.length >= 1) {
+    state.voterSatisfaction = computeAllVoterSatisfaction(
+      state.players,
+      state.policies,
+      state.simulation,
+      state.activeEffects,
+      state.ngoAlliances ?? [],
+      state.botParties,
+    );
+
+    // Per-party approval ratings
+    state.approvalRating = computeAllApprovalRatings(state.voterSatisfaction, state.activeEffects);
+
+    // Apply event approval impact to ruling party only
+    const ruling = state.players.find(p => p.role === 'ruling');
+    if (ruling) {
+      for (const effect of state.activeEffects) {
+        if (effect.type === 'event' && effect.data.approvalImpact) {
+          state.approvalRating[ruling.id] = Math.max(0, Math.min(100,
+            (state.approvalRating[ruling.id] ?? 50) + (effect.data.approvalImpact as number)
+          ));
+        }
+      }
+      state.rulingApproval = state.approvalRating[ruling.id] ?? 50;
+    }
+
+    // Regional satisfaction using per-party voter sat
+    if (state.players.length >= 2) {
+      state.regionalSatisfaction = computeRegionalSatisfaction(
+        state.policies, state.voterSatisfaction, state.players
+      );
     }
   }
 
@@ -292,7 +320,7 @@ export function handleAction(playerId: string, action: string, payload?: unknown
       }
 
       advancePhase(gameState); // -> polling
-      addLogEntry(gameState, `📊 Approval: ${gameState.approvalRating}%`, 'info');
+      addLogEntry(gameState, `📊 Ruling Approval: ${gameState.rulingApproval}%`, 'info');
       broadcastState();
       break;
     }
@@ -465,7 +493,7 @@ function handleEndTurnPhase() {
     gameState.pendingOppositionActions = [];
     recalculate(gameState);
     advancePhase(gameState);
-    addLogEntry(gameState, `📊 Approval: ${gameState.approvalRating}%`, 'info');
+    addLogEntry(gameState, `📊 Ruling Approval: ${gameState.rulingApproval}%`, 'info');
     broadcastState();
   } else if (gameState.phase === 'events') {
     gameState.currentEvent = null;

@@ -69,6 +69,20 @@ export interface Player {
 
 // ---- Regions ----
 
+export interface RegionDemographics {
+  populationMillions: number;
+  ageYoung: number;       // % 18-30
+  ageMiddle: number;      // % 30-55
+  ageElderly: number;     // % 55+
+  voterGroupBreakdown: Record<string, number>; // groupId -> % of region
+  avgIncome: 'low' | 'medium' | 'high';
+  baseUnemployment: number;   // base % (affected by policies)
+  universityEducated: number; // %
+  religiousPopulation: number; // %
+  urbanPercent: number;        // % urban (rest is rural)
+  keyIndustry: string;
+}
+
 export interface RegionDefinition {
   id: string;
   name: string;
@@ -80,13 +94,27 @@ export interface RegionDefinition {
   dominantGroups: string[];     // voter group IDs
   characteristics: string;
   keyIssues: string[];
-  // Policy weights - which policies this region cares about most
-  policyWeights: Record<string, number>;  // policyId -> weight multiplier
+  policyWeights: Record<string, number>;
+  demographics: RegionDemographics;
 }
 
 // ---- Policies ----
 
 export type PolicyCategory = 'economy' | 'welfare' | 'society' | 'environment' | 'security' | 'infrastructure';
+
+export const POLICY_LEVELS = ['Off', 'Low', 'Medium', 'High', 'Maximum'] as const;
+export type PolicyLevel = typeof POLICY_LEVELS[number];
+export const POLICY_LEVEL_VALUES: Record<PolicyLevel, number> = { Off: 0, Low: 25, Medium: 50, High: 75, Maximum: 100 };
+export function valueToPolicyLevel(value: number): PolicyLevel {
+  if (value <= 12) return 'Off';
+  if (value <= 37) return 'Low';
+  if (value <= 62) return 'Medium';
+  if (value <= 87) return 'High';
+  return 'Maximum';
+}
+export function policyLevelToValue(level: PolicyLevel): number {
+  return POLICY_LEVEL_VALUES[level];
+}
 
 export interface PolicyDefinition {
   id: string;
@@ -287,8 +315,13 @@ export interface GameEvent {
 export interface BudgetState {
   revenue: number;
   spending: number;
-  deficit: number;
-  debtToGdp: number;
+  interestPayments: number;
+  deficit: number;        // positive = deficit, negative = surplus
+  balance: number;        // revenue - spending - interest (positive = surplus)
+  debtTotal: number;      // absolute debt in billions
+  debtToGdp: number;      // debt as % of GDP
+  creditRating: 'AAA' | 'AA' | 'A' | 'BBB' | 'BB' | 'B' | 'CCC';
+  interestRate: number;   // annual %
   creditDowngrade: boolean;
 }
 
@@ -306,6 +339,7 @@ export interface ActiveEffect {
 export type TurnPhase =
   | 'waiting'
   | 'party_creation'
+  | 'campaigning'        // Pre-first-election campaign phase
   | 'events'
   | 'dilemma'
   | 'ruling'
@@ -314,6 +348,7 @@ export type TurnPhase =
   | 'opposition'
   | 'polling'
   | 'election'
+  | 'coalition_negotiation'  // Post-election coalition building
   | 'government_formation'
   | 'game_over';
 
@@ -336,7 +371,18 @@ export type OppositionActionType =
   | 'coalition_building'
   | 'vote_of_no_confidence'
   | 'lobby_votes'
-  | 'propose_amendment';
+  | 'propose_amendment'
+  | 'table_motion'
+  | 'question_time'
+  | 'propose_counter_bill'
+  | 'rally_protest'
+  | 'leak_scandal'
+  | 'form_ngo_alliance'
+  | 'senate_veto'
+  | 'constitutional_challenge'
+  | 'delay_tactics'
+  | 'campaign_visit'
+  | 'run_ads';
 
 export interface OppositionAction {
   type: OppositionActionType;
@@ -347,6 +393,178 @@ export interface OppositionAction {
   proposedPolicyId?: string;
   proposedValue?: number;
   targetBillId?: string;
+  targetRegionId?: string;
+  topic?: string;
+}
+
+// Shadow Cabinet
+export interface ShadowMinister {
+  ministryId: MinistryId;
+  politicianId: string;
+  effectiveness: number;
+}
+
+// Delayed policy effect
+export interface DelayedPolicy {
+  policyId: string;
+  originalValue: number;
+  newValue: number;
+  turnsRemaining: number;
+}
+
+// Pending motion
+export interface PendingMotion {
+  topic: string;
+  targetSimVar: SimVarKey;
+  turnsRemaining: number;
+}
+
+// NGO Alliance
+export interface NGOAlliance {
+  groupId: string;
+  bonus: number;
+}
+
+// ---- Bot Parties ----
+
+export interface BotParty {
+  id: string;
+  name: string;
+  color: string;
+  leaderName: string;
+  economicAxis: number;   // 0-100
+  socialAxis: number;     // 0-100
+  manifesto: string[];
+  logo: PartyLogo;
+  seats: number;
+  // Policy preferences — same format as voter groups
+  policyPreferences: Record<string, number>;
+  // Which sim vars they care about
+  concerns: Partial<Record<SimVarKey, number>>;
+}
+
+export const BOT_PARTIES: BotParty[] = [
+  {
+    id: 'bot_green',
+    name: 'Green Alliance',
+    color: '#22C55E',
+    leaderName: 'Petra Lindström',
+    economicAxis: 35,
+    socialAxis: 80,
+    manifesto: ['Environmental protection', 'Green energy', 'Social equality'],
+    logo: 'tree',
+    seats: 0,
+    policyPreferences: {
+      env_regulations: 90, renewables: 95, carbon_tax: 85, public_transport: 80,
+      civil_rights: 75, press_freedom: 80, healthcare: 70, education: 70,
+    },
+    concerns: { pollution: -0.9, healthIndex: 0.4, freedomIndex: 0.5 },
+  },
+  {
+    id: 'bot_national',
+    name: 'National Front',
+    color: '#92400E',
+    leaderName: 'Viktor Halvorsen',
+    economicAxis: 60,
+    socialAxis: 15,
+    manifesto: ['National sovereignty', 'Strong military', 'Immigration control'],
+    logo: 'shield',
+    seats: 0,
+    policyPreferences: {
+      military: 85, border_security: 90, intelligence: 75, immigration: 15,
+      police: 75, religious_freedom: 50, gun_control: 25, foreign_aid: 10,
+    },
+    concerns: { nationalSecurity: 0.9, crime: -0.6 },
+  },
+  {
+    id: 'bot_workers',
+    name: "Workers' Union Party",
+    color: '#DC2626',
+    leaderName: 'Margareta Brandt',
+    economicAxis: 20,
+    socialAxis: 50,
+    manifesto: ['Workers rights', 'Universal healthcare', 'Job creation'],
+    logo: 'fist',
+    seats: 0,
+    policyPreferences: {
+      minimum_wage: 85, unemployment_benefits: 80, healthcare: 85, pensions: 80,
+      education: 75, housing_subsidies: 75, income_tax: 55, corporate_tax: 60,
+    },
+    concerns: { unemployment: -0.8, equality: 0.7, healthIndex: 0.4 },
+  },
+  {
+    id: 'bot_freemarket',
+    name: 'Free Market Party',
+    color: '#F59E0B',
+    leaderName: 'Maximilian Kohl',
+    economicAxis: 85,
+    socialAxis: 65,
+    manifesto: ['Lower taxes', 'Free trade', 'Digital innovation'],
+    logo: 'scales',
+    seats: 0,
+    policyPreferences: {
+      corporate_tax: 15, income_tax: 20, trade_openness: 90, tech_research: 85,
+      govt_spending: 20, env_regulations: 25, minimum_wage: 20, press_freedom: 70,
+    },
+    concerns: { gdpGrowth: 0.9, unemployment: -0.3, inflation: -0.4 },
+  },
+];
+
+// ---- Coalition System ----
+
+export interface CoalitionOffer {
+  fromPlayerId: string;
+  toBotPartyId: string;
+  promises: CoalitionPromise[];
+  accepted: boolean;
+  rejected: boolean;
+}
+
+export interface CoalitionPromise {
+  type: 'policy_change';
+  policyId: string;
+  direction: 'increase' | 'decrease';
+  targetLevel: number;   // target policy value
+  description: string;
+}
+
+export interface CoalitionPartner {
+  botPartyId: string;
+  seats: number;
+  promises: CoalitionPromise[];
+  satisfaction: number;  // 0-100, drops if promises broken
+  turnsInCoalition: number;
+}
+
+export interface CoalitionDemand {
+  id: string;
+  fromBotPartyId: string;
+  description: string;
+  policyId: string;
+  targetValue: number;
+  direction: 'increase' | 'decrease';
+  urgency: 'low' | 'medium' | 'high';
+  turnsRemaining: number;
+}
+
+// ---- Campaign Action (pre-election turns) ----
+
+export type CampaignActionType =
+  | 'campaign_rally'
+  | 'media_blitz'
+  | 'voter_promise'
+  | 'target_region'
+  | 'state_position';
+
+export interface CampaignAction {
+  type: CampaignActionType;
+  cost: number;
+  targetRegionId?: string;
+  targetGroupId?: string;
+  targetSimVar?: SimVarKey;
+  position?: 'support' | 'oppose';
+  promisePolicyId?: string;
+  promiseDirection?: 'increase' | 'decrease';
 }
 
 // ---- News Item ----
@@ -403,10 +621,11 @@ export interface GameState {
   policies: Record<string, number>;
   simulation: SimulationState;
   budget: BudgetState;
-  voterSatisfaction: Record<string, number>;
-  regionalSatisfaction: Record<string, Record<string, number>>;  // regionId -> { playerId: satisfaction }
-  approvalRating: number;
-  oppositionVoteShare: number;
+  voterSatisfaction: Record<string, Record<string, number>>;  // partyId -> { groupId: satisfaction }
+  regionalSatisfaction: Record<string, Record<string, number>>;  // regionId -> { partyId: satisfaction }
+  approvalRating: Record<string, number>;  // partyId -> overall approval %
+  // Legacy compat — ruling party's approval for easy access
+  rulingApproval: number;
   parliament: ParliamentState;
   cabinet: CabinetState;
   activeBills: Bill[];
@@ -426,6 +645,25 @@ export interface GameState {
   // Tracking for situations
   consecutiveLowEnvRegulations: number;
   consecutiveHighSpending: number;
+  // Opposition power system
+  shadowCabinet: Record<MinistryId, string | null>;
+  oppositionCredibility: number;
+  delayedPolicies: DelayedPolicy[];
+  ngoAlliances: NGOAlliance[];
+  motionsPending: PendingMotion[];
+  campaignPhase: boolean;
+  questionTimeUsed: boolean;
+  lastTurnPolicyChanges: PolicyChange[];
+  // UI state tracking
+  selectedNodeId: string | null;
+  // Bot parties & coalition
+  botParties: BotParty[];
+  coalitionPartners: CoalitionPartner[];
+  coalitionOffers: CoalitionOffer[];
+  coalitionDemands: CoalitionDemand[];
+  pendingCampaignActions: CampaignAction[];
+  campaignBonuses: Record<string, Record<string, number>>; // playerId -> { regionId/groupId: bonus }
+  isPreElection: boolean;  // true during first 5 turns
 }
 
 // ---- Peer Messages ----
@@ -447,7 +685,11 @@ export interface ClientToServerEvents {
   submitOppositionActions: (actions: OppositionAction[]) => void;
   appointMinister: (ministryId: MinistryId, politicianId: string) => void;
   fireMinister: (ministryId: MinistryId) => void;
+  appointShadowMinister: (ministryId: MinistryId, politicianId: string) => void;
   resolveDilemma: (option: 'a' | 'b') => void;
   endTurnPhase: () => void;
   acknowledgeEvent: () => void;
+  submitCoalitionOffer: (offer: CoalitionOffer) => void;
+  submitCampaignActions: (actions: CampaignAction[]) => void;
+  poachCoalitionPartner: (botPartyId: string) => void;
 }

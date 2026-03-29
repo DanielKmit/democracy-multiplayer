@@ -47,7 +47,9 @@ export function RegionalPanel() {
       {/* Voter Groups */}
       <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mt-4">Voter Groups</h3>
       {VOTER_GROUPS.map(group => {
-        const satisfaction = gameState.voterSatisfaction[group.id] ?? 50;
+        const allPartySats = Object.values(gameState.voterSatisfaction).map(s => s[group.id] ?? 50);
+        const satisfaction = allPartySats.length > 0
+          ? Math.round(allPartySats.reduce((a, b) => a + b, 0) / allPartySats.length) : 50;
         return (
           <div key={group.id} className="flex items-center gap-2">
             <span className="text-[10px] text-slate-400 w-20 truncate">{group.name}</span>

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { GameState, PolicyChange, OppositionAction, PartyConfig, MinistryId } from './engine/types';
+import { GameState, PolicyChange, OppositionAction, PartyConfig, MinistryId, CampaignAction, CoalitionOffer } from './engine/types';
 
 export type ConnectionMode = 'none' | 'host' | 'client';
 
@@ -25,6 +25,8 @@ interface GameStore {
   // UI state
   centerView: 'policy_web' | 'map';
   selectedNode: string | null;
+  detailPanelOpen: boolean;
+  detailPanelNodeId: string | null;
 
   // Actions
   setPlayerId: (id: string) => void;
@@ -37,6 +39,7 @@ interface GameStore {
   setError: (error: string | null) => void;
   setCenterView: (view: 'policy_web' | 'map') => void;
   setSelectedNode: (id: string | null) => void;
+  setDetailPanel: (nodeId: string | null) => void;
   addPolicyChange: (change: PolicyChange) => void;
   removePolicyChange: (policyId: string) => void;
   clearPolicyChanges: () => void;
@@ -61,6 +64,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
   pendingOppositionActions: [],
   centerView: 'policy_web',
   selectedNode: null,
+  detailPanelOpen: false,
+  detailPanelNodeId: null,
 
   setPlayerId: (id) => set({ playerId: id }),
   setPlayerName: (name) => set({ playerName: name }),
@@ -72,6 +77,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   setError: (error) => set({ error }),
   setCenterView: (view) => set({ centerView: view }),
   setSelectedNode: (id) => set({ selectedNode: id }),
+  setDetailPanel: (nodeId) => set({ detailPanelOpen: nodeId !== null, detailPanelNodeId: nodeId }),
 
   addPolicyChange: (change) => set((s) => {
     const existing = s.pendingPolicyChanges.filter(c => c.policyId !== change.policyId);
@@ -120,5 +126,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     pendingOppositionActions: [],
     centerView: 'policy_web',
     selectedNode: null,
+    detailPanelOpen: false,
+    detailPanelNodeId: null,
   }),
 }));

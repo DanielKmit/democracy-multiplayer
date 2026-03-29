@@ -1,163 +1,283 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useGameStore } from '@/lib/store';
-import { REGIONS, REGION_MAP } from '@/lib/engine/regions';
-import { PARTY_COLORS } from '@/lib/engine/types';
+import { REGIONS } from '@/lib/engine/regions';
+import { PARTY_COLORS, RegionDefinition, GameState } from '@/lib/engine/types';
 
-// SVG paths for Novaria's regions — irregular shapes forming a country
+// SVG paths for Novaria's 6 regions — irregular borders for realistic country shape
 const REGION_PATHS: Record<string, string> = {
-  capitalis: 'M 220,180 L 260,160 L 300,165 L 310,190 L 305,220 L 280,240 L 250,235 L 225,215 Z',
-  nordmark: 'M 150,40 L 200,30 L 260,35 L 310,50 L 330,80 L 310,120 L 260,160 L 220,180 L 180,150 L 140,120 L 130,80 Z',
-  sudfeld: 'M 140,280 L 180,260 L 225,215 L 250,235 L 280,240 L 310,260 L 330,300 L 310,340 L 280,360 L 220,370 L 170,350 L 140,320 Z',
-  ostwald: 'M 310,190 L 340,170 L 380,160 L 420,180 L 430,220 L 420,260 L 380,280 L 340,270 L 310,260 L 280,240 L 305,220 Z',
-  westhafen: 'M 60,150 L 100,130 L 130,80 L 140,120 L 180,150 L 220,180 L 225,215 L 180,260 L 140,280 L 100,270 L 70,240 L 50,200 Z',
-  bergland: 'M 310,50 L 360,40 L 410,60 L 440,100 L 430,140 L 420,180 L 380,160 L 340,170 L 310,190 L 305,220 L 280,240 L 250,235 L 225,215 L 220,180 L 260,160 L 310,120 L 330,80 Z',
+  nordmark:   'M 250,50 C 280,30 350,20 420,35 C 470,45 500,60 520,80 L 480,140 L 380,160 L 280,145 L 230,110 Z',
+  westhafen:  'M 100,180 C 80,200 70,260 90,310 L 150,350 L 250,320 L 280,250 L 280,145 L 230,110 L 160,130 Z',
+  capitalis:  'M 280,145 L 380,160 L 480,140 L 500,200 L 480,280 L 380,310 L 280,320 L 250,320 L 280,250 Z',
+  ostwald:    'M 480,140 L 520,80 C 560,100 620,140 650,190 C 670,230 660,280 640,320 L 560,340 L 480,280 L 500,200 Z',
+  sudfeld:    'M 150,350 L 250,320 L 280,320 L 380,310 L 480,280 L 560,340 L 520,420 L 400,460 L 280,450 L 180,410 Z',
+  bergland:   'M 180,410 L 280,450 L 400,460 L 520,420 C 500,480 460,530 420,560 C 380,580 320,590 280,570 C 240,555 200,520 180,480 Z',
 };
 
-// Label positions for each region
+// Label positions (center of each region roughly)
 const LABEL_POS: Record<string, { x: number; y: number }> = {
-  capitalis: { x: 262, y: 200 },
-  nordmark: { x: 230, y: 90 },
-  sudfeld: { x: 240, y: 310 },
-  ostwald: { x: 370, y: 225 },
-  westhafen: { x: 130, y: 200 },
-  bergland: { x: 370, y: 110 },
+  nordmark:  { x: 380, y: 95 },
+  westhafen: { x: 190, y: 240 },
+  capitalis: { x: 380, y: 235 },
+  ostwald:   { x: 570, y: 210 },
+  sudfeld:   { x: 370, y: 385 },
+  bergland:  { x: 350, y: 500 },
 };
+
+function getRegionColor(
+  region: RegionDefinition,
+  gameState: GameState,
+  hoveredId: string | null,
+): string {
+  const lastElection = gameState.electionHistory[gameState.electionHistory.length - 1];
+
+  // If we have election results, color by winner
+  if (lastElection?.regionWinners[region.id]) {
+    const winnerId = lastElection.regionWinners[region.id];
+    const player = gameState.players.find(p => p.id === winnerId);
+    if (player) {
+      return PARTY_COLORS[player.party.partyColor];
+    }
+    // Could be a bot party
+    const bot = gameState.botParties?.find(b => b.id === winnerId);
+    if (bot) return bot.color;
+  }
+
+  // Before elections: color by ruling party satisfaction (greenish = good, reddish = bad)
+  const ruling = gameState.players.find(p => p.role === 'ruling');
+  if (ruling) {
+    const regSat = gameState.regionalSatisfaction[region.id]?.[ruling.id] ?? 50;
+    if (regSat > 60) return '#22C55E';
+    if (regSat > 45) return '#3B82F6';
+    if (regSat > 35) return '#EAB308';
+    return '#EF4444';
+  }
+
+  return '#475569';
+}
+
+interface TooltipData {
+  region: RegionDefinition;
+  x: number;
+  y: number;
+}
 
 export function NovariMap() {
-  const { gameState } = useGameStore();
-  const [hoveredRegion, setHoveredRegion] = useState<string | null>(null);
-  const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
+  const { gameState, playerId } = useGameStore();
+  const [hovered, setHovered] = useState<string | null>(null);
+  const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
+
+  const selected = useMemo(() => {
+    if (!selectedRegion) return null;
+    return REGIONS.find(r => r.id === selectedRegion) ?? null;
+  }, [selectedRegion]);
 
   if (!gameState) return null;
 
-  const lastElection = gameState.electionHistory[gameState.electionHistory.length - 1];
-
-  const getRegionColor = (regionId: string): string => {
-    if (lastElection) {
-      const winnerId = lastElection.regionWinners[regionId];
-      const winner = gameState.players.find(p => p.id === winnerId);
-      if (winner) return PARTY_COLORS[winner.party.partyColor];
-    }
-    // Default: neutral
-    return '#475569';
-  };
-
-  const hoveredRegionData = hoveredRegion ? REGION_MAP.get(hoveredRegion) : null;
-
   return (
-    <div className="relative w-full h-full flex items-center justify-center">
-      <svg
-        viewBox="30 20 430 370"
-        className="w-full h-full max-h-[500px]"
-        style={{ filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.3))' }}
-      >
-        {/* Water background */}
-        <rect x="30" y="20" width="430" height="370" fill="#0f172a" rx="8" />
+    <div className="h-full flex">
+      {/* Map */}
+      <div className="flex-1 flex items-center justify-center p-4">
+        <svg viewBox="0 0 750 620" className="w-full h-full max-h-[560px]">
+          <defs>
+            <filter id="glow">
+              <feGaussianBlur stdDeviation="3" result="blur" />
+              <feMerge>
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+          </defs>
 
-        {/* Region polygons */}
-        {REGIONS.map(region => {
-          const path = REGION_PATHS[region.id];
-          const isHovered = hoveredRegion === region.id;
-          const color = getRegionColor(region.id);
+          {REGIONS.map(region => {
+            const path = REGION_PATHS[region.id];
+            if (!path) return null;
+            const color = getRegionColor(region, gameState, hovered);
+            const isHovered = hovered === region.id;
+            const isSelected = selectedRegion === region.id;
+            const label = LABEL_POS[region.id];
 
-          return (
-            <g key={region.id}>
-              <path
-                d={path}
-                fill={color}
-                fillOpacity={isHovered ? 0.9 : 0.6}
-                stroke={isHovered ? '#fff' : '#64748b'}
-                strokeWidth={isHovered ? 2.5 : 1}
-                className="cursor-pointer transition-all duration-200"
-                onMouseEnter={(e) => {
-                  setHoveredRegion(region.id);
-                  setTooltipPos({ x: e.clientX, y: e.clientY });
-                }}
-                onMouseLeave={() => setHoveredRegion(null)}
-                onMouseMove={(e) => setTooltipPos({ x: e.clientX, y: e.clientY })}
-              />
-              {/* Region label */}
-              <text
-                x={LABEL_POS[region.id].x}
-                y={LABEL_POS[region.id].y}
-                textAnchor="middle"
-                fill="white"
-                fontSize="11"
-                fontWeight="bold"
-                className="pointer-events-none select-none"
-                style={{ textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}
+            return (
+              <g key={region.id}
+                className="cursor-pointer"
+                onMouseEnter={() => setHovered(region.id)}
+                onMouseLeave={() => setHovered(null)}
+                onClick={() => setSelectedRegion(selectedRegion === region.id ? null : region.id)}
               >
-                {region.name}
-              </text>
-              <text
-                x={LABEL_POS[region.id].x}
-                y={LABEL_POS[region.id].y + 14}
-                textAnchor="middle"
-                fill="#94a3b8"
-                fontSize="9"
-                className="pointer-events-none select-none"
-              >
-                {region.seats} seats
-              </text>
-            </g>
-          );
-        })}
+                <path
+                  d={path}
+                  fill={color}
+                  fillOpacity={isHovered || isSelected ? 0.5 : 0.25}
+                  stroke={isSelected ? '#fff' : isHovered ? '#94a3b8' : '#334155'}
+                  strokeWidth={isSelected ? 2.5 : isHovered ? 2 : 1.2}
+                  className="transition-all duration-200"
+                  filter={isSelected ? 'url(#glow)' : undefined}
+                />
+                {label && (
+                  <>
+                    <text x={label.x} y={label.y - 6} textAnchor="middle"
+                      fill={isHovered || isSelected ? '#f1f5f9' : '#94a3b8'}
+                      fontSize="13" fontWeight="600" className="pointer-events-none select-none">
+                      {region.name}
+                    </text>
+                    <text x={label.x} y={label.y + 10} textAnchor="middle"
+                      fill="#64748b" fontSize="9" className="pointer-events-none select-none">
+                      {region.seats} seats • {(region.populationShare * 100).toFixed(0)}%
+                    </text>
+                  </>
+                )}
+              </g>
+            );
+          })}
+        </svg>
+      </div>
 
-        {/* Country name */}
-        <text x="240" y="395" textAnchor="middle" fill="#64748b" fontSize="10" fontStyle="italic">
-          Republic of Novaria
-        </text>
-      </svg>
+      {/* Region detail panel */}
+      {selected && (
+        <div className="w-80 border-l border-slate-700/50 bg-slate-900/95 overflow-y-auto animate-slide-in-right flex-shrink-0">
+          <div className="p-4 border-b border-slate-700/50 flex items-center justify-between">
+            <h3 className="font-bold text-slate-200">{selected.name}</h3>
+            <button onClick={() => setSelectedRegion(null)}
+              className="text-slate-500 hover:text-slate-300">✕</button>
+          </div>
 
-      {/* Tooltip */}
-      {hoveredRegion && hoveredRegionData && (
-        <div
-          className="fixed z-50 bg-slate-800 border border-slate-600 rounded-lg p-3 pointer-events-none shadow-xl"
-          style={{ left: tooltipPos.x + 15, top: tooltipPos.y - 10 }}
-        >
-          <h4 className="font-bold text-sm mb-1">{hoveredRegionData.name}</h4>
-          <p className="text-xs text-slate-400 mb-2">{hoveredRegionData.description}</p>
-          <div className="text-xs space-y-1">
-            <div className="flex justify-between gap-4">
-              <span className="text-slate-500">Population:</span>
-              <span>{(hoveredRegionData.populationShare * 100).toFixed(0)}%</span>
+          <div className="p-4 space-y-4">
+            <p className="text-xs text-slate-400">{selected.description}</p>
+
+            {/* Key stats */}
+            <div className="grid grid-cols-2 gap-2">
+              <StatBox label="Population" value={`${selected.demographics.populationMillions}M`} />
+              <StatBox label="Seats" value={`${selected.seats}`} />
+              <StatBox label="Income" value={selected.demographics.avgIncome} />
+              <StatBox label="Unemployment" value={`${selected.demographics.baseUnemployment}%`} />
+              <StatBox label="University" value={`${selected.demographics.universityEducated}%`} />
+              <StatBox label="Urban" value={`${selected.demographics.urbanPercent}%`} />
             </div>
-            <div className="flex justify-between gap-4">
-              <span className="text-slate-500">Seats:</span>
-              <span>{hoveredRegionData.seats}</span>
+
+            {/* Key industry */}
+            <div className="p-2 bg-slate-800/50 rounded-lg">
+              <div className="text-[9px] text-slate-500 uppercase">Key Industry</div>
+              <div className="text-xs text-slate-300">{selected.demographics.keyIndustry}</div>
             </div>
-            <div className="flex justify-between gap-4">
-              <span className="text-slate-500">Lean:</span>
-              <span>
-                {hoveredRegionData.economicLean < 45 ? 'Left' : hoveredRegionData.economicLean > 55 ? 'Right' : 'Center'}
-                {' / '}
-                {hoveredRegionData.socialLean < 45 ? 'Auth' : hoveredRegionData.socialLean > 55 ? 'Liberal' : 'Moderate'}
-              </span>
+
+            {/* Age distribution */}
+            <div>
+              <div className="text-[9px] text-slate-500 uppercase mb-1">Age Distribution</div>
+              <div className="flex h-4 rounded-full overflow-hidden">
+                <div style={{ width: `${selected.demographics.ageYoung}%` }}
+                  className="bg-cyan-500" title={`Young: ${selected.demographics.ageYoung}%`} />
+                <div style={{ width: `${selected.demographics.ageMiddle}%` }}
+                  className="bg-blue-500" title={`Middle: ${selected.demographics.ageMiddle}%`} />
+                <div style={{ width: `${selected.demographics.ageElderly}%` }}
+                  className="bg-purple-500" title={`Elderly: ${selected.demographics.ageElderly}%`} />
+              </div>
+              <div className="flex justify-between text-[9px] text-slate-500 mt-0.5">
+                <span>Young {selected.demographics.ageYoung}%</span>
+                <span>Middle {selected.demographics.ageMiddle}%</span>
+                <span>Elderly {selected.demographics.ageElderly}%</span>
+              </div>
             </div>
-            <div className="text-slate-500 mt-1">Key issues:</div>
-            <div className="flex flex-wrap gap-1">
-              {hoveredRegionData.keyIssues.map(issue => (
-                <span key={issue} className="px-1.5 py-0.5 bg-slate-700 rounded text-[10px]">{issue}</span>
-              ))}
+
+            {/* Voter group breakdown */}
+            <div>
+              <div className="text-[9px] text-slate-500 uppercase mb-1.5">Voter Groups</div>
+              <div className="space-y-1">
+                {Object.entries(selected.demographics.voterGroupBreakdown)
+                  .sort(([, a], [, b]) => b - a)
+                  .map(([groupId, pct]) => (
+                    <div key={groupId} className="flex items-center gap-2">
+                      <span className="text-[10px] text-slate-400 w-24 truncate capitalize">
+                        {groupId.replace(/_/g, ' ')}
+                      </span>
+                      <div className="flex-1 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                        <div className="h-full bg-blue-500 rounded-full" style={{ width: `${pct}%` }} />
+                      </div>
+                      <span className="text-[10px] text-slate-500 w-8 text-right">{pct}%</span>
+                    </div>
+                  ))}
+              </div>
             </div>
-            {/* Regional satisfaction */}
-            {gameState.players.map(player => {
-              const sat = gameState.regionalSatisfaction[hoveredRegion]?.[player.id] ?? 50;
-              return (
-                <div key={player.id} className="flex items-center gap-2 mt-1">
-                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: PARTY_COLORS[player.party.partyColor] }} />
-                  <span className="text-slate-400">{player.party.partyName}:</span>
-                  <span className={sat > 55 ? 'text-green-400' : sat < 45 ? 'text-red-400' : 'text-yellow-400'}>
-                    {sat}%
+
+            {/* Party satisfaction */}
+            <div>
+              <div className="text-[9px] text-slate-500 uppercase mb-1.5">Party Support</div>
+              <div className="space-y-1.5">
+                {gameState.players.map(player => {
+                  const sat = gameState.regionalSatisfaction[selected.id]?.[player.id] ?? 50;
+                  return (
+                    <div key={player.id} className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: PARTY_COLORS[player.party.partyColor] }} />
+                      <span className="text-[10px] text-slate-300 w-24 truncate">{player.party.partyName}</span>
+                      <div className="flex-1 h-2 bg-slate-700 rounded-full overflow-hidden">
+                        <div className="h-full rounded-full transition-all"
+                          style={{ width: `${sat}%`, backgroundColor: PARTY_COLORS[player.party.partyColor], opacity: 0.7 }} />
+                      </div>
+                      <span className="text-[10px] text-slate-400 w-8 text-right">{sat}%</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Key issues */}
+            <div>
+              <div className="text-[9px] text-slate-500 uppercase mb-1">Key Issues</div>
+              <div className="flex flex-wrap gap-1">
+                {selected.keyIssues.map(issue => (
+                  <span key={issue} className="text-[10px] px-2 py-0.5 bg-slate-800 border border-slate-700 rounded-full text-slate-400">
+                    {issue}
                   </span>
-                </div>
-              );
-            })}
+                ))}
+              </div>
+            </div>
+
+            {/* Last election result */}
+            {gameState.electionHistory.length > 0 && (
+              <div>
+                <div className="text-[9px] text-slate-500 uppercase mb-1">Last Election</div>
+                {(() => {
+                  const last = gameState.electionHistory[gameState.electionHistory.length - 1];
+                  const seats = last.seatResults[selected.id];
+                  if (!seats) return <span className="text-[10px] text-slate-500">No data</span>;
+                  return (
+                    <div className="space-y-1">
+                      {Object.entries(seats).sort(([, a], [, b]) => b - a).map(([pid, s]) => {
+                        const player = gameState.players.find(p => p.id === pid);
+                        return (
+                          <div key={pid} className="flex items-center justify-between text-xs">
+                            <span style={{ color: player ? PARTY_COLORS[player.party.partyColor] : '#666' }}>
+                              {player?.party.partyName ?? pid}
+                            </span>
+                            <span className="text-slate-400">{s} seats</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+
+            {/* Religious */}
+            {selected.demographics.religiousPopulation > 30 && (
+              <div className="p-2 bg-purple-950/20 border border-purple-800/30 rounded-lg text-xs text-purple-300">
+                ⛪ {selected.demographics.religiousPopulation}% religious population — sensitive to social policy
+              </div>
+            )}
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function StatBox({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="p-2 bg-slate-800/50 rounded-lg">
+      <div className="text-[9px] text-slate-500 uppercase">{label}</div>
+      <div className="text-xs font-bold text-slate-200 capitalize">{value}</div>
     </div>
   );
 }

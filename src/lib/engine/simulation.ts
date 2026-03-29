@@ -15,6 +15,16 @@ import {
   TurnSnapshot,
   NewsItem,
   Bill,
+  DelayedPolicy,
+  PendingMotion,
+  NGOAlliance,
+  BOT_PARTIES,
+  BotParty,
+  CoalitionPartner,
+  CoalitionOffer,
+  CoalitionDemand,
+  CoalitionPromise,
+  CampaignAction,
 } from './types';
 import { POLICIES, POLICY_MAP } from './policies';
 import { VOTER_GROUPS } from './voters';
@@ -96,29 +106,45 @@ export function computeSimulation(policyValues: Record<string, number>, activeEf
   return sim;
 }
 
-// ---- Voter Satisfaction ----
+// ---- Voter Satisfaction (PER-PARTY) ----
 
-export function computeVoterSatisfaction(
+/**
+ * Compute voter satisfaction for a SINGLE party.
+ * Factors:
+ * 1. How well current policies align with this group's preferences
+ *    → Only matters for RULING party (they set the policies)
+ *    → For opposition: based on party ideology alignment + campaign bonuses
+ * 2. Simulation variable concerns (shared — everyone sees the economy)
+ * 3. Active effects (campaigns, coalition locks, media attacks)
+ * 4. Ideological alignment between party and voter group
+ */
+function computeSinglePartySatisfaction(
+  partyId: string,
+  party: { economicAxis: number; socialAxis: number },
+  isRuling: boolean,
   policyValues: Record<string, number>,
   simulation: SimulationState,
-  activeEffects: ActiveEffect[]
+  activeEffects: ActiveEffect[],
+  ngoAlliances: NGOAlliance[],
 ): Record<string, number> {
   const satisfaction: Record<string, number> = {};
 
   for (const group of VOTER_GROUPS) {
     let score = 50;
 
-    // Simulation variable concerns
+    // 1. Simulation variable concerns (everyone affected by reality)
     for (const [varKey, weight] of Object.entries(group.concerns)) {
       const simVal = simulation[varKey as SimVarKey];
-      if (weight > 0) {
-        score += (simVal - 50) * weight * 0.3;
+      if (weight! > 0) {
+        // Positive concern: higher is better (e.g., gdpGrowth, healthIndex)
+        score += (simVal - 50) * weight! * 0.25;
       } else {
-        score += (50 - simVal) * Math.abs(weight) * 0.3;
+        // Negative concern: lower is better (e.g., unemployment, crime)
+        score += (50 - simVal) * Math.abs(weight!) * 0.25;
       }
     }
 
-    // Policy preferences
+    // 2. Policy alignment — stronger for ruling party (they own the policies)
     let policyScore = 0;
     let policyCount = 0;
     for (const [policyId, idealValue] of Object.entries(group.policyPreferences)) {
@@ -128,22 +154,80 @@ export function computeVoterSatisfaction(
       policyCount++;
     }
     if (policyCount > 0) {
-      score += ((policyScore / policyCount) - 0.5) * 30;
+      const alignment = ((policyScore / policyCount) - 0.5) * 2; // -1 to +1
+      // Ruling party gets full blame/credit for policy alignment
+      // Opposition gets partial — voters know who's in charge
+      const weight = isRuling ? 20 : 5;
+      score += alignment * weight;
     }
 
-    // Effects
-    for (const effect of activeEffects) {
-      if (effect.type === 'coalition' && effect.data.groupId === group.id) {
-        score -= 10;
+    // 3. Ideological alignment between party and voter group
+    // Infer group's ideology from their policy preferences
+    const econPolicies = ['income_tax', 'corporate_tax', 'minimum_wage', 'govt_spending'];
+    const socialPolicies = ['civil_rights', 'press_freedom', 'immigration', 'drug_policy'];
+    let groupEcon = 50;
+    let groupSocial = 50;
+    let econCount = 0;
+    let socialCount = 0;
+    for (const [pid, val] of Object.entries(group.policyPreferences)) {
+      if (econPolicies.includes(pid)) {
+        // High tax preference = left-wing (low econ axis)
+        if (pid === 'income_tax' || pid === 'corporate_tax') {
+          groupEcon += (val - 50) * -0.02; // High tax pref → low econ
+        } else {
+          groupEcon += (val - 50) * 0.02;
+        }
+        econCount++;
       }
-      if (effect.type === 'media_attack') {
+      if (socialPolicies.includes(pid)) {
+        groupSocial += (val - 50) * 0.02; // High pref → more liberal
+        socialCount++;
+      }
+    }
+    if (econCount > 0) groupEcon = clamp(groupEcon, 0, 100);
+    if (socialCount > 0) groupSocial = clamp(groupSocial, 0, 100);
+
+    const econDiff = Math.abs(party.economicAxis - groupEcon);
+    const socialDiff = Math.abs(party.socialAxis - groupSocial);
+    // Ideology match: max +10, mismatch: down to -10
+    const ideoScore = ((200 - econDiff - socialDiff) / 200) * 20 - 10;
+    score += ideoScore;
+
+    // 4. Active effects (targeted at this party)
+    for (const effect of activeEffects) {
+      // Campaign targeting this group FOR this party
+      if (effect.data.type === 'campaign' && effect.data.groupId === group.id) {
+        // Effect.id contains party info or we just give bonus to opposition
+        score += (effect.data.bonus as number ?? 5) * (isRuling ? 0.2 : 0.8);
+      }
+      // Rally in region where this group is dominant
+      if (effect.data.type === 'rally' && !isRuling) {
+        score += (effect.data.bonus as number ?? 3) * 0.3;
+      }
+      // Coalition lock — opposition locked this group
+      if (effect.type === 'coalition' && effect.data.groupId === group.id) {
+        if (!isRuling) score += 5;
+        else score -= 5;
+      }
+      // Media attack — amplifies negative stat perception against ruling party
+      if (effect.type === 'media_attack' && effect.data.targetSimVar && isRuling) {
         const targetVar = effect.data.targetSimVar as SimVarKey;
         if (group.concerns[targetVar]) {
           const simVal = simulation[targetVar];
           const weight = group.concerns[targetVar]!;
           if (weight < 0) {
-            score -= (simVal - 50) * Math.abs(weight) * 0.15;
+            // Media amplifies negative perception
+            score -= Math.abs((simVal - 50) * weight * 0.15);
           }
+        }
+      }
+    }
+
+    // 5. NGO alliances (opposition only)
+    if (!isRuling) {
+      for (const alliance of ngoAlliances) {
+        if (alliance.groupId === group.id) {
+          score += alliance.bonus;
         }
       }
     }
@@ -154,11 +238,89 @@ export function computeVoterSatisfaction(
   return satisfaction;
 }
 
-// ---- Regional Satisfaction ----
+/**
+ * Compute voter satisfaction for ALL parties (both human + bot).
+ */
+export function computeAllVoterSatisfaction(
+  players: Player[],
+  policyValues: Record<string, number>,
+  simulation: SimulationState,
+  activeEffects: ActiveEffect[],
+  ngoAlliances: NGOAlliance[],
+  botParties?: BotParty[],
+): Record<string, Record<string, number>> {
+  const allSatisfaction: Record<string, Record<string, number>> = {};
 
+  for (const player of players) {
+    allSatisfaction[player.id] = computeSinglePartySatisfaction(
+      player.id,
+      { economicAxis: player.party.economicAxis, socialAxis: player.party.socialAxis },
+      player.role === 'ruling',
+      policyValues,
+      simulation,
+      activeEffects,
+      player.role === 'ruling' ? [] : ngoAlliances,
+    );
+  }
+
+  // Bot parties
+  for (const bot of (botParties ?? [])) {
+    allSatisfaction[bot.id] = computeSinglePartySatisfaction(
+      bot.id,
+      { economicAxis: bot.economicAxis, socialAxis: bot.socialAxis },
+      false, // bots are never ruling
+      policyValues,
+      simulation,
+      [],
+      [],
+    );
+  }
+
+  return allSatisfaction;
+}
+
+/**
+ * Legacy compat wrapper — returns ruling party's satisfaction only.
+ * Used by old code that expects single Record<string, number>.
+ */
+export function computeVoterSatisfaction(
+  policyValues: Record<string, number>,
+  simulation: SimulationState,
+  activeEffects: ActiveEffect[]
+): Record<string, number> {
+  // Fallback for initial creation (no players yet)
+  const fakeSat: Record<string, number> = {};
+  for (const group of VOTER_GROUPS) {
+    let score = 50;
+    for (const [varKey, weight] of Object.entries(group.concerns)) {
+      const simVal = simulation[varKey as SimVarKey];
+      if (weight! > 0) score += (simVal - 50) * weight! * 0.25;
+      else score += (50 - simVal) * Math.abs(weight!) * 0.25;
+    }
+    let policyScore = 0;
+    let policyCount = 0;
+    for (const [policyId, idealValue] of Object.entries(group.policyPreferences)) {
+      const currentValue = policyValues[policyId] ?? 50;
+      const distance = Math.abs(currentValue - idealValue);
+      policyScore += (100 - distance) / 100;
+      policyCount++;
+    }
+    if (policyCount > 0) {
+      score += ((policyScore / policyCount) - 0.5) * 20;
+    }
+    fakeSat[group.id] = clamp(Math.round(score), 0, 100);
+  }
+  return fakeSat;
+}
+
+// ---- Regional Satisfaction (per-party) ----
+
+/**
+ * Compute regional satisfaction using PER-PARTY voter satisfaction.
+ */
 export function computeRegionalSatisfaction(
   policyValues: Record<string, number>,
-  voterSatisfaction: Record<string, number>,
+  allVoterSatisfaction: Record<string, Record<string, number>>,
   players: Player[]
 ): Record<string, Record<string, number>> {
   const regional: Record<string, Record<string, number>> = {};
@@ -167,12 +329,13 @@ export function computeRegionalSatisfaction(
     regional[region.id] = {};
 
     for (const player of players) {
+      const partySat = allVoterSatisfaction[player.id] ?? {};
       let regionScore = 0;
       let totalWeight = 0;
 
-      // Base from voter groups present in region
+      // Base from voter groups in this region — using THIS PARTY's satisfaction
       for (const groupId of region.dominantGroups) {
-        const groupSat = voterSatisfaction[groupId] ?? 50;
+        const groupSat = partySat[groupId] ?? 50;
         regionScore += groupSat;
         totalWeight += 1;
       }
@@ -210,8 +373,33 @@ export function computeRegionalSatisfaction(
   return regional;
 }
 
-// ---- Approval Rating ----
+// ---- Approval Rating (per-party) ----
 
+/**
+ * Compute approval for ALL parties from their per-party voter satisfaction.
+ */
+export function computeAllApprovalRatings(
+  allVoterSatisfaction: Record<string, Record<string, number>>,
+  activeEffects: ActiveEffect[]
+): Record<string, number> {
+  const ratings: Record<string, number> = {};
+
+  for (const [partyId, groupSats] of Object.entries(allVoterSatisfaction)) {
+    let approval = 0;
+    for (const group of VOTER_GROUPS) {
+      approval += (groupSats[group.id] ?? 50) * group.populationShare;
+    }
+    // Event impacts only affect ruling party
+    // (handled at caller level — we don't know ruling party here)
+    ratings[partyId] = clamp(Math.round(approval), 0, 100);
+  }
+
+  return ratings;
+}
+
+/**
+ * Legacy wrapper — single-party approval from flat satisfaction map.
+ */
 export function computeApprovalRating(
   voterSatisfaction: Record<string, number>,
   activeEffects: ActiveEffect[]
@@ -220,13 +408,11 @@ export function computeApprovalRating(
   for (const group of VOTER_GROUPS) {
     approval += (voterSatisfaction[group.id] ?? 50) * group.populationShare;
   }
-
   for (const effect of activeEffects) {
     if (effect.type === 'event' && effect.data.approvalImpact) {
       approval += effect.data.approvalImpact as number;
     }
   }
-
   return clamp(Math.round(approval), 0, 100);
 }
 
@@ -234,14 +420,14 @@ export function computeApprovalRating(
 
 export function computePoliticalCapital(
   player: Player,
-  approvalRating: number,
-  oppositionVoteShare: number,
+  partyApproval: number,
+  rulingApproval: number,
   cabinet?: CabinetState
 ): number {
   if (player.role === 'ruling') {
     let pc = 6;
-    if (approvalRating > 60) pc += 1;
-    if (approvalRating < 30) pc -= 1;
+    if (partyApproval > 60) pc += 1;
+    if (partyApproval < 30) pc -= 1;
 
     // Cabinet competence bonus
     if (cabinet) {
@@ -266,8 +452,10 @@ export function computePoliticalCapital(
     return Math.max(1, pc);
   } else {
     let pc = 4;
-    if (approvalRating < 40) pc += 1;
-    if (oppositionVoteShare > 35) pc += 1;
+    // Opposition gets more PC when ruling party is unpopular
+    if (rulingApproval < 40) pc += 1;
+    // And when their own support is strong
+    if (partyApproval > 35) pc += 1;
     return Math.max(1, pc);
   }
 }
@@ -394,7 +582,12 @@ export function createInitialGameState(roomId: string): GameState {
   const simulation = computeSimulation(policies, []);
   const voterSatisfaction = computeVoterSatisfaction(policies, simulation, []);
   const approvalRating = computeApprovalRating(voterSatisfaction, []);
-  const budget = calculateBudget(policies, simulation, 60);
+  // Per-party versions will be initialized when players join
+  const perPartyVoterSat: Record<string, Record<string, number>> = {};
+  const perPartyApproval: Record<string, number> = {};
+  // Starting debt: 45% of GDP → ~200B (reasonable starting point)
+  const startingDebt = 450 * 0.45;
+  const budget = calculateBudget(policies, simulation, startingDebt);
 
   return {
     roomId,
@@ -405,10 +598,10 @@ export function createInitialGameState(roomId: string): GameState {
     policies,
     simulation,
     budget,
-    voterSatisfaction,
+    voterSatisfaction: perPartyVoterSat,
     regionalSatisfaction: {},
-    approvalRating,
-    oppositionVoteShare: 100 - approvalRating,
+    approvalRating: perPartyApproval,
+    rulingApproval: approvalRating,
     parliament: { seats: [], seatsByParty: {}, coalitionPartner: null, speakerId: null },
     cabinet: { ministers: { finance: null, interior: null, defense: null, health: null, education: null, foreign: null, environment: null, justice: null }, availablePool: getInitialPoliticianPool() },
     activeBills: [],
@@ -427,6 +620,22 @@ export function createInitialGameState(roomId: string): GameState {
     turnsUntilElection: 8,
     consecutiveLowEnvRegulations: 0,
     consecutiveHighSpending: 0,
+    shadowCabinet: { finance: null, interior: null, defense: null, health: null, education: null, foreign: null, environment: null, justice: null },
+    oppositionCredibility: 80,
+    delayedPolicies: [],
+    ngoAlliances: [],
+    motionsPending: [],
+    campaignPhase: false,
+    questionTimeUsed: false,
+    lastTurnPolicyChanges: [],
+    selectedNodeId: null,
+    botParties: BOT_PARTIES.map(bp => ({ ...bp })),
+    coalitionPartners: [],
+    coalitionOffers: [],
+    coalitionDemands: [],
+    pendingCampaignActions: [],
+    campaignBonuses: {},
+    isPreElection: true,
   };
 }
 
@@ -462,6 +671,7 @@ export function applyPolicyChanges(state: GameState, changes: PolicyChange[]): s
   }
 
   ruling.politicalCapital -= totalCost;
+  state.lastTurnPolicyChanges = changes.filter(c => !state.filibusteredPolicies.includes(c.policyId));
   return log;
 }
 
@@ -516,7 +726,7 @@ export function applyOppositionActions(state: GameState, actions: OppositionActi
               }
             }
             if (approvalCount > VOTER_GROUPS.length / 2) {
-              state.approvalRating = Math.max(0, state.approvalRating - 3);
+              modifyRulingApproval(state, -3);
               log.push(`Proposed alternative for ${policy.name} is popular! Ruling approval -3%`);
             } else {
               log.push(`Proposed alternative for ${policy.name} fell flat.`);
@@ -551,7 +761,7 @@ export function applyOppositionActions(state: GameState, actions: OppositionActi
         break;
       }
       case 'vote_of_no_confidence': {
-        if (state.approvalRating < 25) {
+        if (getRulingApproval(state) < 25) {
           log.push('Vote of No Confidence PASSED! Emergency election triggered!');
           state.turnsUntilElection = 0;
         } else {
@@ -566,7 +776,6 @@ export function applyOppositionActions(state: GameState, actions: OppositionActi
         break;
       }
       case 'lobby_votes': {
-        // Reduce loyalty of ruling seats for next bill vote
         log.push('Lobbying parliament members to rebel on next vote.');
         break;
       }
@@ -576,11 +785,218 @@ export function applyOppositionActions(state: GameState, actions: OppositionActi
         }
         break;
       }
+      case 'table_motion': {
+        if (action.targetSimVar && action.topic) {
+          state.motionsPending.push({
+            topic: action.topic,
+            targetSimVar: action.targetSimVar,
+            turnsRemaining: 1,
+          });
+          log.push(`📋 Motion tabled: "${action.topic}" — Government must respond or lose approval`);
+        }
+        break;
+      }
+      case 'question_time': {
+        if (action.targetSimVar && !state.questionTimeUsed) {
+          state.questionTimeUsed = true;
+          const simVal = state.simulation[action.targetSimVar];
+          const varName = action.targetSimVar.replace(/([A-Z])/g, ' $1').toLowerCase();
+          if (simVal < 40 || (action.targetSimVar === 'crime' && simVal > 60) ||
+              (action.targetSimVar === 'unemployment' && simVal > 10) ||
+              (action.targetSimVar === 'pollution' && simVal > 60) ||
+              (action.targetSimVar === 'corruption' && simVal > 50)) {
+            const impact = 2 + Math.floor(Math.random() * 4);
+            modifyRulingApproval(state, -impact);
+            log.push(`🎤 Question Time: Grilled PM on ${varName} — Ruling approval -${impact}%!`);
+          } else {
+            log.push(`🎤 Question Time: PM handled questions on ${varName} well. No impact.`);
+          }
+        }
+        break;
+      }
+      case 'propose_counter_bill': {
+        if (action.proposedPolicyId && action.proposedValue !== undefined) {
+          const policy = POLICY_MAP.get(action.proposedPolicyId);
+          if (policy) {
+            let oppSupport = 0;
+            let rulSupport = 0;
+            for (const group of VOTER_GROUPS) {
+              const ideal = group.policyPreferences[action.proposedPolicyId];
+              if (ideal !== undefined) {
+                const currentDist = Math.abs(state.policies[action.proposedPolicyId] - ideal);
+                const proposedDist = Math.abs(action.proposedValue - ideal);
+                if (proposedDist < currentDist) oppSupport++;
+                else rulSupport++;
+              }
+            }
+            if (oppSupport > rulSupport) {
+              modifyRulingApproval(state, -5);
+              log.push(`📜 Counter-Bill for ${policy.name} wins public support! Ruling approval -5%`);
+            } else {
+              log.push(`📜 Counter-Bill for ${policy.name} rejected — government's position preferred.`);
+            }
+          }
+        }
+        break;
+      }
+      case 'rally_protest': {
+        if (action.targetRegionId) {
+          const policeFunding = state.policies.police ?? 50;
+          const region = REGIONS.find(r => r.id === action.targetRegionId);
+          if (policeFunding > 65) {
+            state.oppositionCredibility = Math.max(0, state.oppositionCredibility - 5);
+            log.push(`✊ Rally in ${region?.name ?? action.targetRegionId} SUPPRESSED by police! -5 credibility`);
+            // Small bonus still
+            state.activeEffects.push({
+              type: 'media_attack',
+              id: `rally_${Date.now()}`,
+              turnsRemaining: 2,
+              data: { type: 'rally', regionId: action.targetRegionId, bonus: 3 },
+            });
+          } else {
+            state.activeEffects.push({
+              type: 'media_attack',
+              id: `rally_${Date.now()}`,
+              turnsRemaining: 2,
+              data: { type: 'rally', regionId: action.targetRegionId, bonus: 10 },
+            });
+            log.push(`✊ Rally in ${region?.name ?? action.targetRegionId}! +10% opposition support for 2 turns`);
+          }
+        }
+        break;
+      }
+      case 'leak_scandal': {
+        const corruption = state.simulation.corruption;
+        const intel = state.policies.intelligence ?? 30;
+        const pressFreedom = state.policies.press_freedom ?? 65;
+        if (corruption > 30 || intel < 30) {
+          modifyRulingApproval(state, -8);
+          log.push(`🔍 SCANDAL LEAKED! Ruling approval -8%`);
+          // Chance of getting caught — higher press freedom = lower chance
+          const catchChance = Math.max(0.1, 0.6 - (pressFreedom / 200));
+          if (Math.random() < catchChance) {
+            state.oppositionCredibility = Math.max(0, state.oppositionCredibility - 20);
+            log.push(`🚨 Opposition caught leaking! -20 credibility`);
+          }
+        } else {
+          log.push(`🔍 Leak attempt failed — no dirt to find.`);
+        }
+        break;
+      }
+      case 'form_ngo_alliance': {
+        if (action.targetGroupId) {
+          const alliances = state.ngoAlliances ?? [];
+          if (alliances.length < 3) {
+            const existing = alliances.find(a => a.groupId === action.targetGroupId);
+            if (!existing) {
+              state.ngoAlliances.push({ groupId: action.targetGroupId!, bonus: 3 });
+              const group = VOTER_GROUPS.find(g => g.id === action.targetGroupId);
+              log.push(`🤝 NGO Alliance formed with ${group?.name ?? action.targetGroupId}! Permanent +3% support`);
+            } else {
+              log.push(`Already allied with this group.`);
+            }
+          } else {
+            log.push(`Maximum 3 NGO alliances reached.`);
+          }
+        }
+        break;
+      }
+      case 'senate_veto': {
+        const oppSeats = state.parliament.seatsByParty[opposition.id] ?? 0;
+        if (oppSeats > 40 && action.targetPolicyId) {
+          state.filibusteredPolicies.push(action.targetPolicyId);
+          const name = POLICY_MAP.get(action.targetPolicyId)?.name ?? action.targetPolicyId;
+          log.push(`🏛️ Senate VETO: Blocked ${name}!`);
+        } else if (oppSeats <= 40) {
+          log.push(`🏛️ Senate Veto failed — need >40 seats (have ${oppSeats})`);
+        }
+        break;
+      }
+      case 'constitutional_challenge': {
+        if (action.targetPolicyId && state.lastTurnPolicyChanges) {
+          const lastChange = state.lastTurnPolicyChanges.find(c => c.policyId === action.targetPolicyId);
+          if (lastChange && state.simulation.freedomIndex < 50) {
+            state.policies[action.targetPolicyId] = lastChange.oldValue;
+            const name = POLICY_MAP.get(action.targetPolicyId)?.name ?? action.targetPolicyId;
+            log.push(`⚖️ Constitutional Challenge SUCCEEDS! ${name} reverted!`);
+          } else if (lastChange) {
+            state.oppositionCredibility = Math.max(0, state.oppositionCredibility - 10);
+            log.push(`⚖️ Constitutional Challenge FAILS. Freedom too high. -10 credibility`);
+          } else {
+            log.push(`⚖️ No recent changes to challenge.`);
+          }
+        }
+        break;
+      }
+      case 'delay_tactics': {
+        if (action.targetPolicyId && state.lastTurnPolicyChanges) {
+          const lastChange = state.lastTurnPolicyChanges.find(c => c.policyId === action.targetPolicyId);
+          if (lastChange) {
+            // Revert and add to delayed queue
+            state.policies[action.targetPolicyId] = lastChange.oldValue;
+            state.delayedPolicies.push({
+              policyId: action.targetPolicyId,
+              originalValue: lastChange.oldValue,
+              newValue: lastChange.newValue,
+              turnsRemaining: 2,
+            });
+            const name = POLICY_MAP.get(action.targetPolicyId)?.name ?? action.targetPolicyId;
+            log.push(`⏳ Delay Tactics: ${name} delayed by 2 turns`);
+          }
+        }
+        break;
+      }
+      case 'campaign_visit': {
+        if (action.targetRegionId && state.campaignPhase) {
+          state.activeEffects.push({
+            type: 'media_attack',
+            id: `campvisit_${Date.now()}`,
+            turnsRemaining: 99,
+            data: { type: 'campaign_visit', regionId: action.targetRegionId, bonus: 5 },
+          });
+          const region = REGIONS.find(r => r.id === action.targetRegionId);
+          log.push(`🎪 Campaign visit to ${region?.name ?? action.targetRegionId}! +5% permanent support`);
+        }
+        break;
+      }
+      case 'run_ads': {
+        if (action.targetGroupId && state.campaignPhase) {
+          state.activeEffects.push({
+            type: 'media_attack',
+            id: `ads_${Date.now()}`,
+            turnsRemaining: 99,
+            data: { type: 'campaign', groupId: action.targetGroupId, bonus: 5 },
+          });
+          const group = VOTER_GROUPS.find(g => g.id === action.targetGroupId);
+          log.push(`📺 Campaign ads targeting ${group?.name ?? action.targetGroupId}! +5% support`);
+        }
+        break;
+      }
     }
   }
 
   opposition.politicalCapital -= totalCost;
   return log;
+}
+
+// ---- Helper: modify ruling party approval ----
+
+function modifyRulingApproval(state: GameState, delta: number): void {
+  const ruling = state.players.find(p => p.role === 'ruling');
+  if (ruling && state.approvalRating[ruling.id] !== undefined) {
+    state.approvalRating[ruling.id] = clamp(state.approvalRating[ruling.id] + delta, 0, 100);
+    state.rulingApproval = state.approvalRating[ruling.id];
+  } else {
+    state.rulingApproval = clamp((state.rulingApproval ?? 50) + delta, 0, 100);
+  }
+}
+
+function getRulingApproval(state: GameState): number {
+  const ruling = state.players.find(p => p.role === 'ruling');
+  if (ruling && state.approvalRating[ruling.id] !== undefined) {
+    return state.approvalRating[ruling.id];
+  }
+  return state.rulingApproval ?? 50;
 }
 
 // ---- Tick Active Effects ----
@@ -621,7 +1037,7 @@ export function addNewsItem(state: GameState, text: string, type: NewsItem['type
 function recordSnapshot(state: GameState): void {
   state.turnHistory.push({
     turn: state.turn,
-    approval: state.approvalRating,
+    approval: getRulingApproval(state),
     gdp: state.simulation.gdpGrowth,
     unemployment: state.simulation.unemployment,
     debtToGdp: state.budget.debtToGdp,
@@ -691,11 +1107,77 @@ export function advancePhase(state: GameState): void {
       // Update extremism
       state.extremism = updateExtremism(state.extremism, state.policies, state.simulation);
 
+      // Process delayed policies
+      state.delayedPolicies = (state.delayedPolicies ?? []).filter(dp => {
+        dp.turnsRemaining--;
+        if (dp.turnsRemaining <= 0) {
+          state.policies[dp.policyId] = dp.newValue;
+          addNewsItem(state, `Delayed policy ${POLICY_MAP.get(dp.policyId)?.name} now takes effect`, 'bill');
+          return false;
+        }
+        return true;
+      });
+
+      // Process pending motions
+      state.motionsPending = (state.motionsPending ?? []).filter(m => {
+        m.turnsRemaining--;
+        if (m.turnsRemaining <= 0) {
+          // Check if ruling addressed it
+          const simVal = state.simulation[m.targetSimVar];
+          const isBad = simVal < 40 || (m.targetSimVar === 'crime' && simVal > 60) ||
+            (m.targetSimVar === 'unemployment' && simVal > 10);
+          if (isBad) {
+            modifyRulingApproval(state, -3);
+            addNewsItem(state, `Government failed to address motion on "${m.topic}" — approval -3%`, 'general');
+          }
+          return false;
+        }
+        return true;
+      });
+
+      // Reset question time
+      state.questionTimeUsed = false;
+
+      // Campaign phase check
+      state.campaignPhase = state.turnsUntilElection <= 3;
+
+      // Shadow cabinet PC bonus
+      const opp = state.players.find(p => p.role === 'opposition');
+      if (opp && state.shadowCabinet) {
+        const MINISTRY_SIM_VARS: Partial<Record<string, SimVarKey>> = {
+          finance: 'gdpGrowth', interior: 'crime', defense: 'nationalSecurity',
+          health: 'healthIndex', education: 'educationIndex', environment: 'pollution',
+          justice: 'freedomIndex', foreign: 'nationalSecurity',
+        };
+        for (const [mId, polId] of Object.entries(state.shadowCabinet)) {
+          if (polId) {
+            const simVar = MINISTRY_SIM_VARS[mId];
+            if (simVar) {
+              const val = state.simulation[simVar];
+              const isBad = (simVar === 'crime' || simVar === 'pollution') ? val > 60 : val < 40;
+              if (isBad) opp.politicalCapital += 1;
+            }
+          }
+        }
+      }
+
       // Give PC
+      const rulingApprovalVal = getRulingApproval(state);
       for (const player of state.players) {
-        player.politicalCapital += computePoliticalCapital(
-          player, state.approvalRating, state.oppositionVoteShare, state.cabinet
+        const partyApproval = state.approvalRating[player.id] ?? 50;
+        let pc = computePoliticalCapital(
+          player, partyApproval, rulingApprovalVal, state.cabinet
         );
+        // Campaign phase bonus
+        if (state.campaignPhase) pc += 2;
+        player.politicalCapital += pc;
+      }
+
+      // NGO alliance effects
+      for (const alliance of (state.ngoAlliances ?? [])) {
+        if (state.voterSatisfaction[alliance.groupId] !== undefined) {
+          // Already applied via voter satisfaction compute
+        }
       }
 
       state.phase = 'events';
