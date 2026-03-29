@@ -10,10 +10,22 @@ const pusher = new Pusher({
 });
 
 export async function POST(req: NextRequest) {
-  const body = await req.json();
-  const { socket_id, channel_name } = body;
+  try {
+    const body = await req.json();
+    const { socket_id, channel_name } = body;
 
-  // Authorize the user for the private channel
-  const auth = pusher.authorizeChannel(socket_id, channel_name);
-  return Response.json(auth);
+    console.log('[Pusher Auth] Authorizing:', { socket_id, channel_name });
+
+    // Authorize the user for the private channel
+    const auth = pusher.authorizeChannel(socket_id, channel_name);
+    
+    console.log('[Pusher Auth] Success:', auth);
+    return Response.json(auth);
+  } catch (error) {
+    console.error('[Pusher Auth] Error:', error);
+    return Response.json(
+      { error: 'Authorization failed', details: error instanceof Error ? error.message : String(error) },
+      { status: 500 }
+    );
+  }
 }
