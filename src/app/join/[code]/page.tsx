@@ -30,17 +30,21 @@ export default function JoinPage() {
 
       sendMessage({ type: 'playerInfo', name: name.trim() });
 
+      // Wait for first state message before navigating
+      let navigated = false;
       onMessage((msg) => {
         if (msg.type === 'state') {
           useGameStore.getState().setGameState(msg.state as GameState);
+          if (!navigated) {
+            navigated = true;
+            router.push(`/game/${code}`);
+          }
         } else if (msg.type === 'error') {
           useGameStore.getState().setError(msg.message);
         }
       });
 
       onPeerDisconnect(() => {});
-
-      router.push(`/game/${code}`);
     } catch (err) {
       // Error messages are already user-friendly from peer.ts
       const message = err instanceof Error ? err.message : 'Connection failed. Please try again.';
