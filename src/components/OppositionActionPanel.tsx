@@ -233,7 +233,7 @@ function getRecommendedActions(gs: GameState): RecommendedAction[] {
 
 export function OppositionActionPanel() {
   const { gameState, playerId, pendingOppositionActions, addOppositionAction, removeOppositionAction, clearOppositionActions, getPendingOppositionCost } = useGameStore();
-  const { submitOppositionActions, endTurnPhase, readyPhase } = useGameActions();
+  const { submitOppositionActions, endTurnPhase } = useGameActions();
   const [selectedAction, setSelectedAction] = useState<ActionDef | null>(null);
   const [targetPolicy, setTargetPolicy] = useState('');
   const [targetGroup, setTargetGroup] = useState('');
@@ -502,30 +502,10 @@ export function OppositionActionPanel() {
           className="w-full py-2.5 bg-red-600 hover:bg-red-500 disabled:bg-slate-700 disabled:text-slate-500 rounded-lg text-sm font-semibold transition-all">
           Execute Actions
         </button>
-        {/* Ready status */}
-        {!gameState.isAIGame && gameState.players.length > 1 && (
-          <div className="flex items-center justify-center gap-2 py-1">
-            {gameState.players.map(p => (
-              <span key={p.id} className={`text-[10px] px-2 py-0.5 rounded-full ${
-                gameState.phaseReady?.[p.id]
-                  ? 'bg-emerald-900/50 text-emerald-400 border border-emerald-700/50'
-                  : 'bg-slate-800/50 text-slate-500 border border-slate-700/50'
-              }`}>
-                {gameState.phaseReady?.[p.id] ? '✅' : '⏳'} {p.party.partyName}
-              </span>
-            ))}
-          </div>
-        )}
-        {gameState.phaseReady?.[playerId ?? ''] ? (
-          <div className="w-full py-2 bg-slate-700 rounded-lg text-xs text-slate-400 text-center">
-            ⏳ Waiting for opponent...
-          </div>
-        ) : (
-          <button onClick={() => { readyPhase(); clearOppositionActions(); }}
-            className="w-full py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-xs text-slate-300 transition-all">
-            ✋ Ready — End Turn
-          </button>
-        )}
+        <button onClick={() => { endTurnPhase(); clearOppositionActions(); }}
+          className="w-full py-2.5 bg-gradient-to-r from-slate-700 to-slate-600 hover:from-slate-600 hover:to-slate-500 rounded-lg text-xs text-slate-200 font-semibold transition-all shadow-lg shadow-slate-900/30 hover:scale-[1.01] active:scale-[0.98]">
+          End Turn →
+        </button>
       </div>
     </div>
   );

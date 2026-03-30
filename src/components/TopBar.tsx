@@ -6,6 +6,7 @@ import { useGameStore } from '@/lib/store';
 import { PARTY_COLORS, GameState } from '@/lib/engine/types';
 import { restoreGame } from '@/lib/gameHost';
 import { HelpModal } from './HelpModal';
+import { useAudio } from './AudioManager';
 
 
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -26,6 +27,7 @@ const phaseLabels: Record<string, string> = {
 
 export function TopBar() {
   const { gameState, playerId, setGameState } = useGameStore();
+  const { musicEnabled, sfxEnabled, toggleMusic, toggleSfx } = useAudio();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showHelp, setShowHelp] = useState(false);
   if (!gameState) return null;
@@ -171,8 +173,22 @@ export function TopBar() {
             </div>
           )}
 
-          {/* Save/Load/Help */}
+          {/* Save/Load/Help/Audio */}
           <div className="flex items-center gap-1">
+            <button
+              onClick={toggleMusic}
+              className={`text-[10px] px-2 py-1 rounded glass-card transition-colors cursor-pointer ${musicEnabled ? 'text-amber-400' : 'text-game-secondary hover:text-white'}`}
+              title={musicEnabled ? 'Mute Music' : 'Play Music'}
+            >
+              {musicEnabled ? '🎵' : '🔇'}
+            </button>
+            <button
+              onClick={toggleSfx}
+              className={`text-[10px] px-2 py-1 rounded glass-card transition-colors cursor-pointer ${sfxEnabled ? 'text-blue-400' : 'text-game-secondary hover:text-white'}`}
+              title={sfxEnabled ? 'Mute SFX' : 'Enable SFX'}
+            >
+              {sfxEnabled ? '🔊' : '🔈'}
+            </button>
             <button
               onClick={handleSaveGame}
               className="text-[10px] px-2 py-1 rounded glass-card text-game-secondary hover:text-white transition-colors cursor-pointer"

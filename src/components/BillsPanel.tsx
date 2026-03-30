@@ -6,8 +6,26 @@ import { useGameActions } from '@/lib/useGameActions';
 import { PARTY_COLORS, Bill } from '@/lib/engine/types';
 import { POLICY_MAP } from '@/lib/engine/policies';
 import { BILL_LIBRARY, BILL_CATEGORIES } from '@/lib/engine/billLibrary';
+import { useAudio } from './AudioManager';
 
 type BillTab = 'active' | 'propose' | 'history';
+
+const CATEGORY_STYLES: Record<string, { icon: string; gradient: string; accent: string }> = {
+  economy:     { icon: '💰', gradient: 'from-amber-900/30 to-amber-950/10', accent: 'text-amber-400' },
+  healthcare:  { icon: '🏥', gradient: 'from-rose-900/30 to-rose-950/10', accent: 'text-rose-400' },
+  education:   { icon: '🎓', gradient: 'from-blue-900/30 to-blue-950/10', accent: 'text-blue-400' },
+  environment: { icon: '🌿', gradient: 'from-emerald-900/30 to-emerald-950/10', accent: 'text-emerald-400' },
+  security:    { icon: '🛡️', gradient: 'from-violet-900/30 to-violet-950/10', accent: 'text-violet-400' },
+  social:      { icon: '⚖️', gradient: 'from-pink-900/30 to-pink-950/10', accent: 'text-pink-400' },
+  immigration: { icon: '🌍', gradient: 'from-cyan-900/30 to-cyan-950/10', accent: 'text-cyan-400' },
+};
+
+function getRarity(cost: number): { label: string; class: string; textClass: string } {
+  if (cost >= 4) return { label: '★ LEGENDARY', class: 'bill-rarity-legendary', textClass: 'text-amber-400' };
+  if (cost >= 3) return { label: '◆ RARE', class: 'bill-rarity-rare', textClass: 'text-purple-400' };
+  if (cost >= 2) return { label: '● UNCOMMON', class: 'bill-rarity-uncommon', textClass: 'text-blue-400' };
+  return { label: '○ COMMON', class: 'bill-rarity-common', textClass: 'text-slate-500' };
+}
 
 const STATUS_BADGES: Record<string, { label: string; color: string; bg: string; border: string }> = {
   pending:          { label: 'PENDING',          color: 'text-amber-400',   bg: 'bg-amber-900/50',   border: 'border-amber-700/50' },
@@ -238,6 +256,7 @@ function BillCard({ bill, showActions }: { bill: Bill; showActions: boolean }) {
 function ProposeBillTab() {
   const { gameState, playerId } = useGameStore();
   const { proposeBillFromLibrary } = useGameActions();
+  const { playSfx } = useAudio();
   const [selectedCategory, setSelectedCategory] = useState<string>('economy');
 
   if (!gameState) return null;
@@ -258,85 +277,100 @@ function ProposeBillTab() {
       .filter(Boolean)
   );
 
+  const catStyle = CATEGORY_STYLES[selectedCategory] ?? CATEGORY_STYLES.economy;
+
   return (
-    <div className="space-y-2">
-      {/* Category filter */}
-      <div className="flex flex-wrap gap-1">
-        {BILL_CATEGORIES.map(cat => (
-          <button key={cat.id} onClick={() => setSelectedCategory(cat.id)}
-            className={`text-[10px] px-2 py-0.5 rounded transition-all ${
-              selectedCategory === cat.id
-                ? 'bg-blue-600 text-white'
-                : 'bg-slate-800 text-slate-400 hover:text-slate-300'
-            }`}>
-            {cat.icon} {cat.name}
-          </button>
-        ))}
+    <div className="space-y-3">
+      {/* Category filter — pill style */}
+      <div className="flex flex-wrap gap-1.5">
+        {BILL_CATEGORIES.map(cat => {
+          const style = CATEGORY_STYLES[cat.id];
+          const isSelected = selectedCategory === cat.id;
+          return (
+            <button key={cat.id} onClick={() => setSelectedCategory(cat.id)}
+              className={`text-[11px] px-3 py-1 rounded-full font-medium transition-all ${
+                isSelected
+                  ? `bg-gradient-to-r ${style?.gradient} text-white border border-white/10 shadow-lg`
+                  : 'bg-slate-800/60 text-slate-400 hover:text-slate-200 hover:bg-slate-700/60 border border-transparent'
+              }`}>
+              {cat.icon} {cat.name}
+            </button>
+          );
+        })}
       </div>
 
-      {/* Bill list */}
-      <div className="space-y-1.5 max-h-[400px] overflow-y-auto">
+      {/* Bill grid */}
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 max-h-[400px] overflow-y-auto pr-1">
         {bills.map(template => {
           const isActive = activeBillTemplates.has(template.id);
           const cost = isRuling ? template.cost : template.cost + 1;
           const canAfford = pc >= cost;
+          const rarity = getRarity(template.cost);
+          const catS = CATEGORY_STYLES[template.category] ?? CATEGORY_STYLES.economy;
 
           return (
-            <div key={template.id} className={`glass-card p-2 ${isActive ? 'opacity-50' : ''}`}>
-              <div className="flex items-center justify-between mb-0.5">
-                <span className="text-xs font-bold text-white">{template.name}</span>
-                <span className="text-[10px] text-yellow-400">{cost} PC</span>
-              </div>
-              <p className="text-[10px] text-game-muted mb-1">{template.description}</p>
-
-              {/* Policy changes preview */}
-              <div className="flex flex-wrap gap-1 mb-1">
-                {template.policyChanges.map(change => {
-                  const policy = POLICY_MAP.get(change.policyId);
-                  const current = gameState.policies[change.policyId] ?? 50;
-                  const diff = change.targetValue - current;
-                  return (
-                    <span key={change.policyId} className="text-[9px] px-1 py-0.5 rounded bg-slate-800 text-slate-300">
-                      {policy?.name ?? change.policyId}: {current}→{change.targetValue}
-                      <span className={diff > 0 ? 'text-emerald-400' : 'text-red-400'}> ({diff > 0 ? '+' : ''}{diff})</span>
-                    </span>
-                  );
-                })}
-              </div>
-
-              {/* Ideology alignment bar */}
-              <div className="flex items-center gap-1 mb-1">
-                <span className="text-[9px] text-blue-400">P:{template.ideologyAlignment.progressive}</span>
-                <span className="text-[9px] text-slate-500">C:{template.ideologyAlignment.centrist}</span>
-                <span className="text-[9px] text-red-400">R:{template.ideologyAlignment.conservative}</span>
-                {template.constitutionalScore < 60 && (
-                  <span className="text-[9px] text-red-400 ml-1">⚠️ Const. risk ({template.constitutionalScore}%)</span>
-                )}
-              </div>
-
-              {/* Voter effects preview */}
-              <div className="flex flex-wrap gap-1 mb-1.5">
-                {template.popularityEffects.slice(0, 4).map(eff => (
-                  <span key={eff.voterGroup} className={`text-[9px] px-1 py-0.5 rounded ${
-                    eff.effect > 0 ? 'bg-emerald-900/30 text-emerald-400' : 'bg-red-900/30 text-red-400'
-                  }`}>
-                    {eff.voterGroup}: {eff.effect > 0 ? '+' : ''}{eff.effect}
+            <div key={template.id}
+              className={`bill-card glass-card ${rarity.class} ${isActive ? 'opacity-40 grayscale' : ''} group`}
+            >
+              {/* Category header band */}
+              <div className={`bg-gradient-to-r ${catS.gradient} px-3 py-1.5 rounded-t-[11px] -m-px mb-0 border-b border-white/5`}>
+                <div className="flex items-center justify-between">
+                  <span className={`text-[10px] font-bold uppercase tracking-wider ${catS.accent}`}>
+                    {catS.icon} {template.category}
                   </span>
-                ))}
-                {template.popularityEffects.length > 4 && (
-                  <span className="text-[9px] text-slate-500">+{template.popularityEffects.length - 4} more</span>
-                )}
+                  <span className={`text-[9px] font-bold ${rarity.textClass}`}>
+                    {rarity.label}
+                  </span>
+                </div>
               </div>
 
-              <button
-                onClick={() => proposeBillFromLibrary(template.id)}
-                disabled={isActive || !canAfford || !canPropose}
-                className="w-full text-[10px] py-1 rounded font-medium transition-all
-                  bg-blue-900/50 text-blue-300 border border-blue-700/50
-                  hover:bg-blue-800/50 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {isActive ? '✓ Already Active' : !canPropose ? '⏳ Wait for your turn' : canAfford ? `📋 Propose (${cost} PC)` : `Needs ${cost} PC`}
-              </button>
+              <div className="p-2.5 pt-2">
+                {/* Title */}
+                <h4 className="text-[13px] font-bold text-white mb-1 leading-tight group-hover:text-blue-300 transition-colors">
+                  {template.name}
+                </h4>
+
+                {/* Description — truncated */}
+                <p className="text-[10px] text-game-muted mb-2 line-clamp-2 leading-relaxed">{template.description}</p>
+
+                {/* Effects — compact visual indicators */}
+                <div className="flex flex-wrap gap-1 mb-2">
+                  {template.popularityEffects.slice(0, 3).map(eff => (
+                    <span key={eff.voterGroup} className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${
+                      eff.effect > 0
+                        ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20'
+                        : 'bg-red-500/15 text-red-400 border border-red-500/20'
+                    }`}>
+                      {eff.effect > 0 ? '▲' : '▼'} {eff.voterGroup}
+                    </span>
+                  ))}
+                  {template.popularityEffects.length > 3 && (
+                    <span className="text-[9px] text-slate-600 self-center">+{template.popularityEffects.length - 3}</span>
+                  )}
+                </div>
+
+                {/* Constitutional risk */}
+                {template.constitutionalScore < 60 && (
+                  <div className="text-[9px] text-red-400/80 mb-2">⚠ Constitutional risk ({template.constitutionalScore}%)</div>
+                )}
+
+                {/* Bottom: Cost + Propose */}
+                <div className="flex items-center justify-between pt-1.5 border-t border-white/5">
+                  <span className="flex items-center gap-1 text-[11px] font-bold text-amber-400">
+                    ⚡ {cost} PC
+                  </span>
+                  <button
+                    onClick={() => { proposeBillFromLibrary(template.id); playSfx('propose'); }}
+                    disabled={isActive || !canAfford || !canPropose}
+                    className="text-[10px] px-3 py-1 rounded-full font-semibold transition-all
+                      bg-blue-600/80 text-white border border-blue-500/30
+                      hover:bg-blue-500 hover:shadow-[0_0_12px_rgba(59,130,246,0.3)]
+                      disabled:bg-slate-700/50 disabled:text-slate-500 disabled:border-slate-600/30 disabled:shadow-none"
+                  >
+                    {isActive ? '✓ Active' : !canPropose ? '⏳ Wait' : canAfford ? '📜 Propose' : `Need ${cost}`}
+                  </button>
+                </div>
+              </div>
             </div>
           );
         })}
@@ -393,7 +427,7 @@ export function BillsPanel() {
       {tab === 'propose' && <ProposeBillTab />}
 
       {tab === 'active' && (
-        <div className="space-y-1.5">
+        <div className="space-y-3">
           {/* Delayed policies */}
           {delayedPolicies.length > 0 && (
             <div className="space-y-1">
@@ -419,20 +453,24 @@ export function BillsPanel() {
             <p className="text-[10px] text-game-muted text-center py-2">No active bills</p>
           )}
 
-          {activeBills.slice().reverse().map(bill => (
-            <BillCard key={bill.id} bill={bill} showActions={isMyTurn} />
-          ))}
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
+            {activeBills.slice().reverse().map(bill => (
+              <BillCard key={bill.id} bill={bill} showActions={isMyTurn} />
+            ))}
+          </div>
         </div>
       )}
 
       {tab === 'history' && (
-        <div className="space-y-1.5 max-h-[300px] overflow-y-auto">
+        <div className="max-h-[300px] overflow-y-auto">
           {historyBills.length === 0 ? (
             <p className="text-[10px] text-game-muted text-center py-2">No bill history</p>
           ) : (
-            historyBills.slice().reverse().map(bill => (
-              <BillCard key={bill.id} bill={bill} showActions={false} />
-            ))
+            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
+              {historyBills.slice().reverse().map(bill => (
+                <BillCard key={bill.id} bill={bill} showActions={false} />
+              ))}
+            </div>
           )}
         </div>
       )}

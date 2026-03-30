@@ -35,17 +35,25 @@
 .text-game-accent { color: var(--game-accent); }
 .bg-game-accent { background-color: var(--game-accent); }
 
-/* Glass morphism cards */
+/* Glass morphism cards — enhanced depth */
 .glass-card {
   background: rgba(17, 24, 39, 0.8);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 12px;
-  transition: all 0.2s ease;
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.3),
+    0 4px 12px rgba(0, 0, 0, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .glass-card:hover {
-  border-color: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.35),
+    0 8px 24px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 /* Primary button */
@@ -67,7 +75,7 @@
 }
 
 .font-body {
-  font-family: 'DM Sans', system-ui, sans-serif;
+  font-family: 'Inter', system-ui, sans-serif;
 }
 
 /* Background atmosphere — subtle dot grid */
@@ -132,23 +140,112 @@
 .pulse-red { animation: pulse-red 2s infinite; }
 .animate-count-up { animation: countUp 0.4s ease-out; }
 
-/* Gradient mesh background (very subtle) */
+/* Gradient mesh background — navy to deep purple */
 .bg-gradient-mesh {
-  background: linear-gradient(135deg, rgba(59,130,246,0.03) 0%, transparent 30%, rgba(239,68,68,0.02) 60%, transparent 100%);
-  background-size: 200% 200%;
+  background:
+    linear-gradient(135deg, rgba(30,58,138,0.06) 0%, transparent 25%, rgba(88,28,135,0.04) 50%, transparent 75%, rgba(59,130,246,0.03) 100%),
+    radial-gradient(ellipse at 20% 50%, rgba(59,130,246,0.05) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 80%, rgba(139,92,246,0.04) 0%, transparent 50%);
+  background-size: 200% 200%, 100% 100%, 100% 100%;
   animation: gradientMesh 30s ease infinite;
+}
+
+/* Paper grain texture overlay */
+.bg-noise::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  opacity: 0.015;
+  pointer-events: none;
+  z-index: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 256px 256px;
 }
 
 /* Satisfaction bar animation */
 .satisfaction-bar { transition: width 0.5s ease-out; }
 
-/* Card hover — smooth */
+/* Card hover — smooth lift + glow */
 .game-card {
-  transition: all 0.2s ease;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .game-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  transform: translateY(-3px) scale(1.01);
+  box-shadow:
+    0 8px 25px rgba(0, 0, 0, 0.35),
+    0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+/* Bill card — trading card feel */
+.bill-card {
+  position: relative;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+}
+.bill-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg, rgba(255,255,255,0.08), transparent 50%, rgba(255,255,255,0.04));
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+.bill-card:hover {
+  transform: translateY(-4px) scale(1.02);
+  box-shadow:
+    0 12px 32px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+
+/* Rarity glow borders for bill cards */
+.bill-rarity-common { border-left: 3px solid #64748b; }
+.bill-rarity-uncommon { border-left: 3px solid #3b82f6; }
+.bill-rarity-rare { border-left: 3px solid #a855f7; }
+.bill-rarity-legendary {
+  border-left: 3px solid #f59e0b;
+  box-shadow: 0 0 15px rgba(245, 158, 11, 0.1);
+}
+.bill-rarity-legendary:hover {
+  box-shadow: 0 0 25px rgba(245, 158, 11, 0.2), 0 12px 32px rgba(0, 0, 0, 0.4);
+}
+
+/* Category color accents */
+.cat-economy { --cat-color: #f59e0b; }
+.cat-healthcare { --cat-color: #ef4444; }
+.cat-education { --cat-color: #3b82f6; }
+.cat-environment { --cat-color: #10b981; }
+.cat-security { --cat-color: #8b5cf6; }
+.cat-social { --cat-color: #ec4899; }
+.cat-immigration { --cat-color: #06b6d4; }
+
+/* Floating particles background */
+@keyframes floatParticle {
+  0% { transform: translateY(100vh) rotate(0deg); opacity: 0; }
+  10% { opacity: 0.6; }
+  90% { opacity: 0.6; }
+  100% { transform: translateY(-10vh) rotate(720deg); opacity: 0; }
+}
+
+.particles-bg {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.particle {
+  position: absolute;
+  width: 2px;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 50%;
+  animation: floatParticle linear infinite;
 }
 
 /* News ticker */

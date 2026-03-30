@@ -6,12 +6,14 @@ import { useGameActions } from '@/lib/useGameActions';
 import { PolicyWeb } from './PolicyWeb';
 import { NovariMap } from './NovariMap';
 import { BillsPanel } from './BillsPanel';
+import { useAudio } from './AudioManager';
 
 type RulingView = 'bills' | 'web' | 'map';
 
 export function RulingDashboard() {
   const { gameState, playerId } = useGameStore();
-  const { endTurnPhase, readyPhase } = useGameActions();
+  const { endTurnPhase } = useGameActions();
+  const { playSfx } = useAudio();
   const [view, setView] = useState<RulingView>('bills');
 
   if (!gameState) return null;
@@ -80,31 +82,12 @@ export function RulingDashboard() {
                 ← Back to Bills
               </button>
             )}
-            {/* Ready status for both players */}
-            {!gameState.isAIGame && gameState.players.length > 1 && (
-              <div className="flex items-center gap-2">
-                {gameState.players.map(p => (
-                  <span key={p.id} className={`text-[10px] px-2 py-0.5 rounded-full ${
-                    gameState.phaseReady?.[p.id]
-                      ? 'bg-emerald-900/50 text-emerald-400 border border-emerald-700/50'
-                      : 'bg-slate-800/50 text-slate-500 border border-slate-700/50'
-                  }`}>
-                    {gameState.phaseReady?.[p.id] ? '✅' : '⏳'} {p.party.partyName}
-                  </span>
-                ))}
-              </div>
-            )}
+            {/* Turn indicator */}
           </div>
-          {gameState.phaseReady?.[playerId ?? ''] ? (
-            <span className="px-6 py-2 text-xs bg-slate-700 rounded-lg font-medium text-slate-400">
-              ⏳ Waiting for opponent...
-            </span>
-          ) : (
-            <button onClick={readyPhase}
-              className="px-6 py-2 text-xs bg-blue-600 hover:bg-blue-500 rounded-lg font-semibold transition-all">
-              ✋ Ready — End Turn →
-            </button>
-          )}
+          <button onClick={() => { playSfx('endTurn'); endTurnPhase(); }}
+            className="px-6 py-2.5 text-xs bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 rounded-lg font-semibold transition-all shadow-lg shadow-blue-600/20 hover:shadow-blue-500/30 hover:scale-[1.02] active:scale-[0.98]">
+            End Turn →
+          </button>
         </div>
       </div>
     </div>

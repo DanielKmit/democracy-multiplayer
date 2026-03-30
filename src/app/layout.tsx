@@ -1,9 +1,11 @@
 import type { Metadata } from 'next';
-import { DM_Sans } from 'next/font/google';
+import { Inter } from 'next/font/google';
 import { Analytics } from '@vercel/analytics/next';
+import { AudioProvider } from '@/components/AudioManager';
+import { Particles } from '@/components/Particles';
 import './globals.css';
 
-const dmSans = DM_Sans({ subsets: ['latin'], variable: '--font-body' });
+const inter = Inter({ subsets: ['latin'], variable: '--font-body' });
 
 const BASE_URL = 'https://democracy-game-omega.vercel.app';
 
@@ -45,8 +47,11 @@ export default function RootLayout({
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
         <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
       </head>
-      <body className={`${dmSans.className} bg-game-bg bg-dot-grid bg-gradient-mesh text-game-text min-h-screen`}>
-        {children}
+      <body className={`${inter.className} bg-game-bg bg-dot-grid bg-gradient-mesh bg-noise text-game-text min-h-screen`}>
+        <AudioProvider>
+          <Particles />
+          {children}
+        </AudioProvider>
         <Analytics />
       </body>
     </html>
