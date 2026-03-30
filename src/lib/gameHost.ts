@@ -747,7 +747,7 @@ export function handleAction(playerId: string, action: string, payload?: unknown
         proposedValue: billData.proposedValue,
         currentValue,
         authorId: player.id,
-        status: 'voting',
+        status: 'pending',
         votesFor: 0,
         votesAgainst: 0,
         isEmergency: false,
@@ -758,52 +758,17 @@ export function handleAction(playerId: string, action: string, payload?: unknown
         turnProposed: gameState.turn,
       };
 
-      // Immediately run parliament vote
-      const votedBill = voteBill(
-        bill,
-        gameState.parliament,
-        player.id,
-        gameState.players,
-        gameState.botParties,
-        gameState.policies,
-        undefined,
-        gameState.coalitionPartners,
-      );
-
-      gameState.activeBills.push(votedBill);
-
-      // Generate vote summary
-      const voteDetails = Object.entries(votedBill.partyVotes ?? {}).map(([pid, v]) => {
-        const p = gameState!.players.find(pl => pl.id === pid);
-        const bot = gameState!.botParties.find(b => b.id === pid);
-        const name = p?.party.partyName ?? bot?.name ?? pid;
-        return `${name}: ${v.yes}Y/${v.no}N`;
-      }).join(', ');
+      gameState.activeBills.push(bill);
 
       const isOppositionBill = player.role === 'opposition';
       const billBadge = isOppositionBill ? '[Opposition Bill] ' : '';
 
-      if (votedBill.status === 'passed') {
-        // D4: Policy changes are delayed by 2 turns
-        const oldVal = gameState.policies[votedBill.policyId];
-        gameState.delayedPolicies.push({
-          policyId: votedBill.policyId,
-          originalValue: oldVal,
-          newValue: votedBill.proposedValue,
-          turnsRemaining: 2,
-          source: 'bill',
-        });
+      addLogEntry(gameState, `📋 ${billBadge}${bill.title} proposed (${cost} PC) — call a vote to decide!`, 'ruling');
+      addNewsItem(gameState, `📋 ${billBadge}${bill.title} proposed: ${policy.name} → ${billData.proposedValue}`, 'bill');
 
-        addLogEntry(gameState, `✅ ${billBadge}${votedBill.title} PASSED (${votedBill.votesFor}-${votedBill.votesAgainst})`, 'ruling');
-        addNewsItem(gameState, `📋 ${billBadge}${votedBill.title} passed! ${voteDetails} (takes effect in 2 turns)`, 'bill');
-      } else {
-        addLogEntry(gameState, `❌ ${billBadge}${votedBill.title} FAILED (${votedBill.votesFor}-${votedBill.votesAgainst})`, 'ruling');
-        addNewsItem(gameState, `📋 ${billBadge}${votedBill.title} rejected. ${voteDetails}`, 'bill');
-      }
-
-      recalculate(gameState);
-      broadcastState();
-      break;
+      // Auto-start live vote so the modal opens for player interaction
+      handleAction(playerId, 'startLiveVote', { billId: bill.id });
+      return; // startLiveVote handles broadcastState
     }
 
     case 'submitOppositionActions': {
@@ -1347,84 +1312,9 @@ export function handleAction(playerId: string, action: string, payload?: unknown
     }
 
     case 'callBillVote': {
-      const { billId: voteBillId } = payload as { billId: string };
-      const player = gameState.players.find(p => p.id === playerId);
-      if (!player) return;
-
-      const bill = gameState.activeBills.find(b => b.id === voteBillId);
-      if (!bill || bill.status !== 'pending') {
-        addLogEntry(gameState, 'Bill not available for voting', 'info');
-        broadcastState();
-        return;
-      }
-
-      // Any player can call a vote during their turn phase
-      const isPlayersTurn = (gameState.phase === 'ruling' && player.role === 'ruling') ||
-                            (gameState.phase === 'opposition' && player.role === 'opposition');
-      if (!isPlayersTurn && bill.authorId !== playerId) {
-        addLogEntry(gameState, 'You can only call votes during your turn', 'info');
-        broadcastState();
-        return;
-      }
-
-      // Run parliament vote
-      bill.status = 'voting';
-      const votedBill = voteBill(
-        bill,
-        gameState.parliament,
-        bill.authorId,
-        gameState.players,
-        gameState.botParties,
-        gameState.policies,
-        undefined,
-        gameState.coalitionPartners,
-      );
-      Object.assign(bill, votedBill);
-
-      const template = bill.fromTemplate ? getBillTemplate(bill.fromTemplate) : null;
-
-      // Generate vote summary
-      const voteDetails = Object.entries(votedBill.partyVotes ?? {}).map(([pid, v]) => {
-        const p = gameState!.players.find(pl => pl.id === pid);
-        const bot = gameState!.botParties.find(b => b.id === pid);
-        const name = p?.party.partyName ?? bot?.name ?? pid;
-        return `${name}: ${v.yes}Y/${v.no}N`;
-      }).join(', ');
-
-      if (votedBill.status === 'passed') {
-        // Apply all policy changes from template
-        if (template) {
-          for (const change of template.policyChanges) {
-            const oldVal = gameState.policies[change.policyId];
-            gameState.delayedPolicies.push({
-              policyId: change.policyId,
-              originalValue: oldVal,
-              newValue: change.targetValue,
-              turnsRemaining: 2,
-              source: 'bill',
-            });
-          }
-        } else {
-          const oldVal = gameState.policies[votedBill.policyId];
-          gameState.delayedPolicies.push({
-            policyId: votedBill.policyId,
-            originalValue: oldVal,
-            newValue: votedBill.proposedValue,
-            turnsRemaining: 2,
-            source: 'bill',
-          });
-        }
-
-        addLogEntry(gameState, `✅ ${votedBill.title} PASSED (${votedBill.votesFor}-${votedBill.votesAgainst})`, 'ruling');
-        addNewsItem(gameState, `🏛️ Parliament passes ${votedBill.title} ${votedBill.votesFor}-${votedBill.votesAgainst}! ${voteDetails}`, 'bill');
-      } else {
-        addLogEntry(gameState, `❌ ${votedBill.title} FAILED (${votedBill.votesFor}-${votedBill.votesAgainst})`, 'ruling');
-        addNewsItem(gameState, `🏛️ Parliament rejects ${votedBill.title} ${votedBill.votesFor}-${votedBill.votesAgainst}. ${voteDetails}`, 'bill');
-      }
-
-      recalculate(gameState);
-      broadcastState();
-      break;
+      // Redirect to startLiveVote — bills should never auto-resolve
+      handleAction(playerId, 'startLiveVote', payload);
+      return; // startLiveVote handles broadcastState
     }
 
     case 'vetoBill': {
@@ -1658,6 +1548,16 @@ export function handleAction(playerId: string, action: string, payload?: unknown
 
       addLogEntry(gameState, `🗳️ LIVE VOTE: "${bill.title}" goes to parliament! Lobby now!`, 'ruling');
       addNewsItem(gameState, `🗳️ Parliament convenes to vote on "${bill.title}"`, 'bill');
+
+      // In AI games, auto-set AI player's vote and mark them ready
+      if (gameState.isAIGame && gameState.aiPlayerId && gameState.liveVote) {
+        const isAIBill = bill.authorId === gameState.aiPlayerId;
+        gameState.liveVote.playerVotes[gameState.aiPlayerId] = isAIBill ? 'yes' : 'no';
+        if (!gameState.liveVote.readyPlayers.includes(gameState.aiPlayerId)) {
+          gameState.liveVote.readyPlayers.push(gameState.aiPlayerId);
+        }
+      }
+
       broadcastState();
       break;
     }

@@ -300,7 +300,7 @@ function ProposeBillTab() {
       </div>
 
       {/* Bill grid */}
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 max-h-[400px] overflow-y-auto pr-1">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 max-h-[400px] overflow-y-auto pr-1">
         {bills.map(template => {
           const isActive = activeBillTemplates.has(template.id);
           const cost = isRuling ? template.cost : template.cost + 1;
@@ -453,7 +453,7 @@ export function BillsPanel() {
             <p className="text-[10px] text-game-muted text-center py-2">No active bills</p>
           )}
 
-          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             {activeBills.slice().reverse().map(bill => (
               <BillCard key={bill.id} bill={bill} showActions={isMyTurn} />
             ))}
@@ -466,7 +466,7 @@ export function BillsPanel() {
           {historyBills.length === 0 ? (
             <p className="text-[10px] text-game-muted text-center py-2">No bill history</p>
           ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
               {historyBills.slice().reverse().map(bill => (
                 <BillCard key={bill.id} bill={bill} showActions={false} />
               ))}
