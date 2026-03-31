@@ -6,7 +6,7 @@ import Link from 'next/link';
 const faqs = [
   {
     q: 'How many players can play?',
-    a: 'Democracy is a 2-player game. One player controls the ruling party, and the other controls the opposition. You play against a real opponent in real-time.',
+    a: 'Democracy is designed for 2 players. One controls the ruling party and the other the opposition. You can play against a friend online or against an AI opponent in single-player mode.',
   },
   {
     q: 'How long does a game take?',
@@ -22,7 +22,7 @@ const faqs = [
   },
   {
     q: 'Can I play solo against AI?',
-    a: 'Not yet — but an AI opponent is coming soon! For now, grab a friend and share your room code to play.',
+    a: 'Yes! Click "Play vs AI" on the main menu to play against a computer opponent. You can choose the AI\'s ideology (left, center, or right) and difficulty level (easy, normal, hard).',
   },
   {
     q: 'How do I win?',
