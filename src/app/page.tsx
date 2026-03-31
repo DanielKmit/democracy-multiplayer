@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useGameStore } from '@/lib/store';
 import { createRoom, joinRoom, onMessage, onPeerConnect, onPeerDisconnect, sendMessage } from '@/lib/peer';
@@ -28,9 +28,11 @@ export default function Home() {
   const [economicAxis, setEconomicAxis] = useState(50);
   const [socialAxis, setSocialAxis] = useState(50);
   const [manifesto, setManifesto] = useState<ManifestoOption[]>([]);
+  const [difficulty, setDifficulty] = useState<'easy' | 'normal' | 'hard'>('normal');
+  const [showTutorial, setShowTutorial] = useState(false);
 
   // Check for saved game on mount
-  useState(() => {
+  useEffect(() => {
     if (typeof window !== 'undefined') {
       const saved = loadPersistedState();
       if (saved && saved.phase !== 'game_over') {
@@ -38,7 +40,7 @@ export default function Home() {
         setSavedRoomId(saved.roomId);
       }
     }
-  });
+  }, []);
 
   const handleResume = () => {
     const saved = loadPersistedState();
@@ -333,6 +335,29 @@ export default function Home() {
                         : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
                     } ${manifesto.length >= 3 && !manifesto.includes(m) ? 'opacity-40 cursor-not-allowed' : ''}`}>
                     {m}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Difficulty */}
+            <div>
+              <label className="block text-sm text-slate-400 mb-2">Difficulty</label>
+              <div className="grid grid-cols-3 gap-3">
+                {([
+                  { id: 'easy' as const, label: 'Easy', icon: '🌱', desc: 'AI makes mistakes' },
+                  { id: 'normal' as const, label: 'Normal', icon: '⚖️', desc: 'Balanced challenge' },
+                  { id: 'hard' as const, label: 'Hard', icon: '🔥', desc: 'Ruthless AI' },
+                ]).map(d => (
+                  <button key={d.id} onClick={() => setDifficulty(d.id)}
+                    className={`p-3 rounded-lg border-2 text-center transition-all ${
+                      difficulty === d.id
+                        ? 'border-purple-500 bg-purple-900/30'
+                        : 'border-slate-700 bg-slate-800 hover:bg-slate-700'
+                    }`}>
+                    <div className="text-2xl mb-1">{d.icon}</div>
+                    <div className="text-sm font-semibold">{d.label}</div>
+                    <div className="text-xs text-slate-400">{d.desc}</div>
                   </button>
                 ))}
               </div>
