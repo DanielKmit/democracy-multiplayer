@@ -225,6 +225,45 @@ function recalculate(state: GameState) {
       state.rulingApproval = state.approvalRating[ruling.id] ?? 50;
     }
 
+    // === D4: VOTER MEMORY / HONEYMOON EFFECT ===
+    // New ruling party gets a honeymoon boost that decays over time
+    if (ruling && state.voterMemory) {
+      const prevApproval = state.voterMemory[ruling.id] ?? 50;
+      const turnsSinceElection = state.turn % 8; // turns since last election
+      if (turnsSinceElection <= 2 && prevApproval < 45) {
+        // Honeymoon: new government gets benefit of the doubt (+5 to +10 approval)
+        const honeymoonBonus = Math.max(0, (45 - prevApproval) * 0.3) * Math.max(0, 1 - turnsSinceElection * 0.3);
+        state.approvalRating[ruling.id] = Math.min(100, (state.approvalRating[ruling.id] ?? 50) + honeymoonBonus);
+      }
+    }
+
+    // === D4: FLIP-FLOP PENALTY ===
+    // Parties that rapidly change policies lose credibility
+    if (ruling && state.flipFlopPenalty) {
+      const penalty = state.flipFlopPenalty[ruling.id] ?? 0;
+      if (penalty > 0) {
+        // Reduce approval by flip-flop penalty (max -15)
+        const effectivePenalty = Math.min(15, penalty * 0.5);
+        state.approvalRating[ruling.id] = Math.max(0, (state.approvalRating[ruling.id] ?? 50) - effectivePenalty);
+        state.rulingApproval = state.approvalRating[ruling.id] ?? 50;
+      }
+    }
+
+    // === D4: CRISIS PC BONUS (Rally around the flag) ===
+    if (ruling && state.activeSituations.length > 0) {
+      const criticalSituations = state.activeSituations.filter(s => {
+        const def = getSituationById(s.id);
+        return def && def.severity === 'critical';
+      });
+      // Grant +1 PC for each new critical situation (first turn only)
+      for (const sit of criticalSituations) {
+        if (sit.turnsActive === 0) {
+          ruling.politicalCapital += 1;
+          addLogEntry(state, `⚡ Crisis leadership: +1 PC from responding to ${getSituationById(sit.id)?.name ?? sit.id}`, 'info');
+        }
+      }
+    }
+
     // Regional satisfaction using per-party voter sat
     if (state.players.length >= 2) {
       state.regionalSatisfaction = computeRegionalSatisfaction(
@@ -1854,6 +1893,47 @@ export function handleAction(playerId: string, action: string, payload?: unknown
       } else {
         broadcastState();
       }
+      break;
+    }
+
+    case 'runFocusGroup': {
+      // D4: Focus group — spend 1 PC to preview what a policy change would do to voter satisfaction
+      const player = gameState.players.find(p => p.id === playerId);
+      if (!player) return;
+      if (player.politicalCapital < 1) {
+        addLogEntry(gameState, 'Not enough PC for focus group (need 1)', 'info');
+        broadcastState();
+        return;
+      }
+
+      const { policyId, proposedValue } = payload as { policyId: string; proposedValue: number };
+      const policy = POLICY_MAP.get(policyId);
+      if (!policy) return;
+
+      player.politicalCapital -= 1;
+
+      // Simulate what would happen to each voter group
+      const currentValue = gameState.policies[policyId] ?? 50;
+      const predictedImpact: Record<string, number> = {};
+      for (const group of VOTER_GROUPS) {
+        const ideal = group.policyPreferences[policyId];
+        if (ideal !== undefined) {
+          const currentDist = Math.abs(currentValue - ideal);
+          const proposedDist = Math.abs(proposedValue - ideal);
+          const delta = (currentDist - proposedDist) * 0.3; // Positive = closer to ideal = good
+          predictedImpact[group.id] = Math.round(delta * 10) / 10;
+        }
+      }
+
+      gameState.focusGroupResult = { policyId, predictedImpact };
+      addLogEntry(gameState, `🔍 Focus group polled on ${policy.name}: ${currentValue} → ${proposedValue}`, 'info');
+      broadcastState();
+      break;
+    }
+
+    case 'dismissFocusGroup': {
+      gameState.focusGroupResult = null;
+      broadcastState();
       break;
     }
 

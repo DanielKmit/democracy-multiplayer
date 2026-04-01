@@ -74,5 +74,9 @@ export function useGameActions() {
     forceBillVote: (billId: string) =>
       dispatch('forceBillVote', { billId }),
     endTurnPhase: () => dispatch('endTurnPhase'),
+    runFocusGroup: (policyId: string, proposedValue: number) =>
+      dispatch('runFocusGroup', { policyId, proposedValue }),
+    dismissFocusGroup: () =>
+      dispatch('dismissFocusGroup'),
   };
 }

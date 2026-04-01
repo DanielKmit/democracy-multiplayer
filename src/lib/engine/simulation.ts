@@ -849,6 +849,11 @@ export function createInitialGameState(roomId: string): GameState {
     activeDiplomaticIncident: null,
     liveVote: null,
     blockedAppointments: [],
+    // D4 advanced features
+    voterMemory: {},
+    policyChangeHistory: {},
+    flipFlopPenalty: {},
+    focusGroupResult: null,
   };
 }
 
@@ -880,15 +885,60 @@ export function applyPolicyChanges(state: GameState, changes: PolicyChange[]): s
     }
 
     totalCost += cost;
+
+    // === D4: MINISTER EFFECTIVENESS ===
+    // Ministers affect how much of the policy change actually gets implemented
+    let effectiveNewValue = clamp(change.newValue, 0, 100);
+    const ministryForPolicy: Record<string, string> = {
+      income_tax: 'finance', corporate_tax: 'finance', trade_openness: 'finance',
+      govt_spending: 'finance', minimum_wage: 'finance', tech_research: 'finance',
+      healthcare: 'health', pensions: 'health',
+      education: 'education',
+      env_regulations: 'environment', renewables: 'environment', carbon_tax: 'environment',
+      police: 'interior', gun_control: 'interior', drug_policy: 'interior',
+      military: 'defense', intelligence: 'defense', border_security: 'defense',
+      civil_rights: 'justice', press_freedom: 'justice', religious_freedom: 'justice',
+      immigration: 'interior', housing_subsidies: 'interior',
+      public_transport: 'finance', roads_rail: 'finance', urban_dev: 'finance',
+      agriculture: 'finance', foreign_aid: 'foreign',
+    };
+    const relevantMinistry = ministryForPolicy[change.policyId];
+    if (relevantMinistry && state.cabinet?.ministers) {
+      const ministerId = state.cabinet.ministers[relevantMinistry as import('./types').MinistryId];
+      if (ministerId) {
+        const minister = state.cabinet.availablePool?.find(p => p.id === ministerId);
+        if (minister) {
+          // Competence 1-10: 5=neutral, 10=120% effective, 1=60% effective
+          const competence = minister.competence ?? 5;
+          const effectiveness = 0.6 + (competence / 10) * 0.6; // 0.6 to 1.2
+          const diff = change.newValue - change.oldValue;
+          effectiveNewValue = clamp(Math.round(change.oldValue + diff * effectiveness), 0, 100);
+        }
+      }
+    }
+
+    // === D4: FLIP-FLOP TRACKING ===
+    if (!state.policyChangeHistory) state.policyChangeHistory = {};
+    if (!state.policyChangeHistory[change.policyId]) state.policyChangeHistory[change.policyId] = [];
+    state.policyChangeHistory[change.policyId].push(state.turn);
+    // Check for flip-flopping (changed same policy within 4 turns)
+    const recentChanges = state.policyChangeHistory[change.policyId].filter(t => state.turn - t <= 4);
+    if (recentChanges.length >= 2 && ruling) {
+      if (!state.flipFlopPenalty) state.flipFlopPenalty = {};
+      state.flipFlopPenalty[ruling.id] = Math.min(30, (state.flipFlopPenalty[ruling.id] ?? 0) + 3);
+      log.push(`⚠️ Flip-flopping on ${policy.name}! Credibility -3`);
+    }
+
     // D4: Policy changes don't take effect immediately — delayed by 2 turns
     state.delayedPolicies.push({
       policyId: change.policyId,
       originalValue: change.oldValue,
-      newValue: clamp(change.newValue, 0, 100),
+      newValue: effectiveNewValue,
       turnsRemaining: 2,
       source: 'bill',
     });
-    log.push(`${policy.name}: ${change.oldValue} → ${change.newValue} (${cost} PC, takes effect in 2 turns)`);
+    const effNote = effectiveNewValue !== clamp(change.newValue, 0, 100) ? ` (minister effectiveness: ${effectiveNewValue})` : '';
+    log.push(`${policy.name}: ${change.oldValue} → ${effectiveNewValue}${effNote} (${cost} PC, takes effect in 2 turns)`);
   }
 
   ruling.politicalCapital -= totalCost;
@@ -1748,6 +1798,19 @@ export function advancePhase(state: GameState): void {
       }
 
       tickActiveEffects(state);
+
+      // D4: Decay flip-flop penalty by 1 per turn
+      if (state.flipFlopPenalty) {
+        for (const pid of Object.keys(state.flipFlopPenalty)) {
+          state.flipFlopPenalty[pid] = Math.max(0, (state.flipFlopPenalty[pid] ?? 0) - 1);
+        }
+      }
+
+      // D4: Save voter memory at end of each turn for honeymoon tracking
+      if (state.voterMemory === undefined) state.voterMemory = {};
+      for (const p of state.players) {
+        state.voterMemory[p.id] = state.approvalRating?.[p.id] ?? 50;
+      }
 
       // Decay NGO alliances — reduce bonus by 1 per turn, remove when depleted
       if (state.ngoAlliances && state.ngoAlliances.length > 0) {
