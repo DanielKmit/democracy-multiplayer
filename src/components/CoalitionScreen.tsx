@@ -310,9 +310,46 @@ export function CoalitionScreen() {
                       <div className="px-4 pb-4 border-t border-game-border/50 bg-game-card/30">
                         <div className="pt-4 space-y-3">
                           <div className="text-sm font-bold text-game-secondary">Make Policy Promises</div>
-                          <p className="text-xs text-game-muted">
-                            Offer policy changes that align with {bot.name}&apos;s ideology to improve your chances. Higher alignment = better odds.
+                          <p className="text-xs text-game-muted mb-2">
+                            Offer policy changes to improve your chances. Click a suggested promise below or add custom ones.
                           </p>
+
+                          {/* Quick-add suggested promises based on bot preferences */}
+                          <div className="space-y-1">
+                            <div className="text-[10px] text-game-muted font-bold uppercase tracking-wider">🎯 {bot.name} wants:</div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {Object.entries(bot.policyPreferences).slice(0, 6).map(([policyId, prefValue]) => {
+                                const policy = POLICIES.find(p => p.id === policyId);
+                                if (!policy) return null;
+                                const alreadyAdded = promises.some(p => p.policyId === policyId);
+                                const dir = prefValue > 50 ? 'increase' : 'decrease';
+                                return (
+                                  <button key={policyId}
+                                    disabled={alreadyAdded}
+                                    onClick={() => {
+                                      if (alreadyAdded) return;
+                                      const promise: CoalitionPromise = {
+                                        type: 'policy_change',
+                                        policyId,
+                                        direction: dir as 'increase' | 'decrease',
+                                        targetLevel: prefValue > 50 ? 75 : 25,
+                                        description: `${dir === 'increase' ? 'Increase' : 'Decrease'} ${policy.name}`,
+                                      };
+                                      setPromises(prev => [...prev, promise]);
+                                    }}
+                                    className={`text-[10px] px-2 py-1 rounded-md font-medium transition-all ${
+                                      alreadyAdded
+                                        ? 'bg-game-accent/10 text-game-accent border border-game-accent/30'
+                                        : dir === 'increase'
+                                          ? 'bg-emerald-900/30 text-emerald-400 border border-emerald-800/30 hover:bg-emerald-900/50'
+                                          : 'bg-red-900/30 text-red-400 border border-red-800/30 hover:bg-red-900/50'
+                                    }`}>
+                                    {alreadyAdded ? '✓' : dir === 'increase' ? '↑' : '↓'} {policy.name}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
 
                           {/* Current promises */}
                           {promises.length > 0 && (

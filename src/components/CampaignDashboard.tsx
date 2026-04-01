@@ -365,7 +365,11 @@ export function CampaignDashboard() {
               </div>
             )}
 
-            {actionType === 'fundraiser' && (
+            {actionType === 'fundraiser' && (() => {
+              const alreadyFundraised = (gameState.campaignBonuses?.[myPlayer.id]?.['_fundraised_this_turn'] ?? 0) > 0;
+              const queuedFundraiser = pendingActions.some(a => a.type === 'fundraiser');
+              const canFundraise = !alreadyFundraised && !queuedFundraiser && remaining >= 1;
+              return (
               <div className="max-w-md mx-auto mt-8">
                 <div className="glass-card p-6 text-center bg-gradient-to-br from-amber-950/10 to-transparent border-amber-900/20">
                   <div className="text-4xl mb-3">💰</div>
@@ -377,18 +381,20 @@ export function CampaignDashboard() {
                   <div className="text-xs text-game-muted mb-4">
                     Cost: <span className="text-amber-400">1 PC</span> → Gain: <span className="text-emerald-400">+2 PC</span> = Net: <span className="text-emerald-400 font-bold">+1 PC</span>
                   </div>
-                  <button
-                    onClick={() => addAction({ type: 'fundraiser', cost: 1, label: 'Fundraiser (+2 PC)', target: 'fundraiser' })}
-                    disabled={remaining < 1}
-                    className="px-6 py-3 rounded-xl text-sm font-bold bg-gradient-to-r from-amber-600 to-amber-500 text-white hover:shadow-lg hover:shadow-amber-600/20 transition-all disabled:opacity-30">
-                    Host Fundraiser • ⚡1
-                  </button>
-                  {pendingActions.some(a => a.type === 'fundraiser') && (
-                    <div className="text-xs text-emerald-400 mt-3 font-medium">✓ Fundraiser queued</div>
+                  {alreadyFundraised ? (
+                    <div className="text-xs text-amber-400 font-medium py-3">✓ Already hosted a fundraiser this turn — try again next turn</div>
+                  ) : (
+                    <button
+                      onClick={() => addAction({ type: 'fundraiser', cost: 1, label: 'Fundraiser (+2 PC)', target: 'fundraiser' })}
+                      disabled={!canFundraise}
+                      className="px-6 py-3 rounded-xl text-sm font-bold bg-gradient-to-r from-amber-600 to-amber-500 text-white hover:shadow-lg hover:shadow-amber-600/20 transition-all disabled:opacity-30">
+                      {queuedFundraiser ? '✓ Queued' : 'Host Fundraiser • ⚡1'}
+                    </button>
                   )}
                 </div>
               </div>
-            )}
+              );
+            })()}
 
             {actionType === 'endorsement' && (
               <div className="grid grid-cols-2 xl:grid-cols-3 gap-2.5">
