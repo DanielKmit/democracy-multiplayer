@@ -326,12 +326,19 @@ export default function GamePage() {
 
           {showWaiting && (
             <div className="flex-1 flex items-center justify-center">
-              <div className="text-center">
+              <div className="text-center max-w-md">
                 <div className="text-6xl mb-4">{isAIGame && gameState.aiThinking ? '🤖' : '⏳'}</div>
-                <p className="text-xl text-game-secondary">
+                <p className="text-xl text-game-secondary mb-2">
                   {isAIGame && gameState.aiThinking
-                    ? '🤖 AI is deciding...'
-                    : isRulingPhase ? 'Ruling Party is making policy changes...' : 'Opposition is planning their moves...'}
+                    ? '🤖 AI is thinking...'
+                    : isRulingPhase
+                      ? 'Waiting for Ruling Party...'
+                      : 'Waiting for Opposition...'}
+                </p>
+                <p className="text-sm text-game-muted">
+                  {isRulingPhase
+                    ? 'Your opponent is adjusting policies and proposing bills.'
+                    : 'Your opponent is planning opposition actions.'}
                 </p>
                 {isAIGame && gameState.aiThinking && (
                   <div className="mt-4 flex justify-center">
@@ -342,6 +349,17 @@ export default function GamePage() {
                     </div>
                   </div>
                 )}
+                {/* Show recent action log entries during opponent's turn */}
+                {gameState.actionLog.length > 0 && (
+                  <div className="mt-6 space-y-1.5 text-left">
+                    <div className="text-[10px] text-game-muted uppercase tracking-wider font-bold mb-1">Recent Activity</div>
+                    {gameState.actionLog.slice(-5).map((entry, i) => (
+                      <div key={i} className="glass-card p-2 text-[11px] text-game-secondary">
+                        {entry.message}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -350,17 +368,28 @@ export default function GamePage() {
 
           {isOppositionPhase && myRole === 'opposition' && (
             <div className="flex-1 flex flex-col overflow-hidden">
-              <div className="flex items-center gap-2 p-2 border-b border-game-border bg-game-card/30">
+              {/* Prominent turn banner */}
+              <div className="px-4 py-3 border-b border-red-800/30 bg-gradient-to-r from-red-950/30 via-red-950/10 to-transparent flex items-center justify-between">
+                <div>
+                  <div className="text-sm font-bold text-red-400">⚔️ Your Turn — Opposition Phase</div>
+                  <div className="text-[10px] text-game-muted mt-0.5">Use the action panel on the right to challenge the government, or propose bills below.</div>
+                </div>
+                <button onClick={endTurnPhase}
+                  className="px-5 py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-red-600 to-red-500 text-white hover:shadow-lg hover:shadow-red-600/20 transition-all">
+                  End Turn →
+                </button>
+              </div>
+              <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-game-border bg-game-card/30">
                 <button onClick={() => setCenterView('bills')}
-                  className={`px-3 py-1 rounded text-xs transition-all ${centerView === 'bills' ? 'bg-game-accent text-white' : 'text-game-muted hover:text-game-secondary'}`}>
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${centerView === 'bills' ? 'bg-white/[0.06] text-white border border-white/10' : 'text-game-muted hover:text-game-secondary'}`}>
                   📋 Bills
                 </button>
                 <button onClick={() => setCenterView('policy_web')}
-                  className={`px-3 py-1 rounded text-xs transition-all ${showPolicyWeb ? 'bg-game-accent text-white' : 'text-game-muted hover:text-game-secondary'}`}>
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${showPolicyWeb ? 'bg-white/[0.06] text-white border border-white/10' : 'text-game-muted hover:text-game-secondary'}`}>
                   🕸️ Policy Web
                 </button>
                 <button onClick={() => setCenterView('map')}
-                  className={`px-3 py-1 rounded text-xs transition-all ${showMap ? 'bg-game-accent text-white' : 'text-game-muted hover:text-game-secondary'}`}>
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${showMap ? 'bg-white/[0.06] text-white border border-white/10' : 'text-game-muted hover:text-game-secondary'}`}>
                   🗺️ Map
                 </button>
               </div>
