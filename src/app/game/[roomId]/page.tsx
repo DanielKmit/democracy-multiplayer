@@ -36,6 +36,60 @@ import { DiplomacyPanel } from '@/components/DiplomacyPanel';
 import { PromisesPanel } from '@/components/PromisesPanel';
 import { ParliamentVoteModal } from '@/components/ParliamentVoteModal';
 
+type SidebarTab = 'gov' | 'intel' | 'diplo';
+
+function RightSidebar() {
+  const [tab, setTab] = useState<SidebarTab>('gov');
+  const tabs: { id: SidebarTab; label: string; icon: string }[] = [
+    { id: 'gov', label: 'Gov', icon: '🏛️' },
+    { id: 'intel', label: 'Intel', icon: '📊' },
+    { id: 'diplo', label: 'More', icon: '🌐' },
+  ];
+
+  return (
+    <div className="w-72 border-l border-game-border bg-game-card/40 flex flex-col flex-shrink-0 overflow-hidden">
+      {/* Tab bar */}
+      <div className="flex border-b border-game-border shrink-0">
+        {tabs.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)}
+            className={`flex-1 py-2 text-[10px] font-bold uppercase tracking-wider transition-all ${
+              tab === t.id
+                ? 'text-white bg-white/[0.04] border-b-2 border-game-accent'
+                : 'text-game-muted hover:text-game-secondary'
+            }`}>
+            {t.icon} {t.label}
+          </button>
+        ))}
+      </div>
+      {/* Tab content */}
+      <div className="flex-1 overflow-y-auto p-3 space-y-3">
+        {tab === 'gov' && (
+          <>
+            <ParliamentHemicycle compact />
+            <CabinetPanel />
+            <PromisesPanel />
+            <VictoryProgress />
+          </>
+        )}
+        {tab === 'intel' && (
+          <>
+            <ScandalPanel />
+            <ReputationBar />
+            <SparklinePanel />
+            <ThreatAdvisory />
+          </>
+        )}
+        {tab === 'diplo' && (
+          <>
+            <DiplomacyPanel />
+            <PolicySynergiesPanel />
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function GamePage() {
   const params = useParams();
   const roomId = params.roomId as string;
@@ -349,18 +403,7 @@ export default function GamePage() {
         ) : showOppositionActions ? (
           <OppositionActionPanel />
         ) : (
-          <div className="w-72 border-l border-game-border bg-game-card/50 overflow-y-auto p-3 space-y-4 flex-shrink-0">
-            <ParliamentHemicycle compact />
-            <VictoryProgress />
-            <ScandalPanel />
-            <ReputationBar />
-            <PromisesPanel />
-            <CabinetPanel />
-            <DiplomacyPanel />
-            <PolicySynergiesPanel />
-            <SparklinePanel />
-            <ThreatAdvisory />
-          </div>
+          <RightSidebar />
         )}
       </div>
 
