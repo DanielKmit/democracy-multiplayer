@@ -1749,6 +1749,14 @@ export function advancePhase(state: GameState): void {
 
       tickActiveEffects(state);
 
+      // Decay NGO alliances — reduce bonus by 1 per turn, remove when depleted
+      if (state.ngoAlliances && state.ngoAlliances.length > 0) {
+        for (const alliance of state.ngoAlliances) {
+          alliance.bonus = Math.max(0, alliance.bonus - 0.5);
+        }
+        state.ngoAlliances = state.ngoAlliances.filter(a => a.bonus > 0);
+      }
+
       // Track situation counters
       if ((state.policies.env_regulations ?? 40) < 25) {
         state.consecutiveLowEnvRegulations++;

@@ -5,6 +5,7 @@ import { useGameStore } from '@/lib/store';
 import { POLICIES } from '@/lib/engine/policies';
 import { VOTER_GROUPS } from '@/lib/engine/voters';
 import { SimVarKey } from '@/lib/engine/types';
+import { getSituationById } from '@/lib/engine/situations';
 
 interface WebNode {
   id: string;
@@ -77,7 +78,7 @@ export function PolicyWeb() {
     });
 
     // Policies — left arc
-    const visiblePolicies = POLICIES.slice(0, 28);
+    const visiblePolicies = POLICIES;
     visiblePolicies.forEach((policy, i) => {
       const angleStart = Math.PI * 0.55;
       const angleEnd = Math.PI * 1.45;
@@ -150,7 +151,7 @@ export function PolicyWeb() {
       const angle = -Math.PI / 2 + (i / Math.max(1, gameState.activeSituations.length - 1)) * Math.PI * 0.4 - Math.PI * 0.2;
       const r = 200;
       nodes.push({
-        id: `sit_${sit.id}`, label: sit.id.replace(/_/g, ' '),
+        id: `sit_${sit.id}`, label: getSituationById(sit.id)?.name ?? sit.id.replace(/_/g, ' '),
         type: 'situation',
         x: cx + Math.cos(angle) * r, y: cy + Math.sin(angle) * r,
         color: TYPE_COLORS.situation, radius: 20, pulsing: true,

@@ -179,7 +179,7 @@ export function CampaignDashboard() {
 
             {actionType === 'voter_promise' && (
               <div className="grid grid-cols-2 gap-3">
-                {POLICIES.slice(0, 16)
+                {POLICIES
                   .filter(policy => {
                     // Filter out policies the player has already promised
                     const pledges = gameState?.pledges ?? [];
@@ -202,7 +202,7 @@ export function CampaignDashboard() {
                     <div className="text-xs text-amber-400 mt-1">⚡ 1 PC</div>
                   </button>
                 ))}
-                {POLICIES.slice(0, 16).every(policy => {
+                {POLICIES.every(policy => {
                   const pledges = gameState?.pledges ?? [];
                   return pledges.some(p => p.playerId === playerId && p.policyId === policy.id);
                 }) && (

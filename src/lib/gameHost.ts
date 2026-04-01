@@ -41,11 +41,11 @@ import { spinScandal } from './engine/scandals';
 import { updateSupermajorityTracker, checkVictory } from './engine/victoryConditions';
 import { POLICY_MAP } from './engine/policies';
 import { VOTER_GROUPS } from './engine/voters';
-import { rollForEvent } from './engine/events';
+import { rollForEvent, resetEventCounter } from './engine/events';
 import { calculateBudget } from './engine/budget';
 import { createInitialParliament, allocateSeats, voteBill } from './engine/parliament';
 import { checkAssassination, updateExtremism } from './engine/extremism';
-import { rollForDilemma, getDilemmaById } from './engine/dilemmas';
+import { rollForDilemma, getDilemmaById, resetDilemmaTracker } from './engine/dilemmas';
 import { getSituationById } from './engine/situations';
 import { getEffectiveCompetence } from './engine/politicians';
 import { getBillTemplate, BILL_LIBRARY } from './engine/billLibrary';
@@ -596,7 +596,11 @@ export function handleAction(playerId: string, action: string, payload?: unknown
 
     case 'resolveDilemma': {
       if (gameState.phase !== 'dilemma' || !gameState.activeDilemma) return;
-      const ruling = gameState.players.find(p => p.role === 'ruling');
+      let ruling = gameState.players.find(p => p.role === 'ruling');
+      // During campaign phase, no one is ruling — allow host or first player to decide
+      if (!ruling) {
+        ruling = gameState.players.find(p => p.id === playerId);
+      }
       if (!ruling || ruling.id !== playerId) return;
 
       const option = payload as 'a' | 'b';
@@ -690,7 +694,6 @@ export function handleAction(playerId: string, action: string, payload?: unknown
         addNewsItem(gameState, `📋 ${msg}`, 'bill');
       }
 
-      advancePhase(gameState); // -> resolution
       recalculate(gameState);
 
       // Show impact notification for each change
@@ -708,8 +711,17 @@ export function handleAction(playerId: string, action: string, payload?: unknown
       if (!gameState.turnActedThisTurn) gameState.turnActedThisTurn = {};
       gameState.turnActedThisTurn[playerId] = true;
 
-      advancePhase(gameState); // -> opposition
-      addLogEntry(gameState, 'Opposition phase', 'info');
+      // Check for pending bills — if any, go to bill_voting, otherwise skip to opposition
+      const pendingBills = gameState.activeBills.filter(b => b.status === 'pending' || b.status === 'voting');
+      if (pendingBills.length > 0) {
+        advancePhase(gameState); // -> bill_voting
+        addLogEntry(gameState, `🗳️ ${pendingBills.length} bill(s) awaiting parliamentary vote`, 'info');
+      } else {
+        advancePhase(gameState); // -> bill_voting
+        advancePhase(gameState); // -> resolution
+        advancePhase(gameState); // -> opposition
+        addLogEntry(gameState, 'Opposition phase', 'info');
+      }
       broadcastState();
       break;
     }
@@ -1880,11 +1892,14 @@ function handleEndTurnPhase(playerId?: string) {
       // After first election, end pre-election phase
       gameState.isPreElection = false;
 
-      // Reset campaign bonuses and campaign active effects
+      // Reset campaign bonuses and campaign active effects (including long-lived ones)
       gameState.campaignBonuses = {};
       gameState.activeEffects = gameState.activeEffects.filter(e => {
         const d = e.data as Record<string, unknown>;
-        return d.type !== 'campaign_visit' && d.type !== 'campaign' && d.type !== 'rally';
+        if (d.type === 'campaign_visit' || d.type === 'campaign' || d.type === 'rally') return false;
+        // Remove any effects with very long durations that were campaign-related
+        if (e.turnsRemaining >= 90) return false;
+        return true;
       });
 
       // Don't assign ruling/opposition yet — that happens after coalition negotiation
@@ -2030,17 +2045,19 @@ function handleEndTurnPhase(playerId?: string) {
     }
 
     gameState.pendingPolicyChanges = [];
-    advancePhase(gameState); // -> bill_voting (if bills exist) or resolution
 
-    if ((gameState.phase as string) === 'bill_voting') {
-      // No auto-vote — bills are voted on manually via startLiveVote + finalizeLiveVote
-      // Skip directly to resolution
-      advancePhase(gameState); // bill_voting -> resolution
+    // Check if there are pending bills that need voting
+    const pendingBills = gameState.activeBills.filter(b => b.status === 'pending' || b.status === 'voting');
+    if (pendingBills.length > 0) {
+      advancePhase(gameState); // -> bill_voting
+      addLogEntry(gameState, `🗳️ ${pendingBills.length} bill(s) awaiting parliamentary vote`, 'info');
+    } else {
+      advancePhase(gameState); // -> bill_voting
+      advancePhase(gameState); // -> resolution
+      recalculate(gameState);
+      advancePhase(gameState); // resolution -> opposition
+      addLogEntry(gameState, 'Ruling party passed. Opposition phase.', 'info');
     }
-
-    recalculate(gameState);
-    advancePhase(gameState); // resolution -> opposition
-    addLogEntry(gameState, 'Ruling party passed. Opposition phase.', 'info');
     broadcastState();
   } else if (gameState.phase === 'opposition') {
     // Mark opposition player as acted (passed without actions)
@@ -2144,5 +2161,14 @@ export function getGameState(): GameState | null {
 export function cleanupGame() {
   gameState = null;
   onStateChange = null;
+  aiPersonality = null;
+  aiScheduled = false;
+  if (aiTurnTimer) {
+    clearTimeout(aiTurnTimer);
+    aiTurnTimer = null;
+  }
   clearPersistedState();
+  // Reset module-level trackers so new games get fresh state
+  resetDilemmaTracker();
+  resetEventCounter();
 }

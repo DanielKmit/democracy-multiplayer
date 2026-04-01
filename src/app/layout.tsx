@@ -1,11 +1,8 @@
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
 import { Analytics } from '@vercel/analytics/next';
 import { AudioProvider } from '@/components/AudioManager';
 import { Particles } from '@/components/Particles';
 import './globals.css';
-
-const inter = Inter({ subsets: ['latin'], variable: '--font-body' });
 
 const BASE_URL = 'https://democracy-game-omega.vercel.app';
 
@@ -47,7 +44,7 @@ export default function RootLayout({
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
         <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
       </head>
-      <body className={`${inter.className} bg-game-bg bg-dot-grid bg-gradient-mesh bg-noise text-game-text min-h-screen`}>
+      <body className="font-sans bg-game-bg bg-dot-grid bg-gradient-mesh bg-noise text-game-text min-h-screen">
         <AudioProvider>
           <Particles />
           {children}

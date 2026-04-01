@@ -202,7 +202,7 @@ export function CoalitionScreen() {
                       className="w-full text-xs p-2 rounded bg-game-bg border border-game-border text-white mb-2"
                     >
                       <option value="">Select policy...</option>
-                      {POLICIES.slice(0, 20).map(p => (
+                      {POLICIES.map(p => (
                         <option key={p.id} value={p.id}>{p.name}</option>
                       ))}
                     </select>
