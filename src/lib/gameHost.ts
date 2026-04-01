@@ -177,7 +177,10 @@ function recalculate(state: GameState) {
   // Apply cabinet minister bonuses to simulation
   applyCabinetBonuses(state);
 
-  state.budget = calculateBudget(state.policies, state.simulation, state.budget.debtTotal ?? 200);
+  // Skip budget recalculation during campaign phase — no government is spending money yet
+  if (!state.campaignPhase && !state.isPreElection) {
+    state.budget = calculateBudget(state.policies, state.simulation, state.budget.debtTotal ?? 200);
+  }
 
   // Apply situation effects to simulation
   for (const activeSit of state.activeSituations) {
@@ -2118,15 +2121,14 @@ function handleEndTurnPhase(playerId?: string) {
   } else if (gameState.phase === 'campaigning') {
     // Campaign phase — track who ended their turn, advance when both ready
     if (playerId) {
-      // Require at least 1 campaign promise before ending turn
-      const pledgesThisTurn = (gameState.pledges ?? []).filter(
-        p => p.playerId === playerId && p.madeOnTurn === gameState!.turn
+      // Require at least 1 campaign promise total (across all campaign turns), not per turn
+      const totalPledges = (gameState.pledges ?? []).filter(
+        p => p.playerId === playerId
       ).length;
-      if (pledgesThisTurn < 1) {
+      if (totalPledges < 1 && gameState.turnsUntilElection >= 4) {
+        // Only enforce on first campaign turn — give a gentle nudge, not a hard block
         const player = gameState.players.find(p => p.id === playerId);
-        addLogEntry(gameState, `⚠️ ${player?.party.partyName ?? playerId} must make at least 1 campaign promise before ending turn`, 'info');
-        broadcastState();
-        return;
+        addLogEntry(gameState, `💡 Tip: ${player?.party.partyName ?? playerId}, consider making a campaign promise to win voter trust!`, 'info');
       }
 
       if (!gameState.campaignActedThisTurn) gameState.campaignActedThisTurn = {};
