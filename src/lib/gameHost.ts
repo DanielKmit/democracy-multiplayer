@@ -714,17 +714,12 @@ export function handleAction(playerId: string, action: string, payload?: unknown
       if (!gameState.turnActedThisTurn) gameState.turnActedThisTurn = {};
       gameState.turnActedThisTurn[playerId] = true;
 
-      // Check for pending bills — if any, go to bill_voting, otherwise skip to opposition
-      const pendingBills = gameState.activeBills.filter(b => b.status === 'pending' || b.status === 'voting');
-      if (pendingBills.length > 0) {
-        advancePhase(gameState); // -> bill_voting
-        addLogEntry(gameState, `🗳️ ${pendingBills.length} bill(s) awaiting parliamentary vote`, 'info');
-      } else {
-        advancePhase(gameState); // -> bill_voting
-        advancePhase(gameState); // -> resolution
-        advancePhase(gameState); // -> opposition
-        addLogEntry(gameState, 'Opposition phase', 'info');
-      }
+      // Always advance through bill_voting → resolution → opposition
+      // Pending bills stay pending for future voting — never block the turn
+      advancePhase(gameState); // -> bill_voting
+      advancePhase(gameState); // -> resolution
+      advancePhase(gameState); // -> opposition
+      addLogEntry(gameState, 'Opposition phase', 'info');
       broadcastState();
       break;
     }
@@ -2108,18 +2103,13 @@ function handleEndTurnPhase(playerId?: string) {
 
     gameState.pendingPolicyChanges = [];
 
-    // Check if there are pending bills that need voting
-    const pendingBills = gameState.activeBills.filter(b => b.status === 'pending' || b.status === 'voting');
-    if (pendingBills.length > 0) {
-      advancePhase(gameState); // -> bill_voting
-      addLogEntry(gameState, `🗳️ ${pendingBills.length} bill(s) awaiting parliamentary vote`, 'info');
-    } else {
-      advancePhase(gameState); // -> bill_voting
-      advancePhase(gameState); // -> resolution
-      recalculate(gameState);
-      advancePhase(gameState); // resolution -> opposition
-      addLogEntry(gameState, 'Ruling party passed. Opposition phase.', 'info');
-    }
+    // Always skip through bill_voting → resolution → opposition
+    // Pending bills stay pending and can be voted on next turn — never block the turn
+    advancePhase(gameState); // -> bill_voting
+    advancePhase(gameState); // -> resolution
+    recalculate(gameState);
+    advancePhase(gameState); // resolution -> opposition
+    addLogEntry(gameState, 'Opposition phase.', 'info');
     broadcastState();
   } else if (gameState.phase === 'opposition') {
     // Mark opposition player as acted (passed without actions)
@@ -2210,8 +2200,11 @@ function handleEndTurnPhase(playerId?: string) {
     addLogEntry(gameState, `📊 Campaign standings update`, 'info');
     broadcastState();
   } else if (gameState.phase === 'bill_voting') {
-    // Bills have been voted on, proceed
-    advancePhase(gameState);
+    // Skip through to resolution → opposition. Bills stay pending for next turn.
+    advancePhase(gameState); // -> resolution
+    recalculate(gameState);
+    advancePhase(gameState); // -> opposition
+    addLogEntry(gameState, 'Opposition phase.', 'info');
     broadcastState();
   }
 }
