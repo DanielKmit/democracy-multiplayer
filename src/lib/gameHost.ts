@@ -396,7 +396,7 @@ function scheduleAITurn() {
   sendMessage({ type: 'state', state: gameState });
   if (onStateChange) onStateChange({ ...gameState });
 
-  const delay = 1500 + Math.random() * 1000; // 1.5-2.5s
+  const delay = 2500 + Math.random() * 1500; // 2.5-4s — long enough for human to see opposition phase
 
   if (aiTurnTimer) clearTimeout(aiTurnTimer);
   aiTurnTimer = setTimeout(() => {
@@ -815,9 +815,21 @@ export function handleAction(playerId: string, action: string, payload?: unknown
       if (!gameState.turnActedThisTurn) gameState.turnActedThisTurn = {};
       gameState.turnActedThisTurn[playerId] = true;
 
-      advancePhase(gameState); // -> polling
-      addLogEntry(gameState, `📊 Ruling Approval: ${gameState.rulingApproval}%`, 'info');
-      broadcastState();
+      // In AI games, pause before advancing so the human ruling player can see what the AI did
+      if (gameState.isAIGame && playerId === gameState.aiPlayerId) {
+        gameState.aiThinking = false;
+        broadcastState(); // Show the actions taken (log entries, news) before advancing
+        setTimeout(() => {
+          if (!gameState) return;
+          advancePhase(gameState); // -> polling
+          addLogEntry(gameState, `📊 Ruling Approval: ${gameState.rulingApproval}%`, 'info');
+          broadcastState();
+        }, 2000); // 2s pause so human can see AI opposition actions
+      } else {
+        advancePhase(gameState); // -> polling
+        addLogEntry(gameState, `📊 Ruling Approval: ${gameState.rulingApproval}%`, 'info');
+        broadcastState();
+      }
       break;
     }
 
@@ -1033,68 +1045,19 @@ export function handleAction(playerId: string, action: string, payload?: unknown
         break;
       }
 
-      // Mutual exclusion: if another player already formed a coalition with this bot party, block
-      const alreadyCoalitioned = gameState.coalitionPartners.find(
-        cp => cp.botPartyId === offer.toBotPartyId
-      );
-      if (alreadyCoalitioned) {
-        const otherPlayer = gameState.players.find(p =>
-          gameState!.coalitionOffers.some(o =>
-            o.fromPlayerId === p.id && o.toBotPartyId === offer.toBotPartyId && o.accepted
-          )
-        );
-        addLogEntry(gameState, `❌ ${botParty.name} already joined ${otherPlayer?.party.partyName ?? 'another party'}'s coalition`, 'info');
-        broadcastState();
-        break;
-      }
-
-      // Evaluate the offer based on ideology alignment
-      const econDiff = Math.abs(player.party.economicAxis - botParty.economicAxis);
-      const socialDiff = Math.abs(player.party.socialAxis - botParty.socialAxis);
-      const ideologyAlignment = (200 - econDiff - socialDiff) / 200; // 0 to 1
-
-      // Base acceptance chance from ideology
-      let acceptChance = ideologyAlignment * 0.7 + 0.15; // 15% to 85%
-
-      // Bonus for policy promises that align with bot party preferences
-      for (const promise of offer.promises) {
-        const pref = botParty.policyPreferences[promise.policyId];
-        if (pref !== undefined) {
-          if ((promise.direction === 'increase' && pref > 60) ||
-              (promise.direction === 'decrease' && pref < 40)) {
-            acceptChance += 0.1;
-          }
-        }
-      }
-
-      acceptChance = Math.min(0.95, Math.max(0.05, acceptChance));
-      const accepted = Math.random() < acceptChance;
-
-      // Track the offer (accepted or rejected) to prevent double-approach
-      const trackedOffer: import('./engine/types').CoalitionOffer = {
+      // Store offer as pending — will be evaluated when coalition phase ends
+      // Both players can make offers; bot parties pick the BEST offer, not the first
+      const pendingOffer: import('./engine/types').CoalitionOffer = {
         fromPlayerId: playerId,
         toBotPartyId: botParty.id,
         promises: offer.promises,
-        accepted,
-        rejected: !accepted,
+        accepted: false,
+        rejected: false,
       };
-      gameState.coalitionOffers.push(trackedOffer);
+      gameState.coalitionOffers.push(pendingOffer);
 
-      if (accepted) {
-        gameState.coalitionPartners.push({
-          botPartyId: botParty.id,
-          seats: botParty.seats,
-          promises: offer.promises,
-          satisfaction: 80,
-          turnsInCoalition: 0,
-        });
-        addLogEntry(gameState, `🤝 ${botParty.name} joins ${player.party.partyName}'s coalition!`, 'election');
-        addNewsItem(gameState, `Coalition deal: ${botParty.name} joins ${player.party.partyName}`, 'election');
-      } else {
-        addLogEntry(gameState, `❌ ${botParty.name} rejects coalition offer from ${player.party.partyName}`, 'election');
-        addNewsItem(gameState, `${botParty.name} rejects ${player.party.partyName}'s coalition overture`, 'election');
-      }
-
+      addLogEntry(gameState, `📨 ${player.party.partyName} submits coalition offer to ${botParty.name} (${offer.promises.length} promise${offer.promises.length !== 1 ? 's' : ''})`, 'election');
+      addNewsItem(gameState, `${player.party.partyName} approaches ${botParty.name} for coalition talks`, 'election');
       broadcastState();
       break;
     }
@@ -2007,6 +1970,82 @@ function handleEndTurnPhase(playerId?: string) {
 
     broadcastState();
   } else if (gameState.phase === 'coalition_negotiation') {
+    // ===== EVALUATE ALL PENDING COALITION OFFERS =====
+    // Each bot party picks the BEST offer from all players, not the first
+    const pendingOffersByBot: Record<string, import('./engine/types').CoalitionOffer[]> = {};
+    for (const offer of gameState.coalitionOffers) {
+      if (!offer.accepted && !offer.rejected) {
+        if (!pendingOffersByBot[offer.toBotPartyId]) pendingOffersByBot[offer.toBotPartyId] = [];
+        pendingOffersByBot[offer.toBotPartyId].push(offer);
+      }
+    }
+
+    for (const [botId, offers] of Object.entries(pendingOffersByBot)) {
+      const botParty = gameState.botParties.find(b => b.id === botId);
+      if (!botParty) continue;
+
+      // Score each offer
+      let bestOffer: import('./engine/types').CoalitionOffer | null = null;
+      let bestScore = -1;
+
+      for (const offer of offers) {
+        const offerPlayer = gameState.players.find(p => p.id === offer.fromPlayerId);
+        if (!offerPlayer) continue;
+
+        const econDiff = Math.abs(offerPlayer.party.economicAxis - botParty.economicAxis);
+        const socialDiff = Math.abs(offerPlayer.party.socialAxis - botParty.socialAxis);
+        const alignment = (200 - econDiff - socialDiff) / 200;
+
+        let score = alignment * 0.7 + 0.15;
+        for (const promise of offer.promises) {
+          const pref = botParty.policyPreferences[promise.policyId];
+          if (pref !== undefined) {
+            if ((promise.direction === 'increase' && pref > 60) || (promise.direction === 'decrease' && pref < 40)) {
+              score += 0.1;
+            }
+          }
+        }
+        // Bonus: more promises = more serious offer
+        score += offer.promises.length * 0.03;
+
+        if (score > bestScore) {
+          bestScore = score;
+          bestOffer = offer;
+        }
+      }
+
+      // Bot decides whether to accept the best offer
+      const acceptChance = Math.min(0.95, Math.max(0.05, bestScore));
+      const accepted = bestOffer && Math.random() < acceptChance;
+
+      for (const offer of offers) {
+        if (accepted && offer === bestOffer) {
+          offer.accepted = true;
+          offer.rejected = false;
+          const offerPlayer = gameState.players.find(p => p.id === offer.fromPlayerId);
+          gameState.coalitionPartners.push({
+            botPartyId: botParty.id,
+            seats: botParty.seats,
+            promises: offer.promises,
+            satisfaction: 80,
+            turnsInCoalition: 0,
+          });
+          addLogEntry(gameState, `🤝 ${botParty.name} accepts ${offerPlayer?.party.partyName ?? 'unknown'}'s coalition offer!`, 'election');
+          addNewsItem(gameState, `Coalition deal: ${botParty.name} joins ${offerPlayer?.party.partyName}`, 'election');
+        } else {
+          offer.accepted = false;
+          offer.rejected = true;
+          if (offers.length > 1 && offer !== bestOffer) {
+            const rejectedPlayer = gameState.players.find(p => p.id === offer.fromPlayerId);
+            addLogEntry(gameState, `❌ ${botParty.name} chose a better offer over ${rejectedPlayer?.party.partyName}`, 'election');
+          } else if (!accepted) {
+            const rejectedPlayer = gameState.players.find(p => p.id === offer.fromPlayerId);
+            addLogEntry(gameState, `❌ ${botParty.name} rejects ${rejectedPlayer?.party.partyName}'s offer`, 'election');
+          }
+        }
+      }
+    }
+
     // Player is done negotiating — determine who forms government
     const lastElection = gameState.electionHistory[gameState.electionHistory.length - 1];
     if (!lastElection) {

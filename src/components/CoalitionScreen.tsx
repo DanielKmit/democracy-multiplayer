@@ -228,11 +228,17 @@ export function CoalitionScreen() {
                 const wasRejected = gameState.coalitionOffers.some(
                   o => o.fromPlayerId === myPlayer.id && o.toBotPartyId === bot.id && o.rejected
                 );
+                const hasPendingOffer = gameState.coalitionOffers.some(
+                  o => o.fromPlayerId === myPlayer.id && o.toBotPartyId === bot.id && !o.accepted && !o.rejected
+                );
+                const opponentHasPendingOffer = gameState.coalitionOffers.some(
+                  o => o.fromPlayerId !== myPlayer.id && o.toBotPartyId === bot.id && !o.accepted && !o.rejected
+                );
                 const isCoalitionedByOpponent = opponentCoalitionPartnerIds.includes(bot.id);
                 const isSelected = selectedBot === bot.id;
                 const alignment = getAlignmentScore(bot);
                 const alignColor = getAlignmentColor(alignment);
-                const unavailable = isAlreadyPartner || wasRejected || isCoalitionedByOpponent;
+                const unavailable = isAlreadyPartner || wasRejected || isCoalitionedByOpponent || hasPendingOffer;
 
                 return (
                   <div key={bot.id} className={`glass-card overflow-hidden transition-all ${
@@ -301,6 +307,13 @@ export function CoalitionScreen() {
                         <div className="mt-3 flex items-center gap-2 p-2 rounded-lg bg-orange-950/30 border border-orange-800/30">
                           <span className="text-orange-400 text-sm">🔒</span>
                           <span className="text-xs text-orange-400 font-medium">Already joined {opponentPlayer?.party.partyName}&apos;s coalition</span>
+                        </div>
+                      )}
+                      {hasPendingOffer && (
+                        <div className="mt-3 flex items-center gap-2 p-2 rounded-lg bg-blue-950/30 border border-blue-800/30">
+                          <span className="text-blue-400 text-sm">📨</span>
+                          <span className="text-xs text-blue-400 font-medium">Offer submitted — will be evaluated when negotiations end</span>
+                          {opponentHasPendingOffer && <span className="text-[10px] text-amber-400 ml-auto">⚔️ Competing offer!</span>}
                         </div>
                       )}
                     </div>

@@ -411,16 +411,34 @@ function makeOppositionDecision(
     }
   }
 
-  // Priority 6: Campaign with remaining PC
-  if (pcBudget >= 1) {
+  // Priority 6: Campaign with remaining PC — keep spending on multiple groups
+  while (pcBudget >= 1) {
     const targetGroup = findBestCampaignTarget(state, aiPlayer);
     if (targetGroup) {
+      // Don't target same group twice in one turn
+      const alreadyTargeted = actions.some(a => a.type === 'campaign' && a.targetGroupId === targetGroup);
+      if (alreadyTargeted) break;
       actions.push({
         type: 'campaign',
         cost: 1,
         targetGroupId: targetGroup,
       });
       pcBudget -= 1;
+    } else {
+      break;
+    }
+    // Also rally in a region if we have PC left
+    if (pcBudget >= 2) {
+      const region = pickRandom(REGIONS);
+      const alreadyRallied = actions.some(a => a.type === 'rally_protest' && a.targetRegionId === region.id);
+      if (!alreadyRallied) {
+        actions.push({
+          type: 'rally_protest',
+          cost: 2,
+          targetRegionId: region.id,
+        });
+        pcBudget -= 2;
+      }
     }
   }
 
@@ -433,17 +451,6 @@ function makeOppositionDecision(
       scandalType: types[Math.floor(Math.random() * types.length)],
     });
     pcBudget -= 3;
-  }
-
-  // Random variance: 20% chance to also rally in a region
-  if (pcBudget >= 2 && shouldMakeSuboptimalChoice()) {
-    const region = pickRandom(REGIONS);
-    actions.push({
-      type: 'rally_protest',
-      cost: 2,
-      targetRegionId: region.id,
-    });
-    pcBudget -= 2;
   }
 
   if (actions.length > 0) {
