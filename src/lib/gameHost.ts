@@ -930,8 +930,52 @@ export function handleAction(playerId: string, action: string, payload?: unknown
             break;
           }
           case 'state_position': {
-            // Taking a position on an issue
             addLogEntry(gameState, `📢 ${player.party.partyName} takes a public stance`, 'info');
+            break;
+          }
+          case 'attack_ad': {
+            // Attack the opponent's weakest policy area — reduces their support with a voter group
+            const opponentPlayer = gameState.players.find(p => p.id !== player.id);
+            if (opponentPlayer && action.targetGroupId) {
+              // Reduce opponent's campaign bonus for this group
+              const oppBonuses = gameState.campaignBonuses[opponentPlayer.id] ?? {};
+              oppBonuses[action.targetGroupId] = Math.max(-10, (oppBonuses[action.targetGroupId] ?? 0) - 4);
+              gameState.campaignBonuses[opponentPlayer.id] = oppBonuses;
+              // Slight self-penalty (negative campaigning turns some voters off)
+              const selfBonuses = gameState.campaignBonuses[player.id] ?? {};
+              selfBonuses[action.targetGroupId] = (selfBonuses[action.targetGroupId] ?? 0) - 1;
+              gameState.campaignBonuses[player.id] = selfBonuses;
+              const groupName = VOTER_GROUPS.find(g => g.id === action.targetGroupId)?.name ?? action.targetGroupId;
+              addLogEntry(gameState, `📺 ${player.party.partyName} runs attack ad targeting ${opponentPlayer.party.partyName} among ${groupName}`, 'info');
+              addNewsItem(gameState, `Negative campaign: ${player.party.partyName} attacks ${opponentPlayer.party.partyName}'s record with ${groupName}`, 'election');
+            }
+            break;
+          }
+          case 'fundraiser': {
+            // Host a fundraiser — gain extra PC for future campaign turns
+            player.politicalCapital += 2; // Net gain of +1 after cost (cost is 1)
+            addLogEntry(gameState, `💰 ${player.party.partyName} hosts a fundraising dinner (+2 PC)`, 'info');
+            addNewsItem(gameState, `${player.party.partyName} raises campaign funds at exclusive dinner event`, 'election');
+            break;
+          }
+          case 'endorsement': {
+            // Seek endorsement from a prominent figure — broad +3 bonus across all groups
+            if (action.targetGroupId) {
+              const bonuses = gameState.campaignBonuses[player.id] ?? {};
+              bonuses[action.targetGroupId] = (bonuses[action.targetGroupId] ?? 0) + 4;
+              // Also small boost to two adjacent groups
+              const groupIndex = VOTER_GROUPS.findIndex(g => g.id === action.targetGroupId);
+              if (groupIndex >= 0) {
+                const prev = VOTER_GROUPS[(groupIndex - 1 + VOTER_GROUPS.length) % VOTER_GROUPS.length];
+                const next = VOTER_GROUPS[(groupIndex + 1) % VOTER_GROUPS.length];
+                bonuses[prev.id] = (bonuses[prev.id] ?? 0) + 2;
+                bonuses[next.id] = (bonuses[next.id] ?? 0) + 2;
+              }
+              gameState.campaignBonuses[player.id] = bonuses;
+              const groupName = VOTER_GROUPS.find(g => g.id === action.targetGroupId)?.name ?? action.targetGroupId;
+              addLogEntry(gameState, `🌟 ${player.party.partyName} secures endorsement from ${groupName} leader`, 'info');
+              addNewsItem(gameState, `Prominent ${groupName} figure endorses ${player.party.partyName}`, 'election');
+            }
             break;
           }
         }
@@ -2121,14 +2165,15 @@ function handleEndTurnPhase(playerId?: string) {
   } else if (gameState.phase === 'campaigning') {
     // Campaign phase — track who ended their turn, advance when both ready
     if (playerId) {
-      // Require at least 1 campaign promise total (across all campaign turns), not per turn
+      // Require at least 1 campaign promise total before you can end any campaign turn
       const totalPledges = (gameState.pledges ?? []).filter(
         p => p.playerId === playerId
       ).length;
-      if (totalPledges < 1 && gameState.turnsUntilElection >= 4) {
-        // Only enforce on first campaign turn — give a gentle nudge, not a hard block
+      if (totalPledges < 1) {
         const player = gameState.players.find(p => p.id === playerId);
-        addLogEntry(gameState, `💡 Tip: ${player?.party.partyName ?? playerId}, consider making a campaign promise to win voter trust!`, 'info');
+        addLogEntry(gameState, `⚠️ ${player?.party.partyName ?? playerId} must make at least 1 campaign promise before ending turn. Voters need to know what you stand for!`, 'info');
+        broadcastState();
+        return;
       }
 
       if (!gameState.campaignActedThisTurn) gameState.campaignActedThisTurn = {};

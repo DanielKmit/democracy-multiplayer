@@ -11,18 +11,18 @@ import { useAudio } from './AudioManager';
 
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-const phaseLabels: Record<string, string> = {
-  events: '📰 Events',
-  dilemma: '⚖️ Dilemma',
-  ruling: '🏛️ Ruling Party Turn',
-  bill_voting: '📋 Parliament Vote',
-  resolution: '⚙️ Resolving...',
-  opposition: '⚔️ Opposition Turn',
-  polling: '📊 Polling Results',
-  election: '🗳️ Election',
-  government_formation: '🏛️ Forming Government',
-  coalition_negotiation: '🤝 Coalition Talks',
-  campaigning: '📢 Campaign Phase',
+const phaseLabels: Record<string, { label: string; color: string }> = {
+  events: { label: 'Events', color: 'text-amber-400' },
+  dilemma: { label: 'Dilemma', color: 'text-purple-400' },
+  ruling: { label: 'Ruling Turn', color: 'text-blue-400' },
+  bill_voting: { label: 'Parliament Vote', color: 'text-cyan-400' },
+  resolution: { label: 'Resolving...', color: 'text-game-muted' },
+  opposition: { label: 'Opposition Turn', color: 'text-red-400' },
+  polling: { label: 'Polling', color: 'text-emerald-400' },
+  election: { label: 'Election', color: 'text-amber-400' },
+  government_formation: { label: 'Forming Government', color: 'text-blue-400' },
+  coalition_negotiation: { label: 'Coalition Talks', color: 'text-purple-400' },
+  campaigning: { label: 'Campaign', color: 'text-amber-400' },
 };
 
 export function TopBar() {
@@ -39,6 +39,8 @@ export function TopBar() {
   const dateStr = `${MONTH_NAMES[gameState.date.month - 1]} ${gameState.date.year}`;
 
   const myVoteShare = myPlayer ? (gameState.voteShares?.[myPlayer.id] ?? 0) : 0;
+  const approval = myPlayer ? (gameState.approvalRating?.[myPlayer.id] ?? 50) : 50;
+  const phase = phaseLabels[gameState.phase] ?? { label: gameState.phase, color: 'text-game-muted' };
 
   const handleSaveGame = () => {
     const json = JSON.stringify(gameState, null, 2);
@@ -66,27 +68,31 @@ export function TopBar() {
       }
     };
     reader.readAsText(file);
-    // Reset input so same file can be loaded again
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   return (
-    <div className="glass-card rounded-none border-x-0 border-t-0 px-4 py-2.5">
+    <div className="border-b border-game-border bg-game-card/80 backdrop-blur-xl px-4 py-2">
       <div className="flex items-center justify-between">
-        {/* Left: Country + Date */}
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <span className="text-lg">🏛️</span>
+        {/* Left: Country + Date + Phase */}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-game-accent/10 border border-game-accent/20 flex items-center justify-center text-sm">
+              🏛️
+            </div>
             <div>
-              <div className="text-sm font-bold text-white font-display tracking-wide">Republic of Novaria</div>
+              <div className="text-sm font-bold text-white font-display tracking-wide leading-tight">Novaria</div>
               <div className="text-[10px] text-game-muted">{dateStr} • Turn {gameState.turn}</div>
             </div>
           </div>
 
-          <div className="text-[10px] px-3 py-1 rounded-full glass-card text-game-secondary">
-            {phaseLabels[gameState.phase] ?? gameState.phase}
+          {/* Phase badge */}
+          <div className={`text-[10px] px-2.5 py-1 rounded-lg border font-medium ${phase.color}`}
+            style={{ borderColor: 'currentColor', opacity: 0.8, backgroundColor: 'rgba(255,255,255,0.02)' }}>
+            {phase.label}
           </div>
 
+          {/* Coalition info */}
           {ruling && !gameState.isPreElection && (() => {
             const rulingSeats = gameState.parliament.seatsByParty[ruling.id] ?? 0;
             const coalitionPartners = gameState.coalitionPartners ?? [];
@@ -94,129 +100,74 @@ export function TopBar() {
             const totalCoalitionSeats = rulingSeats + coalitionSeats;
 
             return (
-              <div className="flex items-center gap-2 text-xs">
-                <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: PARTY_COLORS[ruling.party.partyColor] }} />
-                <span className="text-game-muted">Gov:</span>
-                <span className="text-white font-medium">{ruling.party.partyName}</span>
-                <span className="text-slate-500">({rulingSeats})</span>
-                {coalitionPartners.length > 0 && (
-                  <>
-                    {coalitionPartners.map(cp => {
-                      const bot = gameState.botParties.find(b => b.id === cp.botPartyId);
-                      if (!bot) return null;
-                      return (
-                        <span key={cp.botPartyId} className="flex items-center gap-1">
-                          <span className="text-slate-600">+</span>
-                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: bot.color }} />
-                          <span className="text-slate-400">{bot.name}</span>
-                          <span className="text-slate-600">({cp.seats})</span>
-                        </span>
-                      );
-                    })}
-                    <span className="text-slate-500 font-medium">= {totalCoalitionSeats}/100</span>
-                  </>
-                )}
+              <div className="flex items-center gap-1.5 text-[10px] ml-1">
+                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: PARTY_COLORS[ruling.party.partyColor] }} />
+                <span className="text-game-secondary font-medium">{ruling.party.partyName}</span>
+                <span className="text-game-muted">({totalCoalitionSeats}/100)</span>
               </div>
             );
           })()}
         </div>
 
         {/* Center: Key Stats */}
-        <div className="flex items-center gap-4">
-          {/* Vote share (sums to 100%) */}
-          <div className="text-center">
-            <div className="text-[10px] text-game-muted">Vote Share</div>
-            <div className="text-xs font-bold text-game-accent">{myVoteShare.toFixed(1)}%</div>
-          </div>
-
-          <Stat label="GDP" value={`${gameState.simulation.gdpGrowth > 0 ? '+' : ''}${gameState.simulation.gdpGrowth.toFixed(1)}%`}
+        <div className="flex items-center gap-1">
+          <StatPill label="Vote" value={`${myVoteShare.toFixed(1)}%`} color="text-game-accent" />
+          {!gameState.isPreElection && (
+            <StatPill label="Approval" value={`${approval.toFixed(0)}%`}
+              color={approval > 55 ? 'text-emerald-400' : approval > 35 ? 'text-amber-400' : 'text-red-400'} />
+          )}
+          <StatPill label="GDP" value={`${gameState.simulation.gdpGrowth > 0 ? '+' : ''}${gameState.simulation.gdpGrowth.toFixed(1)}%`}
             color={gameState.simulation.gdpGrowth > 0 ? 'text-emerald-400' : 'text-red-400'} />
-          <Stat label="Unemp" value={`${gameState.simulation.unemployment.toFixed(1)}%`}
+          <StatPill label="Jobs" value={`${(100 - gameState.simulation.unemployment).toFixed(0)}%`}
             color={gameState.simulation.unemployment < 8 ? 'text-emerald-400' : 'text-red-400'} />
-
-          <div className="text-center">
-            <div className="text-[10px] text-game-muted">Budget</div>
-            <div className={`text-xs font-bold ${gameState.budget.balance >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-              {gameState.budget.balance >= 0 ? '+' : ''}{gameState.budget.balance.toFixed(1)}B
-            </div>
-          </div>
-
-          <div className="text-center">
-            <div className="text-[10px] text-game-muted">Debt</div>
-            <div className={`text-xs font-bold ${gameState.budget.debtToGdp < 60 ? 'text-emerald-400' : gameState.budget.debtToGdp < 100 ? 'text-amber-400' : 'text-red-400'}`}>
-              {gameState.budget.debtToGdp.toFixed(0)}% <span className="text-[9px] text-game-muted">{gameState.budget.creditRating}</span>
-            </div>
-          </div>
-
-          <Stat label="Crime" value={gameState.simulation.crime.toFixed(0)}
-            color={gameState.simulation.crime < 40 ? 'text-emerald-400' : 'text-red-400'} />
+          <StatPill label="Debt" value={`${gameState.budget.debtToGdp.toFixed(0)}%`}
+            color={gameState.budget.debtToGdp < 60 ? 'text-emerald-400' : gameState.budget.debtToGdp < 100 ? 'text-amber-400' : 'text-red-400'}
+            suffix={<span className="text-[8px] text-game-muted ml-0.5">{gameState.budget.creditRating}</span>} />
         </div>
 
-        {/* Right: PC & Election Timer */}
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs text-game-muted">PC</span>
-            <span className="text-lg font-bold text-amber-400">⚡{myPlayer?.politicalCapital ?? 0}</span>
+        {/* Right: PC + Election + Party + Controls */}
+        <div className="flex items-center gap-3">
+          {/* PC */}
+          <div className="flex items-center gap-1.5 stat-card !py-1.5 !px-2.5">
+            <span className="text-amber-400 text-sm">⚡</span>
+            <span className="text-base font-bold text-amber-400">{myPlayer?.politicalCapital ?? 0}</span>
           </div>
 
-          <div className={`text-xs px-2.5 py-1 rounded-lg ${turnsLeft <= 2 ? 'bg-red-900/30 text-red-400 border border-red-800/50 pulse-red' : 'glass-card text-game-secondary'}`}>
-            🗳️ {turnsLeft <= 0 ? 'NOW' : `${turnsLeft} turns`}
+          {/* Election timer */}
+          <div className={`stat-card !py-1.5 !px-2.5 flex items-center gap-1.5 ${turnsLeft <= 2 ? 'pulse-red !border-red-800/50' : ''}`}>
+            <span className="text-xs">🗳️</span>
+            <span className={`text-xs font-bold ${turnsLeft <= 2 ? 'text-red-400' : 'text-game-secondary'}`}>
+              {turnsLeft <= 0 ? 'NOW' : turnsLeft}
+            </span>
           </div>
 
+          {/* Party badge */}
           {myPlayer && (
-            <div className="text-xs px-2.5 py-1 rounded-lg font-medium" style={{
-              backgroundColor: PARTY_COLORS[myPlayer.party.partyColor] + '15',
+            <div className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg font-medium" style={{
+              backgroundColor: PARTY_COLORS[myPlayer.party.partyColor] + '12',
               color: PARTY_COLORS[myPlayer.party.partyColor],
-              border: `1px solid ${PARTY_COLORS[myPlayer.party.partyColor]}30`,
+              border: `1px solid ${PARTY_COLORS[myPlayer.party.partyColor]}25`,
             }}>
-              {isRuling ? '🏛️' : gameState.isPreElection ? '📢' : '⚔️'} {myPlayer.party.partyName}
+              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: PARTY_COLORS[myPlayer.party.partyColor] }} />
+              {myPlayer.party.partyName}
             </div>
           )}
 
-          {/* Save/Load/Help/Audio */}
-          <div className="flex items-center gap-1">
-            <button
-              onClick={toggleMusic}
-              className={`text-[10px] px-2 py-1 rounded glass-card transition-colors cursor-pointer ${musicEnabled ? 'text-amber-400' : 'text-game-secondary hover:text-white'}`}
-              title={musicEnabled ? 'Mute Music' : 'Play Music'}
-            >
-              {musicEnabled ? '🎵' : '🔇'}
-            </button>
-            <button
-              onClick={toggleSfx}
-              className={`text-[10px] px-2 py-1 rounded glass-card transition-colors cursor-pointer ${sfxEnabled ? 'text-blue-400' : 'text-game-secondary hover:text-white'}`}
-              title={sfxEnabled ? 'Mute SFX' : 'Enable SFX'}
-            >
-              {sfxEnabled ? '🔊' : '🔈'}
-            </button>
-            <button
-              onClick={handleSaveGame}
-              className="text-[10px] px-2 py-1 rounded glass-card text-game-secondary hover:text-white transition-colors cursor-pointer"
-              title="Save Game"
-            >
-              💾
-            </button>
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="text-[10px] px-2 py-1 rounded glass-card text-game-secondary hover:text-white transition-colors cursor-pointer"
-              title="Load Game"
-            >
-              📂
-            </button>
-            <button
-              onClick={() => setShowHelp(true)}
-              className="text-[10px] px-2 py-1 rounded glass-card text-game-secondary hover:text-white transition-colors cursor-pointer"
-              title="How to Play"
-            >
-              ❓
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".json"
-              onChange={handleLoadGame}
-              className="hidden"
-            />
+          {/* Controls */}
+          <div className="flex items-center gap-0.5">
+            {[
+              { onClick: toggleMusic, icon: musicEnabled ? '🎵' : '🔇', title: musicEnabled ? 'Mute Music' : 'Play Music' },
+              { onClick: toggleSfx, icon: sfxEnabled ? '🔊' : '🔈', title: sfxEnabled ? 'Mute SFX' : 'Enable SFX' },
+              { onClick: handleSaveGame, icon: '💾', title: 'Save Game' },
+              { onClick: () => fileInputRef.current?.click(), icon: '📂', title: 'Load Game' },
+              { onClick: () => setShowHelp(true), icon: '❓', title: 'Help' },
+            ].map((btn, i) => (
+              <button key={i} onClick={btn.onClick} title={btn.title}
+                className="w-7 h-7 flex items-center justify-center rounded-md text-[11px] text-game-muted hover:text-white hover:bg-white/5 transition-all">
+                {btn.icon}
+              </button>
+            ))}
+            <input ref={fileInputRef} type="file" accept=".json" onChange={handleLoadGame} className="hidden" />
           </div>
           {showHelp && typeof document !== 'undefined' && createPortal(
             <HelpModal onClose={() => setShowHelp(false)} />,
@@ -228,11 +179,12 @@ export function TopBar() {
   );
 }
 
-function Stat({ label, value, color }: { label: string; value: string; color: string }) {
+function StatPill({ label, value, color, suffix }: { label: string; value: string; color: string; suffix?: React.ReactNode }) {
   return (
-    <div className="text-center">
-      <div className="text-[10px] text-game-muted">{label}</div>
-      <div className={`text-xs font-bold ${color}`}>{value}</div>
+    <div className="stat-card !py-1 !px-2.5 flex items-center gap-1.5">
+      <span className="text-[9px] text-game-muted uppercase tracking-wider">{label}</span>
+      <span className={`text-xs font-bold ${color}`}>{value}</span>
+      {suffix}
     </div>
   );
 }
