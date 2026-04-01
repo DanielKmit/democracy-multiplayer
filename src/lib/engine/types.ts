@@ -593,6 +593,38 @@ export const BOT_PARTIES: BotParty[] = [
     },
     concerns: { gdpGrowth: 0.9, unemployment: -0.3, inflation: -0.4 },
   },
+  {
+    id: 'bot_centrist',
+    name: 'Democratic Center',
+    color: '#8B5CF6',
+    leaderName: 'Anna Hoffmann',
+    economicAxis: 50,
+    socialAxis: 55,
+    manifesto: ['Anti-corruption', 'Education reform', 'Housing for all'],
+    logo: 'dove',
+    seats: 0,
+    policyPreferences: {
+      education: 80, housing_subsidies: 75, healthcare: 70, civil_rights: 65,
+      income_tax: 45, corporate_tax: 40, press_freedom: 75, police: 55,
+    },
+    concerns: { educationIndex: 0.7, corruption: -0.6, healthIndex: 0.4 },
+  },
+  {
+    id: 'bot_rural',
+    name: "Farmers' Alliance",
+    color: '#854D0E',
+    leaderName: 'Georg Mayer',
+    economicAxis: 55,
+    socialAxis: 35,
+    manifesto: ['Rural development', 'Lower taxes', 'Religious freedom'],
+    logo: 'wheat',
+    seats: 0,
+    policyPreferences: {
+      agriculture: 90, roads_rail: 80, trade_openness: 40, income_tax: 30,
+      religious_freedom: 70, immigration: 30, gun_control: 20, env_regulations: 30,
+    },
+    concerns: { gdpGrowth: 0.4, unemployment: -0.5 },
+  },
 ];
 
 // ---- Coalition System ----

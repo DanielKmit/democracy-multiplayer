@@ -952,8 +952,17 @@ export function handleAction(playerId: string, action: string, payload?: unknown
             break;
           }
           case 'fundraiser': {
-            // Host a fundraiser — gain extra PC for future campaign turns
+            // Host a fundraiser — gain extra PC, limited to once per campaign turn
+            const alreadyFundraised = actions.filter(a => a.type === 'fundraiser').length > 1
+              || (gameState.campaignBonuses[player.id]?.['_fundraised_this_turn'] ?? 0) > 0;
+            if (alreadyFundraised) {
+              addLogEntry(gameState, `⚠️ Only one fundraiser per campaign turn!`, 'info');
+              break;
+            }
             player.politicalCapital += 2; // Net gain of +1 after cost (cost is 1)
+            const bonuses = gameState.campaignBonuses[player.id] ?? {};
+            bonuses['_fundraised_this_turn'] = 1;
+            gameState.campaignBonuses[player.id] = bonuses;
             addLogEntry(gameState, `💰 ${player.party.partyName} hosts a fundraising dinner (+2 PC)`, 'info');
             addNewsItem(gameState, `${player.party.partyName} raises campaign funds at exclusive dinner event`, 'election');
             break;
@@ -992,6 +1001,12 @@ export function handleAction(playerId: string, action: string, payload?: unknown
       if (allActed) {
         // Both players have acted — auto-advance to polling
         gameState.campaignActedThisTurn = {};
+        // Reset per-turn fundraiser flags
+        for (const p of gameState.players) {
+          if (gameState.campaignBonuses[p.id]) {
+            delete gameState.campaignBonuses[p.id]['_fundraised_this_turn'];
+          }
+        }
         gameState.pendingCampaignActions = [];
         recalculate(gameState);
         advancePhase(gameState); // -> polling
