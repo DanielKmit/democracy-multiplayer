@@ -4,6 +4,7 @@ import { useGameStore } from '@/lib/store';
 import { useGameActions } from '@/lib/useGameActions';
 import { VOTER_GROUPS } from '@/lib/engine/voters';
 import { PARTY_COLORS } from '@/lib/engine/types';
+import { getSituationById } from '@/lib/engine/situations';
 import { ParliamentHemicycle } from './ParliamentHemicycle';
 
 export function PollingSummary() {
@@ -118,7 +119,7 @@ export function PollingSummary() {
             <div className="flex flex-wrap gap-2">
               {gameState.activeSituations.map(sit => (
                 <span key={sit.id} className="text-xs px-2 py-0.5 bg-orange-900/30 text-orange-400 rounded border border-orange-800">
-                  {sit.id.replace(/_/g, ' ')}
+                  {getSituationById(sit.id)?.name ?? sit.id.replace(/_/g, ' ')}
                 </span>
               ))}
             </div>

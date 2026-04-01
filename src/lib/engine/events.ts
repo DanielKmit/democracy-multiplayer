@@ -103,6 +103,10 @@ export const EVENT_POOL: Omit<GameEvent, 'id'>[] = [
 
 let eventCounter = 0;
 
+export function resetEventCounter(): void {
+  eventCounter = 0;
+}
+
 export function rollForEvent(): GameEvent | null {
   // 30% chance each turn
   if (Math.random() > 0.3) return null;

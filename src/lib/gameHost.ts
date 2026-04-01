@@ -41,11 +41,11 @@ import { spinScandal } from './engine/scandals';
 import { updateSupermajorityTracker, checkVictory } from './engine/victoryConditions';
 import { POLICY_MAP } from './engine/policies';
 import { VOTER_GROUPS } from './engine/voters';
-import { rollForEvent } from './engine/events';
+import { rollForEvent, resetEventCounter } from './engine/events';
 import { calculateBudget } from './engine/budget';
 import { createInitialParliament, allocateSeats, voteBill } from './engine/parliament';
 import { checkAssassination, updateExtremism } from './engine/extremism';
-import { rollForDilemma, getDilemmaById } from './engine/dilemmas';
+import { rollForDilemma, getDilemmaById, resetDilemmaTracker } from './engine/dilemmas';
 import { getSituationById } from './engine/situations';
 import { getEffectiveCompetence } from './engine/politicians';
 import { getBillTemplate, BILL_LIBRARY } from './engine/billLibrary';
@@ -177,7 +177,10 @@ function recalculate(state: GameState) {
   // Apply cabinet minister bonuses to simulation
   applyCabinetBonuses(state);
 
-  state.budget = calculateBudget(state.policies, state.simulation, state.budget.debtTotal ?? 200);
+  // Skip budget recalculation during campaign phase — no government is spending money yet
+  if (!state.campaignPhase && !state.isPreElection) {
+    state.budget = calculateBudget(state.policies, state.simulation, state.budget.debtTotal ?? 200);
+  }
 
   // Apply situation effects to simulation
   for (const activeSit of state.activeSituations) {
@@ -596,7 +599,11 @@ export function handleAction(playerId: string, action: string, payload?: unknown
 
     case 'resolveDilemma': {
       if (gameState.phase !== 'dilemma' || !gameState.activeDilemma) return;
-      const ruling = gameState.players.find(p => p.role === 'ruling');
+      let ruling = gameState.players.find(p => p.role === 'ruling');
+      // During campaign phase, no one is ruling — allow host or first player to decide
+      if (!ruling) {
+        ruling = gameState.players.find(p => p.id === playerId);
+      }
       if (!ruling || ruling.id !== playerId) return;
 
       const option = payload as 'a' | 'b';
@@ -690,7 +697,6 @@ export function handleAction(playerId: string, action: string, payload?: unknown
         addNewsItem(gameState, `📋 ${msg}`, 'bill');
       }
 
-      advancePhase(gameState); // -> resolution
       recalculate(gameState);
 
       // Show impact notification for each change
@@ -708,8 +714,17 @@ export function handleAction(playerId: string, action: string, payload?: unknown
       if (!gameState.turnActedThisTurn) gameState.turnActedThisTurn = {};
       gameState.turnActedThisTurn[playerId] = true;
 
-      advancePhase(gameState); // -> opposition
-      addLogEntry(gameState, 'Opposition phase', 'info');
+      // Check for pending bills — if any, go to bill_voting, otherwise skip to opposition
+      const pendingBills = gameState.activeBills.filter(b => b.status === 'pending' || b.status === 'voting');
+      if (pendingBills.length > 0) {
+        advancePhase(gameState); // -> bill_voting
+        addLogEntry(gameState, `🗳️ ${pendingBills.length} bill(s) awaiting parliamentary vote`, 'info');
+      } else {
+        advancePhase(gameState); // -> bill_voting
+        advancePhase(gameState); // -> resolution
+        advancePhase(gameState); // -> opposition
+        addLogEntry(gameState, 'Opposition phase', 'info');
+      }
       broadcastState();
       break;
     }
@@ -915,8 +930,52 @@ export function handleAction(playerId: string, action: string, payload?: unknown
             break;
           }
           case 'state_position': {
-            // Taking a position on an issue
             addLogEntry(gameState, `📢 ${player.party.partyName} takes a public stance`, 'info');
+            break;
+          }
+          case 'attack_ad': {
+            // Attack the opponent's weakest policy area — reduces their support with a voter group
+            const opponentPlayer = gameState.players.find(p => p.id !== player.id);
+            if (opponentPlayer && action.targetGroupId) {
+              // Reduce opponent's campaign bonus for this group
+              const oppBonuses = gameState.campaignBonuses[opponentPlayer.id] ?? {};
+              oppBonuses[action.targetGroupId] = Math.max(-10, (oppBonuses[action.targetGroupId] ?? 0) - 4);
+              gameState.campaignBonuses[opponentPlayer.id] = oppBonuses;
+              // Slight self-penalty (negative campaigning turns some voters off)
+              const selfBonuses = gameState.campaignBonuses[player.id] ?? {};
+              selfBonuses[action.targetGroupId] = (selfBonuses[action.targetGroupId] ?? 0) - 1;
+              gameState.campaignBonuses[player.id] = selfBonuses;
+              const groupName = VOTER_GROUPS.find(g => g.id === action.targetGroupId)?.name ?? action.targetGroupId;
+              addLogEntry(gameState, `📺 ${player.party.partyName} runs attack ad targeting ${opponentPlayer.party.partyName} among ${groupName}`, 'info');
+              addNewsItem(gameState, `Negative campaign: ${player.party.partyName} attacks ${opponentPlayer.party.partyName}'s record with ${groupName}`, 'election');
+            }
+            break;
+          }
+          case 'fundraiser': {
+            // Host a fundraiser — gain extra PC for future campaign turns
+            player.politicalCapital += 2; // Net gain of +1 after cost (cost is 1)
+            addLogEntry(gameState, `💰 ${player.party.partyName} hosts a fundraising dinner (+2 PC)`, 'info');
+            addNewsItem(gameState, `${player.party.partyName} raises campaign funds at exclusive dinner event`, 'election');
+            break;
+          }
+          case 'endorsement': {
+            // Seek endorsement from a prominent figure — broad +3 bonus across all groups
+            if (action.targetGroupId) {
+              const bonuses = gameState.campaignBonuses[player.id] ?? {};
+              bonuses[action.targetGroupId] = (bonuses[action.targetGroupId] ?? 0) + 4;
+              // Also small boost to two adjacent groups
+              const groupIndex = VOTER_GROUPS.findIndex(g => g.id === action.targetGroupId);
+              if (groupIndex >= 0) {
+                const prev = VOTER_GROUPS[(groupIndex - 1 + VOTER_GROUPS.length) % VOTER_GROUPS.length];
+                const next = VOTER_GROUPS[(groupIndex + 1) % VOTER_GROUPS.length];
+                bonuses[prev.id] = (bonuses[prev.id] ?? 0) + 2;
+                bonuses[next.id] = (bonuses[next.id] ?? 0) + 2;
+              }
+              gameState.campaignBonuses[player.id] = bonuses;
+              const groupName = VOTER_GROUPS.find(g => g.id === action.targetGroupId)?.name ?? action.targetGroupId;
+              addLogEntry(gameState, `🌟 ${player.party.partyName} secures endorsement from ${groupName} leader`, 'info');
+              addNewsItem(gameState, `Prominent ${groupName} figure endorses ${player.party.partyName}`, 'election');
+            }
             break;
           }
         }
@@ -1880,11 +1939,14 @@ function handleEndTurnPhase(playerId?: string) {
       // After first election, end pre-election phase
       gameState.isPreElection = false;
 
-      // Reset campaign bonuses and campaign active effects
+      // Reset campaign bonuses and campaign active effects (including long-lived ones)
       gameState.campaignBonuses = {};
       gameState.activeEffects = gameState.activeEffects.filter(e => {
         const d = e.data as Record<string, unknown>;
-        return d.type !== 'campaign_visit' && d.type !== 'campaign' && d.type !== 'rally';
+        if (d.type === 'campaign_visit' || d.type === 'campaign' || d.type === 'rally') return false;
+        // Remove any effects with very long durations that were campaign-related
+        if (e.turnsRemaining >= 90) return false;
+        return true;
       });
 
       // Don't assign ruling/opposition yet — that happens after coalition negotiation
@@ -2030,17 +2092,19 @@ function handleEndTurnPhase(playerId?: string) {
     }
 
     gameState.pendingPolicyChanges = [];
-    advancePhase(gameState); // -> bill_voting (if bills exist) or resolution
 
-    if ((gameState.phase as string) === 'bill_voting') {
-      // No auto-vote — bills are voted on manually via startLiveVote + finalizeLiveVote
-      // Skip directly to resolution
-      advancePhase(gameState); // bill_voting -> resolution
+    // Check if there are pending bills that need voting
+    const pendingBills = gameState.activeBills.filter(b => b.status === 'pending' || b.status === 'voting');
+    if (pendingBills.length > 0) {
+      advancePhase(gameState); // -> bill_voting
+      addLogEntry(gameState, `🗳️ ${pendingBills.length} bill(s) awaiting parliamentary vote`, 'info');
+    } else {
+      advancePhase(gameState); // -> bill_voting
+      advancePhase(gameState); // -> resolution
+      recalculate(gameState);
+      advancePhase(gameState); // resolution -> opposition
+      addLogEntry(gameState, 'Ruling party passed. Opposition phase.', 'info');
     }
-
-    recalculate(gameState);
-    advancePhase(gameState); // resolution -> opposition
-    addLogEntry(gameState, 'Ruling party passed. Opposition phase.', 'info');
     broadcastState();
   } else if (gameState.phase === 'opposition') {
     // Mark opposition player as acted (passed without actions)
@@ -2101,13 +2165,13 @@ function handleEndTurnPhase(playerId?: string) {
   } else if (gameState.phase === 'campaigning') {
     // Campaign phase — track who ended their turn, advance when both ready
     if (playerId) {
-      // Require at least 1 campaign promise before ending turn
-      const pledgesThisTurn = (gameState.pledges ?? []).filter(
-        p => p.playerId === playerId && p.madeOnTurn === gameState!.turn
+      // Require at least 1 campaign promise total before you can end any campaign turn
+      const totalPledges = (gameState.pledges ?? []).filter(
+        p => p.playerId === playerId
       ).length;
-      if (pledgesThisTurn < 1) {
+      if (totalPledges < 1) {
         const player = gameState.players.find(p => p.id === playerId);
-        addLogEntry(gameState, `⚠️ ${player?.party.partyName ?? playerId} must make at least 1 campaign promise before ending turn`, 'info');
+        addLogEntry(gameState, `⚠️ ${player?.party.partyName ?? playerId} must make at least 1 campaign promise before ending turn. Voters need to know what you stand for!`, 'info');
         broadcastState();
         return;
       }
@@ -2144,5 +2208,14 @@ export function getGameState(): GameState | null {
 export function cleanupGame() {
   gameState = null;
   onStateChange = null;
+  aiPersonality = null;
+  aiScheduled = false;
+  if (aiTurnTimer) {
+    clearTimeout(aiTurnTimer);
+    aiTurnTimer = null;
+  }
   clearPersistedState();
+  // Reset module-level trackers so new games get fresh state
+  resetDilemmaTracker();
+  resetEventCounter();
 }

@@ -639,7 +639,10 @@ export type CampaignActionType =
   | 'media_blitz'
   | 'voter_promise'
   | 'target_region'
-  | 'state_position';
+  | 'state_position'
+  | 'attack_ad'
+  | 'fundraiser'
+  | 'endorsement';
 
 export interface CampaignAction {
   type: CampaignActionType;

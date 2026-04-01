@@ -6,13 +6,13 @@ import { useGameActions } from '@/lib/useGameActions';
 import { PARTY_COLORS, BotParty, CoalitionPromise } from '@/lib/engine/types';
 import { POLICIES } from '@/lib/engine/policies';
 import { ParliamentHemicycle } from './ParliamentHemicycle';
-import { getPartyLogo } from './icons/PartyLogos';
 
 export function CoalitionScreen() {
   const { gameState, playerId } = useGameStore();
   const { submitCoalitionOffer, endTurnPhase } = useGameActions();
-  const [timer, setTimer] = useState(60);
+  const [timer, setTimer] = useState(90);
   const [selectedBot, setSelectedBot] = useState<string | null>(null);
+  const [promises, setPromises] = useState<CoalitionPromise[]>([]);
   const [selectedPolicy, setSelectedPolicy] = useState<string>('');
   const [promiseDirection, setPromiseDirection] = useState<'increase' | 'decrease'>('increase');
 
@@ -33,7 +33,17 @@ export function CoalitionScreen() {
     return sum + (gameState.parliament.seatsByParty[bpId] ?? 0);
   }, 0);
   const totalMySeats = mySeats + myCoalitionSeats;
-  const needSeats = 51 - totalMySeats;
+  const needSeats = Math.max(0, 51 - totalMySeats);
+  const hasReachedMajority = totalMySeats >= 51;
+
+  // Opponent coalition seats
+  const opponentCoalitionPartnerIds = gameState.coalitionOffers
+    .filter(o => o.fromPlayerId === opponentPlayer?.id && o.accepted)
+    .map(o => o.toBotPartyId);
+  const opponentCoalitionSeats = opponentCoalitionPartnerIds.reduce((sum, bpId) => {
+    return sum + (gameState.parliament.seatsByParty[bpId] ?? 0);
+  }, 0);
+  const totalOpponentSeats = opponentSeats + opponentCoalitionSeats;
 
   // Timer
   useEffect(() => {
@@ -49,11 +59,12 @@ export function CoalitionScreen() {
     return () => clearInterval(interval);
   }, []);
 
-  const handleOffer = (botPartyId: string) => {
+  const addPromise = () => {
     if (!selectedPolicy) return;
-
     const policy = POLICIES.find(p => p.id === selectedPolicy);
     if (!policy) return;
+    // Prevent duplicate
+    if (promises.some(p => p.policyId === selectedPolicy)) return;
 
     const promise: CoalitionPromise = {
       type: 'policy_change',
@@ -62,195 +73,342 @@ export function CoalitionScreen() {
       targetLevel: promiseDirection === 'increase' ? 75 : 25,
       description: `${promiseDirection === 'increase' ? 'Increase' : 'Decrease'} ${policy.name}`,
     };
+    setPromises(prev => [...prev, promise]);
+    setSelectedPolicy('');
+  };
+
+  const removePromise = (index: number) => {
+    setPromises(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleOffer = (botPartyId: string) => {
+    if (promises.length === 0) return;
 
     submitCoalitionOffer({
       fromPlayerId: myPlayer.id,
       toBotPartyId: botPartyId,
-      promises: [promise],
+      promises,
       accepted: false,
       rejected: false,
     });
 
     setSelectedBot(null);
+    setPromises([]);
     setSelectedPolicy('');
   };
 
-  const hasReachedMajority = totalMySeats >= 51;
+  const getIdeologyLabel = (econ: number, social: number) => {
+    const econLabel = econ < 35 ? 'Left' : econ > 65 ? 'Right' : 'Center';
+    const socialLabel = social < 35 ? 'Auth' : social > 65 ? 'Liberal' : 'Moderate';
+    return `${econLabel}-${socialLabel}`;
+  };
+
+  const getAlignmentScore = (bot: BotParty) => {
+    const econDiff = Math.abs(myPlayer.party.economicAxis - bot.economicAxis);
+    const socialDiff = Math.abs(myPlayer.party.socialAxis - bot.socialAxis);
+    return Math.round(((200 - econDiff - socialDiff) / 200) * 100);
+  };
+
+  const getAlignmentColor = (score: number) => {
+    if (score >= 70) return 'text-emerald-400';
+    if (score >= 50) return 'text-amber-400';
+    return 'text-red-400';
+  };
+
+  const timerColor = timer <= 15 ? 'text-red-400' : timer <= 30 ? 'text-amber-400' : 'text-game-muted';
+  const timerBg = timer <= 15 ? 'bg-red-950/30 border-red-800/50' : 'bg-game-card/50 border-game-border';
 
   return (
-    <div className="h-screen bg-game-bg flex flex-col items-center justify-center p-8 overflow-y-auto">
-      <div className="max-w-4xl w-full">
-        <div className="text-center mb-6">
-          <h1 className="text-3xl font-bold font-display mb-2">🤝 Coalition Negotiation</h1>
-          <p className="text-game-secondary">Build a majority government — you need 51 seats</p>
-          <div className={`mt-2 text-sm font-mono ${timer <= 15 ? 'text-red-400 animate-pulse' : 'text-game-muted'}`}>
-            ⏱ {timer}s remaining
+    <div className="h-screen bg-game-bg flex flex-col overflow-hidden">
+      {/* Header */}
+      <div className="p-4 border-b border-game-border bg-gradient-to-r from-game-card/80 to-transparent">
+        <div className="max-w-6xl mx-auto flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold font-display">🤝 Coalition Negotiation</h1>
+            <p className="text-sm text-game-secondary">Secure partners to build a majority government (51+ seats)</p>
+          </div>
+          <div className={`${timerBg} border rounded-xl px-4 py-2 text-center ${timer <= 15 ? 'animate-pulse' : ''}`}>
+            <div className={`text-2xl font-bold font-mono ${timerColor}`}>{timer}s</div>
+            <div className="text-[10px] text-game-muted">remaining</div>
           </div>
         </div>
+      </div>
 
-        {/* Seat count progress */}
-        <div className="glass-card p-4 mb-6">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-game-secondary">Your coalition: <span className="text-white font-bold">{totalMySeats} seats</span></span>
-            <span className="text-sm text-game-secondary">Need: <span className={needSeats <= 0 ? 'text-emerald-400 font-bold' : 'text-amber-400 font-bold'}>{needSeats <= 0 ? 'MAJORITY ✓' : `${needSeats} more`}</span></span>
-          </div>
-          <div className="w-full h-3 bg-game-border rounded-full overflow-hidden">
-            <div
-              className="h-full rounded-full transition-all duration-700"
-              style={{
-                width: `${Math.min(100, (totalMySeats / 100) * 100)}%`,
-                backgroundColor: totalMySeats >= 51 ? '#10B981' : PARTY_COLORS[myPlayer.party.partyColor],
-              }}
-            />
-          </div>
-          <div className="flex justify-between text-[10px] text-game-muted mt-1">
-            <span>0</span>
-            <span className="text-amber-400">51 (majority)</span>
-            <span>100</span>
-          </div>
-        </div>
-
-        {/* Parliament hemicycle */}
-        <div className="glass-card p-4 mb-6">
-          <ParliamentHemicycle />
-        </div>
-
-        {/* Seat breakdown */}
-        <div className="grid grid-cols-3 gap-3 mb-6">
-          {/* Human players */}
-          {gameState.players.map(p => (
-            <div key={p.id} className={`glass-card p-3 ${p.id === myPlayer.id ? 'ring-1 ring-game-accent' : ''}`}>
-              <div className="flex items-center gap-2 mb-1">
-                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: PARTY_COLORS[p.party.partyColor] }} />
-                <span className="text-sm font-bold text-white">{p.party.partyName}</span>
+      <div className="flex-1 flex overflow-hidden">
+        {/* Left sidebar: seat tracker */}
+        <div className="w-72 border-r border-game-border bg-game-card/30 overflow-y-auto p-4 space-y-4">
+          {/* My coalition progress */}
+          <div className={`glass-card p-4 ${hasReachedMajority ? 'ring-1 ring-emerald-500 bg-emerald-950/20' : ''}`}>
+            <div className="text-xs text-game-secondary font-bold uppercase tracking-wider mb-3">Your Coalition</div>
+            <div className="text-center mb-3">
+              <div className="text-4xl font-bold" style={{ color: hasReachedMajority ? '#10B981' : PARTY_COLORS[myPlayer.party.partyColor] }}>
+                {totalMySeats}
               </div>
-              <div className="text-2xl font-bold" style={{ color: PARTY_COLORS[p.party.partyColor] }}>
-                {gameState.parliament.seatsByParty[p.id] ?? 0} <span className="text-xs text-game-muted">seats</span>
+              <div className="text-xs text-game-muted">of 51 needed</div>
+            </div>
+            {/* Progress bar with majority marker */}
+            <div className="relative mb-2">
+              <div className="w-full h-3 bg-game-border rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all duration-700 relative"
+                  style={{
+                    width: `${Math.min(100, totalMySeats)}%`,
+                    backgroundColor: hasReachedMajority ? '#10B981' : PARTY_COLORS[myPlayer.party.partyColor],
+                  }}
+                />
               </div>
-              {p.id === myPlayer.id && myCoalitionSeats > 0 && (
-                <div className="text-xs text-emerald-400 mt-1">+{myCoalitionSeats} coalition</div>
+              {/* Majority line marker */}
+              <div className="absolute top-0 h-3 w-0.5 bg-amber-400" style={{ left: '51%' }} />
+            </div>
+            <div className="flex justify-between text-[10px] text-game-muted">
+              <span>0</span>
+              <span className="text-amber-400 font-bold">51</span>
+              <span>100</span>
+            </div>
+
+            {/* Breakdown */}
+            <div className="mt-3 pt-3 border-t border-game-border space-y-1.5">
+              <div className="flex justify-between text-xs">
+                <span className="text-game-muted">{myPlayer.party.partyName}</span>
+                <span className="font-bold" style={{ color: PARTY_COLORS[myPlayer.party.partyColor] }}>{mySeats}</span>
+              </div>
+              {myCoalitionPartnerIds.map(bpId => {
+                const bot = gameState.botParties.find(b => b.id === bpId);
+                if (!bot) return null;
+                return (
+                  <div key={bpId} className="flex justify-between text-xs">
+                    <span className="text-emerald-400">+ {bot.name}</span>
+                    <span className="font-bold text-emerald-400">{gameState.parliament.seatsByParty[bpId] ?? 0}</span>
+                  </div>
+                );
+              })}
+              {needSeats > 0 && (
+                <div className="flex justify-between text-xs text-red-400">
+                  <span>Still needed</span>
+                  <span className="font-bold">{needSeats}</span>
+                </div>
               )}
             </div>
-          ))}
-        </div>
+          </div>
 
-        {/* Bot party cards */}
-        <h3 className="text-sm font-bold text-game-secondary uppercase tracking-wider mb-3">Available Coalition Partners</h3>
-        <div className="grid grid-cols-2 gap-3 mb-6">
-          {gameState.botParties.map(bot => {
-            const botSeats = gameState.parliament.seatsByParty[bot.id] ?? 0;
-            const isAlreadyPartner = myCoalitionPartnerIds.includes(bot.id);
-            const wasRejected = gameState.coalitionOffers.some(
-              o => o.fromPlayerId === myPlayer.id && o.toBotPartyId === bot.id && o.rejected
-            );
-            const isPending = gameState.coalitionOffers.some(
-              o => o.fromPlayerId === myPlayer.id && o.toBotPartyId === bot.id && !o.accepted && !o.rejected
-            );
-
-            return (
-              <div
-                key={bot.id}
-                className={`glass-card p-4 transition-all cursor-pointer ${
-                  isAlreadyPartner ? 'ring-1 ring-emerald-500 bg-emerald-950/20' :
-                  wasRejected ? 'opacity-50' :
-                  selectedBot === bot.id ? 'ring-1 ring-game-accent' : 'hover:ring-1 hover:ring-game-border'
-                }`}
-                onClick={() => !isAlreadyPartner && !wasRejected && setSelectedBot(bot.id)}
-              >
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg"
-                    style={{ backgroundColor: bot.color + '30', border: `2px solid ${bot.color}` }}>
-                    {bot.logo === 'tree' ? '🌳' : bot.logo === 'shield' ? '🛡️' : bot.logo === 'fist' ? '✊' : '⚖️'}
-                  </div>
-                  <div>
-                    <div className="font-bold text-white text-sm">{bot.name}</div>
-                    <div className="text-xs text-game-muted">{bot.leaderName}</div>
-                  </div>
-                  <div className="ml-auto text-right">
-                    <div className="text-xl font-bold" style={{ color: bot.color }}>
-                      {botSeats}
-                    </div>
-                    <div className="text-[10px] text-game-muted">seats</div>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap gap-1 mb-2">
-                  {bot.manifesto.map(m => (
-                    <span key={m} className="text-[10px] px-1.5 py-0.5 rounded bg-game-border/50 text-game-secondary">
-                      {m}
-                    </span>
-                  ))}
-                </div>
-
-                {isAlreadyPartner && (
-                  <div className="text-xs text-emerald-400 font-bold">✅ Coalition partner</div>
-                )}
-                {wasRejected && (
-                  <div className="text-xs text-red-400">❌ Rejected your offer</div>
-                )}
-                {isPending && (
-                  <div className="text-xs text-amber-400">⏳ Evaluating offer...</div>
-                )}
-
-                {/* Offer UI */}
-                {selectedBot === bot.id && !isAlreadyPartner && !wasRejected && (
-                  <div className="mt-3 pt-3 border-t border-game-border animate-fade-in">
-                    <div className="text-xs text-game-secondary mb-2">Make a policy promise:</div>
-                    <select
-                      value={selectedPolicy}
-                      onChange={e => setSelectedPolicy(e.target.value)}
-                      className="w-full text-xs p-2 rounded bg-game-bg border border-game-border text-white mb-2"
-                    >
-                      <option value="">Select policy...</option>
-                      {POLICIES.slice(0, 20).map(p => (
-                        <option key={p.id} value={p.id}>{p.name}</option>
-                      ))}
-                    </select>
-                    <div className="flex gap-2 mb-2">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setPromiseDirection('increase'); }}
-                        className={`flex-1 text-xs py-1 rounded ${promiseDirection === 'increase' ? 'bg-emerald-600 text-white' : 'bg-game-border text-game-muted'}`}
-                      >
-                        ↑ Increase
-                      </button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setPromiseDirection('decrease'); }}
-                        className={`flex-1 text-xs py-1 rounded ${promiseDirection === 'decrease' ? 'bg-red-600 text-white' : 'bg-game-border text-game-muted'}`}
-                      >
-                        ↓ Decrease
-                      </button>
-                    </div>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); handleOffer(bot.id); }}
-                      disabled={!selectedPolicy}
-                      className="w-full text-xs py-2 rounded bg-game-accent hover:bg-blue-500 disabled:bg-game-border disabled:text-game-muted text-white font-bold transition-all"
-                    >
-                      Offer Coalition Deal
-                    </button>
-                  </div>
-                )}
+          {/* Opponent tracker */}
+          {opponentPlayer && (
+            <div className="glass-card p-3">
+              <div className="text-xs text-game-muted mb-2">Opponent&apos;s Coalition</div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-game-secondary">{opponentPlayer.party.partyName}</span>
+                <span className="text-lg font-bold" style={{ color: PARTY_COLORS[opponentPlayer.party.partyColor] }}>
+                  {totalOpponentSeats}
+                </span>
               </div>
-            );
-          })}
+              <div className="w-full h-1.5 bg-game-border rounded-full overflow-hidden mt-1.5">
+                <div className="h-full rounded-full transition-all duration-700" style={{
+                  width: `${Math.min(100, totalOpponentSeats)}%`,
+                  backgroundColor: PARTY_COLORS[opponentPlayer.party.partyColor],
+                }} />
+              </div>
+            </div>
+          )}
+
+          {/* Parliament */}
+          <div className="glass-card p-3">
+            <div className="text-xs text-game-secondary font-bold uppercase tracking-wider mb-2">Parliament</div>
+            <ParliamentHemicycle compact />
+          </div>
         </div>
 
-        {/* Done button */}
-        <div className="text-center">
+        {/* Main content: bot party cards */}
+        <div className="flex-1 overflow-y-auto p-6">
+          <div className="max-w-3xl mx-auto">
+            <h3 className="text-sm font-bold text-game-secondary uppercase tracking-wider mb-4">Available Coalition Partners</h3>
+            <div className="space-y-3">
+              {gameState.botParties.map(bot => {
+                const botSeats = gameState.parliament.seatsByParty[bot.id] ?? 0;
+                const isAlreadyPartner = myCoalitionPartnerIds.includes(bot.id);
+                const wasRejected = gameState.coalitionOffers.some(
+                  o => o.fromPlayerId === myPlayer.id && o.toBotPartyId === bot.id && o.rejected
+                );
+                const isCoalitionedByOpponent = opponentCoalitionPartnerIds.includes(bot.id);
+                const isSelected = selectedBot === bot.id;
+                const alignment = getAlignmentScore(bot);
+                const alignColor = getAlignmentColor(alignment);
+                const unavailable = isAlreadyPartner || wasRejected || isCoalitionedByOpponent;
+
+                return (
+                  <div key={bot.id} className={`glass-card overflow-hidden transition-all ${
+                    isAlreadyPartner ? 'ring-1 ring-emerald-500/60 bg-emerald-950/10' :
+                    wasRejected ? 'opacity-40' :
+                    isCoalitionedByOpponent ? 'opacity-50' :
+                    isSelected ? 'ring-2 ring-game-accent shadow-lg shadow-game-accent/10' :
+                    'hover:ring-1 hover:ring-game-border cursor-pointer'
+                  }`}>
+                    {/* Card header */}
+                    <div
+                      className={`p-4 ${!unavailable ? 'cursor-pointer' : ''}`}
+                      onClick={() => !unavailable && setSelectedBot(isSelected ? null : bot.id)}
+                    >
+                      <div className="flex items-center gap-4">
+                        {/* Party icon */}
+                        <div className="w-14 h-14 rounded-xl flex items-center justify-center text-2xl shrink-0"
+                          style={{ backgroundColor: bot.color + '20', border: `2px solid ${bot.color}40` }}>
+                          {bot.logo === 'tree' ? '🌳' : bot.logo === 'shield' ? '🛡️' : bot.logo === 'fist' ? '✊' : '⚖️'}
+                        </div>
+
+                        {/* Party info */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <span className="font-bold text-white">{bot.name}</span>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-game-border/60 text-game-muted">
+                              {getIdeologyLabel(bot.economicAxis, bot.socialAxis)}
+                            </span>
+                          </div>
+                          <div className="text-xs text-game-muted mb-1.5">Led by {bot.leaderName}</div>
+                          <div className="flex flex-wrap gap-1">
+                            {bot.manifesto.map(m => (
+                              <span key={m} className="text-[10px] px-1.5 py-0.5 rounded-md border border-game-border/60 text-game-secondary">
+                                {m}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Seats + alignment */}
+                        <div className="text-right shrink-0">
+                          <div className="text-3xl font-bold mb-0.5" style={{ color: bot.color }}>
+                            {botSeats}
+                          </div>
+                          <div className="text-[10px] text-game-muted mb-1">seats</div>
+                          <div className={`text-xs font-bold ${alignColor}`}>
+                            {alignment}% aligned
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Status badges */}
+                      {isAlreadyPartner && (
+                        <div className="mt-3 flex items-center gap-2 p-2 rounded-lg bg-emerald-950/30 border border-emerald-800/30">
+                          <span className="text-emerald-400 text-sm">✅</span>
+                          <span className="text-xs text-emerald-400 font-bold">Coalition Partner — {botSeats} seats secured</span>
+                        </div>
+                      )}
+                      {wasRejected && (
+                        <div className="mt-3 flex items-center gap-2 p-2 rounded-lg bg-red-950/30 border border-red-800/30">
+                          <span className="text-red-400 text-sm">❌</span>
+                          <span className="text-xs text-red-400 font-medium">Rejected your offer — they won&apos;t negotiate further</span>
+                        </div>
+                      )}
+                      {isCoalitionedByOpponent && (
+                        <div className="mt-3 flex items-center gap-2 p-2 rounded-lg bg-orange-950/30 border border-orange-800/30">
+                          <span className="text-orange-400 text-sm">🔒</span>
+                          <span className="text-xs text-orange-400 font-medium">Already joined {opponentPlayer?.party.partyName}&apos;s coalition</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Expanded offer form */}
+                    {isSelected && !unavailable && (
+                      <div className="px-4 pb-4 border-t border-game-border/50 bg-game-card/30">
+                        <div className="pt-4 space-y-3">
+                          <div className="text-sm font-bold text-game-secondary">Make Policy Promises</div>
+                          <p className="text-xs text-game-muted">
+                            Offer policy changes that align with {bot.name}&apos;s ideology to improve your chances. Higher alignment = better odds.
+                          </p>
+
+                          {/* Current promises */}
+                          {promises.length > 0 && (
+                            <div className="flex flex-wrap gap-1.5">
+                              {promises.map((p, i) => (
+                                <span key={i} className="inline-flex items-center gap-1.5 text-xs bg-game-accent/10 border border-game-accent/30 text-game-accent px-2 py-1 rounded-lg">
+                                  {p.direction === 'increase' ? '↑' : '↓'} {POLICIES.find(pol => pol.id === p.policyId)?.name ?? p.policyId}
+                                  <button onClick={() => removePromise(i)} className="text-game-muted hover:text-red-400">✕</button>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Add promise */}
+                          <div className="flex gap-2 items-end">
+                            <div className="flex-1">
+                              <label className="text-[10px] text-game-muted mb-1 block">Policy</label>
+                              <select
+                                value={selectedPolicy}
+                                onChange={e => setSelectedPolicy(e.target.value)}
+                                className="w-full text-xs p-2 rounded-lg bg-game-bg border border-game-border text-white"
+                              >
+                                <option value="">Select policy...</option>
+                                {POLICIES.filter(p => !promises.some(pr => pr.policyId === p.id)).map(p => (
+                                  <option key={p.id} value={p.id}>{p.name} ({p.category})</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="flex gap-1">
+                              <button
+                                onClick={() => setPromiseDirection('increase')}
+                                className={`text-xs px-3 py-2 rounded-lg transition-all ${
+                                  promiseDirection === 'increase' ? 'bg-emerald-600 text-white' : 'bg-game-border text-game-muted hover:text-white'
+                                }`}>
+                                ↑
+                              </button>
+                              <button
+                                onClick={() => setPromiseDirection('decrease')}
+                                className={`text-xs px-3 py-2 rounded-lg transition-all ${
+                                  promiseDirection === 'decrease' ? 'bg-red-600 text-white' : 'bg-game-border text-game-muted hover:text-white'
+                                }`}>
+                                ↓
+                              </button>
+                            </div>
+                            <button
+                              onClick={addPromise}
+                              disabled={!selectedPolicy}
+                              className="text-xs px-3 py-2 rounded-lg bg-game-accent/20 text-game-accent hover:bg-game-accent/40 disabled:opacity-40 disabled:cursor-not-allowed transition-all font-medium"
+                            >
+                              + Add
+                            </button>
+                          </div>
+
+                          {/* Submit offer */}
+                          <button
+                            onClick={() => handleOffer(bot.id)}
+                            disabled={promises.length === 0}
+                            className={`w-full py-3 rounded-xl text-sm font-bold transition-all ${
+                              promises.length > 0
+                                ? 'bg-gradient-to-r from-game-accent to-blue-500 text-white hover:shadow-lg hover:shadow-game-accent/20'
+                                : 'bg-game-border text-game-muted cursor-not-allowed'
+                            }`}
+                          >
+                            {promises.length === 0
+                              ? 'Add at least one promise to make an offer'
+                              : `🤝 Offer Coalition Deal (${promises.length} promise${promises.length > 1 ? 's' : ''})`}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Footer: form government button */}
+      <div className="border-t border-game-border p-4 bg-game-card/80 backdrop-blur">
+        <div className="max-w-6xl mx-auto flex items-center justify-between">
+          <div className="text-sm text-game-secondary">
+            {hasReachedMajority
+              ? <span className="text-emerald-400 font-bold">✓ Majority secured with {totalMySeats} seats!</span>
+              : <span>Form a minority government with {totalMySeats}/51 seats (bills will be harder to pass)</span>}
+          </div>
           <button
             onClick={endTurnPhase}
-            className={`px-8 py-3 rounded-lg font-semibold transition-all ${
+            className={`px-8 py-3 rounded-xl font-bold text-sm transition-all ${
               hasReachedMajority
-                ? 'btn-primary animate-pulse'
-                : 'bg-game-border hover:bg-game-muted/20 text-game-secondary'
+                ? 'bg-gradient-to-r from-emerald-600 to-emerald-500 text-white shadow-lg shadow-emerald-600/20 hover:shadow-emerald-600/40'
+                : 'bg-game-border hover:bg-game-muted/20 text-game-secondary hover:text-white'
             }`}
           >
             {hasReachedMajority ? '🏛️ Form Government →' : 'Form Minority Government →'}
           </button>
-          {!hasReachedMajority && (
-            <p className="text-xs text-game-muted mt-2">
-              Without a majority, governing will be harder — bills are less likely to pass
-            </p>
-          )}
         </div>
       </div>
     </div>
