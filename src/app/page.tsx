@@ -20,7 +20,6 @@ export default function Home() {
   const [errorMsg, setErrorMsg] = useState('');
   const [hasSavedGame, setHasSavedGame] = useState(false);
   const [savedRoomId, setSavedRoomId] = useState<string | null>(null);
-  // AI setup state
   const [aiIdeology, setAiIdeology] = useState<AIIdeology>('center');
   const [partyName, setPartyName] = useState('');
   const [partyColor, setPartyColor] = useState<PartyColor>('blue');
@@ -29,9 +28,7 @@ export default function Home() {
   const [socialAxis, setSocialAxis] = useState(50);
   const [manifesto, setManifesto] = useState<ManifestoOption[]>([]);
   const [difficulty, setDifficulty] = useState<'easy' | 'normal' | 'hard'>('normal');
-  const [showTutorial, setShowTutorial] = useState(false);
 
-  // Check for saved game on mount
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const saved = loadPersistedState();
@@ -46,21 +43,15 @@ export default function Home() {
     const saved = loadPersistedState();
     if (!saved) { setErrorMsg('No saved game found'); return; }
     if (saved.phase === 'game_over') { clearPersistedState(); setHasSavedGame(false); return; }
-
     setLoading(true);
     setPlayerName(saved.players[0]?.name ?? 'Player');
     setPlayerId('host');
     setRoomId(saved.roomId);
     setMode(saved.isAIGame ? 'ai_host' : 'host');
     setConnected(true);
-
     const state = restoreGame(saved);
     setGameState(state);
-
-    setOnStateChange((newState: GameState) => {
-      useGameStore.getState().setGameState(newState);
-    });
-
+    setOnStateChange((newState: GameState) => { useGameStore.getState().setGameState(newState); });
     router.push(`/game/${saved.roomId}`);
   };
 
@@ -70,32 +61,19 @@ export default function Home() {
     if (manifesto.length !== 3) { setErrorMsg('Select exactly 3 manifesto items'); return; }
     setLoading(true);
     setErrorMsg('');
-
     const roomCode = `AI${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
-
     const partyConfig: PartyConfig = {
-      partyName: partyName.trim(),
-      partyColor: partyColor,
-      leaderName: name.trim(),
-      economicAxis,
-      socialAxis,
-      logo: partyLogo,
-      manifesto,
+      partyName: partyName.trim(), partyColor, leaderName: name.trim(),
+      economicAxis, socialAxis, logo: partyLogo, manifesto,
     };
-
     setPlayerName(name.trim());
     setPlayerId('host');
     setRoomId(roomCode);
     setMode('ai_host');
     setConnected(true);
-
     const state = initAIGame(roomCode, name.trim(), partyConfig, aiIdeology);
     setGameState(state);
-
-    setOnStateChange((newState: GameState) => {
-      useGameStore.getState().setGameState(newState);
-    });
-
+    setOnStateChange((newState: GameState) => { useGameStore.getState().setGameState(newState); });
     router.push(`/game/${roomCode}`);
   };
 
@@ -103,7 +81,6 @@ export default function Home() {
     if (!name.trim()) { setErrorMsg('Enter your name'); return; }
     setLoading(true);
     setErrorMsg('');
-
     try {
       const roomCode = await createRoom();
       setPlayerName(name.trim());
@@ -111,28 +88,15 @@ export default function Home() {
       setRoomId(roomCode);
       setMode('host');
       setConnected(true);
-
       const state = initGame(roomCode, name.trim());
       setGameState(state);
-
-      setOnStateChange((newState: GameState) => {
-        useGameStore.getState().setGameState(newState);
-      });
-
-      onPeerConnect(() => {
-        useGameStore.getState().setConnected(true);
-      });
-
+      setOnStateChange((newState: GameState) => { useGameStore.getState().setGameState(newState); });
+      onPeerConnect(() => { useGameStore.getState().setConnected(true); });
       onPeerDisconnect(() => {});
-
       onMessage((msg) => {
-        if (msg.type === 'playerInfo') {
-          handleClientJoin(msg.name);
-        } else if (msg.type === 'action') {
-          handleAction('client', msg.action, msg.payload);
-        }
+        if (msg.type === 'playerInfo') { handleClientJoin(msg.name); }
+        else if (msg.type === 'action') { handleAction('client', msg.action, msg.payload); }
       });
-
       router.push(`/game/${roomCode}`);
     } catch {
       setErrorMsg('Failed to create room. Please try again.');
@@ -145,29 +109,20 @@ export default function Home() {
     if (!joinCode.trim()) { setErrorMsg('Enter room code'); return; }
     setLoading(true);
     setErrorMsg('');
-
     try {
       const code = joinCode.trim().toUpperCase();
       await joinRoom(code);
-
       setPlayerName(name.trim());
       setPlayerId('client');
       setRoomId(code);
       setMode('client');
       setConnected(true);
-
       sendMessage({ type: 'playerInfo', name: name.trim() });
-
       onMessage((msg) => {
-        if (msg.type === 'state') {
-          useGameStore.getState().setGameState(msg.state as GameState);
-        } else if (msg.type === 'error') {
-          useGameStore.getState().setError(msg.message);
-        }
+        if (msg.type === 'state') { useGameStore.getState().setGameState(msg.state as GameState); }
+        else if (msg.type === 'error') { useGameStore.getState().setError(msg.message); }
       });
-
       onPeerDisconnect(() => {});
-
       router.push(`/game/${code}`);
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : 'Failed to join room');
@@ -196,259 +151,319 @@ export default function Home() {
     shield: '🛡️', flame: '🔥', scales: '⚖️', gear: '⚙️', wheat: '🌾', sun: '☀️',
   };
 
+  const getAxisLabel = (value: number, type: 'econ' | 'social') => {
+    if (type === 'econ') {
+      if (value < 25) return 'Far Left';
+      if (value < 40) return 'Left';
+      if (value < 60) return 'Center';
+      if (value < 75) return 'Center-Right';
+      return 'Right';
+    }
+    if (value < 25) return 'Authoritarian';
+    if (value < 40) return 'Conservative';
+    if (value < 60) return 'Moderate';
+    if (value < 75) return 'Progressive';
+    return 'Libertarian';
+  };
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-950">
-      <div className="max-w-lg w-full mx-4">
+    <div className="min-h-screen flex items-center justify-center bg-game-bg bg-dot-grid bg-gradient-mesh">
+      <div className="max-w-xl w-full mx-4">
         {/* Title */}
-        <div className="text-center mb-12 animate-fade-in">
-          <div className="text-6xl mb-4">🏛️</div>
-          <h1 className="text-5xl font-bold mb-2 bg-gradient-to-r from-blue-400 via-purple-400 to-red-400 bg-clip-text text-transparent">
-            Democracy
+        <div className="text-center mb-10 animate-fade-in">
+          <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-game-accent/10 border border-game-accent/20 mb-5">
+            <span className="text-4xl">🏛️</span>
+          </div>
+          <h1 className="text-5xl font-bold mb-1 font-display tracking-tight">
+            <span className="bg-gradient-to-r from-blue-400 via-purple-400 to-red-400 text-gradient">Democracy</span>
           </h1>
-          <p className="text-slate-400 text-lg">Republic of Novaria</p>
-          <p className="text-slate-600 text-sm mt-1">Political Simulation</p>
+          <p className="text-game-secondary text-lg font-display">Republic of Novaria</p>
+          <p className="text-game-muted text-xs mt-2 tracking-wider uppercase">Multiplayer Political Strategy</p>
         </div>
 
         {errorMsg && (
-          <div className="mb-4 p-3 bg-red-900/30 border border-red-800 rounded-lg text-red-300 text-sm text-center">
+          <div className="mb-4 p-3 glass-card border-red-800/40 bg-red-950/20 text-red-300 text-sm text-center animate-fade-in">
             {errorMsg}
           </div>
         )}
 
+        {/* Main Menu */}
         {mode === 'menu' && (
-          <div className="space-y-4 animate-fade-in">
+          <div className="space-y-3 animate-fade-in">
             {hasSavedGame && (
-              <button
-                onClick={handleResume}
-                disabled={loading}
-                className="w-full p-4 bg-emerald-600 hover:bg-emerald-500 rounded-xl text-lg font-semibold transition-all hover:scale-[1.02] active:scale-[0.98] ring-2 ring-emerald-400/50"
-              >
-                ▶️ Resume Game {savedRoomId ? `(${savedRoomId})` : ''}
+              <button onClick={handleResume} disabled={loading}
+                className="w-full p-4 rounded-xl text-lg font-semibold transition-all hover:scale-[1.01] active:scale-[0.99] btn-success ring-1 ring-emerald-400/30">
+                ▶ Resume Game {savedRoomId ? `(${savedRoomId})` : ''}
               </button>
             )}
-            <button
-              onClick={() => setModeLocal('ai_setup')}
-              className="w-full p-4 bg-purple-600 hover:bg-purple-500 rounded-xl text-lg font-semibold transition-all hover:scale-[1.02] active:scale-[0.98]"
-            >
-              🤖 Play vs AI
+            <button onClick={() => setModeLocal('ai_setup')}
+              className="w-full p-4 glass-card rounded-xl text-lg font-semibold transition-all hover:scale-[1.01] active:scale-[0.99] hover:border-purple-500/30 group">
+              <span className="text-purple-400 group-hover:text-purple-300">🤖 Play vs AI</span>
+              <span className="block text-xs text-game-muted mt-0.5 font-normal">Single-player against AI opponent</span>
             </button>
-            <button
-              onClick={() => setModeLocal('create')}
-              className="w-full p-4 bg-blue-600 hover:bg-blue-500 rounded-xl text-lg font-semibold transition-all hover:scale-[1.02] active:scale-[0.98]"
-            >
-              👥 Play vs Friend
+            <button onClick={() => setModeLocal('create')}
+              className="w-full p-4 glass-card rounded-xl text-lg font-semibold transition-all hover:scale-[1.01] active:scale-[0.99] hover:border-blue-500/30 group">
+              <span className="text-blue-400 group-hover:text-blue-300">👥 Create Multiplayer</span>
+              <span className="block text-xs text-game-muted mt-0.5 font-normal">Host a room for a friend to join</span>
             </button>
-            <button
-              onClick={() => setModeLocal('join')}
-              className="w-full p-4 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-lg font-semibold transition-all hover:scale-[1.02] active:scale-[0.98]"
-            >
-              🔗 Join Game
+            <button onClick={() => setModeLocal('join')}
+              className="w-full p-4 glass-card rounded-xl text-lg font-semibold transition-all hover:scale-[1.01] active:scale-[0.99] hover:border-white/10 group">
+              <span className="text-game-secondary group-hover:text-white">🔗 Join Game</span>
+              <span className="block text-xs text-game-muted mt-0.5 font-normal">Enter a room code to join</span>
             </button>
-            <div className="text-center mt-8 space-y-2">
-              <p className="text-slate-500 text-sm">Create your party. Govern a fictional country. Win elections.</p>
-              <p className="text-slate-600 text-xs">Parliament • Ministers • Laws • Dilemmas • Regions • Situations</p>
+
+            <div className="text-center pt-6 space-y-1.5">
+              <p className="text-game-muted text-xs">Create your party. Govern a nation. Win elections.</p>
+              <div className="flex items-center justify-center gap-3 text-game-muted/50 text-[10px]">
+                <span>Parliament</span><span>•</span><span>6 Parties</span><span>•</span>
+                <span>30 Policies</span><span>•</span><span>7 Regions</span>
+              </div>
             </div>
           </div>
         )}
 
+        {/* AI Setup */}
         {mode === 'ai_setup' && (
-          <div className="space-y-5 animate-fade-in max-h-[80vh] overflow-y-auto pr-1">
-            <h2 className="text-xl font-bold text-center">🤖 Play vs AI</h2>
-
-            {/* Name */}
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Your Name</label>
-              <input
-                type="text" value={name} onChange={(e) => setName(e.target.value)}
-                placeholder="Enter your name..." autoFocus maxLength={20}
-                className="w-full p-3 bg-slate-800 border border-slate-700 rounded-lg text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-purple-500"
-              />
-            </div>
-
-            {/* Party Name */}
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Party Name</label>
-              <input
-                type="text" value={partyName} onChange={(e) => setPartyName(e.target.value)}
-                placeholder="Your party name..." maxLength={30}
-                className="w-full p-3 bg-slate-800 border border-slate-700 rounded-lg text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-purple-500"
-              />
-            </div>
-
-            {/* Party Color */}
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Party Color</label>
-              <div className="flex gap-2 flex-wrap">
-                {COLORS.map(c => (
-                  <button key={c} onClick={() => setPartyColor(c)}
-                    className={`w-10 h-10 rounded-lg border-2 transition-all ${partyColor === c ? 'border-white scale-110' : 'border-slate-600'}`}
-                    style={{ backgroundColor: COLOR_HEX[c] }}
-                  />
-                ))}
+          <div className="animate-fade-in">
+            <div className="glass-card rounded-2xl overflow-hidden">
+              <div className="p-5 border-b border-game-border bg-gradient-to-r from-purple-950/30 to-transparent">
+                <h2 className="text-xl font-bold font-display text-purple-300">Create Your Party</h2>
+                <p className="text-xs text-game-muted mt-1">Set up your political party before entering the campaign</p>
               </div>
-            </div>
 
-            {/* Logo */}
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Party Logo</label>
-              <div className="flex gap-2 flex-wrap">
-                {LOGOS.map(l => (
-                  <button key={l} onClick={() => setPartyLogo(l)}
-                    className={`w-10 h-10 rounded-lg border-2 flex items-center justify-center text-lg transition-all ${partyLogo === l ? 'border-white bg-slate-700 scale-110' : 'border-slate-600 bg-slate-800'}`}>
-                    {LOGO_EMOJI[l]}
-                  </button>
-                ))}
-              </div>
-            </div>
+              <div className="p-5 space-y-5 max-h-[60vh] overflow-y-auto">
+                {/* Name inputs */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] text-game-muted uppercase tracking-wider mb-1.5 font-bold">Your Name</label>
+                    <input type="text" value={name} onChange={(e) => setName(e.target.value)}
+                      placeholder="Leader name..." autoFocus maxLength={20}
+                      className="w-full p-2.5 bg-game-bg border border-game-border rounded-lg text-white text-sm placeholder:text-game-muted/50 focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/20 transition-all" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-game-muted uppercase tracking-wider mb-1.5 font-bold">Party Name</label>
+                    <input type="text" value={partyName} onChange={(e) => setPartyName(e.target.value)}
+                      placeholder="Party name..." maxLength={30}
+                      className="w-full p-2.5 bg-game-bg border border-game-border rounded-lg text-white text-sm placeholder:text-game-muted/50 focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/20 transition-all" />
+                  </div>
+                </div>
 
-            {/* Ideology Sliders */}
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Economic Position</label>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-red-400">Left</span>
-                <input type="range" min={0} max={100} value={economicAxis}
-                  onChange={(e) => setEconomicAxis(Number(e.target.value))}
-                  className="flex-1 accent-purple-500" />
-                <span className="text-xs text-blue-400">Right</span>
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Social Position</label>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-orange-400">Auth</span>
-                <input type="range" min={0} max={100} value={socialAxis}
-                  onChange={(e) => setSocialAxis(Number(e.target.value))}
-                  className="flex-1 accent-purple-500" />
-                <span className="text-xs text-green-400">Liberal</span>
-              </div>
-            </div>
+                {/* Color + Logo */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[10px] text-game-muted uppercase tracking-wider mb-1.5 font-bold">Color</label>
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {COLORS.map(c => (
+                        <button key={c} onClick={() => setPartyColor(c)}
+                          className={`h-9 rounded-lg border-2 transition-all ${partyColor === c ? 'border-white scale-105 shadow-lg' : 'border-transparent hover:border-white/20'}`}
+                          style={{ backgroundColor: COLOR_HEX[c] }} />
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-game-muted uppercase tracking-wider mb-1.5 font-bold">Logo</label>
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {LOGOS.map(l => (
+                        <button key={l} onClick={() => setPartyLogo(l)}
+                          className={`h-9 rounded-lg border flex items-center justify-center text-base transition-all ${partyLogo === l ? 'border-white bg-white/10' : 'border-game-border bg-game-bg hover:border-white/20'}`}>
+                          {LOGO_EMOJI[l]}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
 
-            {/* Manifesto */}
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Manifesto (pick 3)</label>
-              <div className="flex flex-wrap gap-2">
-                {MANIFESTO_OPTIONS.map(m => (
-                  <button key={m} onClick={() => toggleManifesto(m)}
-                    className={`px-3 py-1 rounded-full text-xs transition-all ${
-                      manifesto.includes(m)
-                        ? 'bg-purple-600 text-white'
-                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-                    } ${manifesto.length >= 3 && !manifesto.includes(m) ? 'opacity-40 cursor-not-allowed' : ''}`}>
-                    {m}
-                  </button>
-                ))}
-              </div>
-            </div>
+                {/* Ideology */}
+                <div className="space-y-3">
+                  <label className="block text-[10px] text-game-muted uppercase tracking-wider font-bold">Ideology</label>
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[10px] text-red-400">Left</span>
+                      <span className="text-[10px] text-game-secondary font-medium">{getAxisLabel(economicAxis, 'econ')}</span>
+                      <span className="text-[10px] text-blue-400">Right</span>
+                    </div>
+                    <input type="range" min={0} max={100} value={economicAxis}
+                      onChange={(e) => setEconomicAxis(Number(e.target.value))}
+                      className="w-full accent-purple-500 h-1.5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[10px] text-orange-400">Authoritarian</span>
+                      <span className="text-[10px] text-game-secondary font-medium">{getAxisLabel(socialAxis, 'social')}</span>
+                      <span className="text-[10px] text-green-400">Liberal</span>
+                    </div>
+                    <input type="range" min={0} max={100} value={socialAxis}
+                      onChange={(e) => setSocialAxis(Number(e.target.value))}
+                      className="w-full accent-purple-500 h-1.5" />
+                  </div>
+                </div>
 
-            {/* Difficulty */}
-            <div>
-              <label className="block text-sm text-slate-400 mb-2">Difficulty</label>
-              <div className="grid grid-cols-3 gap-3">
-                {([
-                  { id: 'easy' as const, label: 'Easy', icon: '🌱', desc: 'AI makes mistakes' },
-                  { id: 'normal' as const, label: 'Normal', icon: '⚖️', desc: 'Balanced challenge' },
-                  { id: 'hard' as const, label: 'Hard', icon: '🔥', desc: 'Ruthless AI' },
-                ]).map(d => (
-                  <button key={d.id} onClick={() => setDifficulty(d.id)}
-                    className={`p-3 rounded-lg border-2 text-center transition-all ${
-                      difficulty === d.id
-                        ? 'border-purple-500 bg-purple-900/30'
-                        : 'border-slate-700 bg-slate-800 hover:bg-slate-700'
-                    }`}>
-                    <div className="text-2xl mb-1">{d.icon}</div>
-                    <div className="text-sm font-semibold">{d.label}</div>
-                    <div className="text-xs text-slate-400">{d.desc}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
+                {/* Manifesto */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-[10px] text-game-muted uppercase tracking-wider font-bold">Manifesto</label>
+                    <span className="text-[10px] text-game-muted">{manifesto.length}/3 selected</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {MANIFESTO_OPTIONS.map(m => (
+                      <button key={m} onClick={() => toggleManifesto(m)}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all border ${
+                          manifesto.includes(m)
+                            ? 'bg-purple-600/30 text-purple-300 border-purple-500/40'
+                            : manifesto.length >= 3
+                              ? 'bg-game-bg text-game-muted/40 border-game-border/50 cursor-not-allowed'
+                              : 'bg-game-bg text-game-secondary border-game-border hover:border-white/10 hover:text-white'
+                        }`}>
+                        {m}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
-            {/* AI Opponent Selection */}
-            <div>
-              <label className="block text-sm text-slate-400 mb-2">AI Opponent</label>
-              <div className="grid grid-cols-3 gap-3">
-                {(['left', 'center', 'right'] as AIIdeology[]).map(ideo => {
-                  const preset = AI_PARTY_PRESETS[ideo];
-                  return (
-                    <button key={ideo} onClick={() => setAiIdeology(ideo)}
-                      className={`p-3 rounded-lg border-2 text-center transition-all ${
-                        aiIdeology === ideo
-                          ? 'border-purple-500 bg-purple-900/30'
-                          : 'border-slate-700 bg-slate-800 hover:bg-slate-700'
-                      }`}>
-                      <div className="text-2xl mb-1">
-                        {ideo === 'left' ? '🌹' : ideo === 'right' ? '🦅' : '⚖️'}
+                {/* Difficulty + AI */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[10px] text-game-muted uppercase tracking-wider mb-1.5 font-bold">Difficulty</label>
+                    <div className="space-y-1.5">
+                      {([
+                        { id: 'easy' as const, label: 'Easy', icon: '🌱' },
+                        { id: 'normal' as const, label: 'Normal', icon: '⚖️' },
+                        { id: 'hard' as const, label: 'Hard', icon: '🔥' },
+                      ]).map(d => (
+                        <button key={d.id} onClick={() => setDifficulty(d.id)}
+                          className={`w-full p-2 rounded-lg border text-left text-sm transition-all flex items-center gap-2 ${
+                            difficulty === d.id
+                              ? 'border-purple-500/40 bg-purple-900/20 text-white'
+                              : 'border-game-border bg-game-bg text-game-muted hover:text-white hover:border-white/10'
+                          }`}>
+                          <span>{d.icon}</span>
+                          <span className="font-medium">{d.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-game-muted uppercase tracking-wider mb-1.5 font-bold">AI Opponent</label>
+                    <div className="space-y-1.5">
+                      {(['left', 'center', 'right'] as AIIdeology[]).map(ideo => {
+                        const preset = AI_PARTY_PRESETS[ideo];
+                        return (
+                          <button key={ideo} onClick={() => setAiIdeology(ideo)}
+                            className={`w-full p-2 rounded-lg border text-left text-sm transition-all flex items-center gap-2 ${
+                              aiIdeology === ideo
+                                ? 'border-purple-500/40 bg-purple-900/20 text-white'
+                                : 'border-game-border bg-game-bg text-game-muted hover:text-white hover:border-white/10'
+                            }`}>
+                            <span>{ideo === 'left' ? '🌹' : ideo === 'right' ? '🦅' : '⚖️'}</span>
+                            <div>
+                              <div className="font-medium text-xs">{preset.partyName}</div>
+                              <div className="text-[10px] text-game-muted">{preset.leaderName}</div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Party preview */}
+                <div className="p-3 rounded-xl border border-game-border bg-game-bg/50">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg flex items-center justify-center text-xl" style={{
+                      backgroundColor: COLOR_HEX[partyColor] + '20',
+                      border: `2px solid ${COLOR_HEX[partyColor]}40`
+                    }}>
+                      {LOGO_EMOJI[partyLogo]}
+                    </div>
+                    <div className="flex-1">
+                      <div className="font-bold text-sm" style={{ color: COLOR_HEX[partyColor] }}>
+                        {partyName || 'Your Party'}
                       </div>
-                      <div className="text-sm font-semibold">{preset.partyName}</div>
-                      <div className="text-xs text-slate-400">{preset.leaderName}</div>
-                    </button>
-                  );
-                })}
+                      <div className="text-[10px] text-game-muted">
+                        {name || 'Leader'} • {getAxisLabel(economicAxis, 'econ')}-{getAxisLabel(socialAxis, 'social')}
+                      </div>
+                    </div>
+                    <div className="text-right text-[10px] text-game-muted">
+                      vs <span className="text-white font-medium">{aiPreset.partyName}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Bottom actions */}
+              <div className="p-4 border-t border-game-border bg-game-card/50 flex gap-2">
+                <button onClick={() => { setModeLocal('menu'); setErrorMsg(''); }}
+                  className="px-4 py-2.5 rounded-lg text-sm text-game-muted hover:text-white transition-all hover:bg-white/[0.03]">
+                  ← Back
+                </button>
+                <button onClick={handleStartAIGame} disabled={loading}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-bold btn-primary disabled:opacity-50">
+                  {loading ? 'Starting...' : 'Start Game'}
+                </button>
               </div>
             </div>
-
-            {/* AI opponent preview */}
-            <div className="p-3 bg-slate-800/50 border border-slate-700 rounded-lg text-sm">
-              <p className="text-slate-400">
-                <span className="text-white font-semibold">🤖 {aiPreset.partyName}</span> led by {aiPreset.leaderName}
-              </p>
-              <p className="text-slate-500 text-xs mt-1">
-                Manifesto: {aiPreset.manifesto.join(' • ')}
-              </p>
-            </div>
-
-            <button onClick={handleStartAIGame} disabled={loading}
-              className="w-full p-4 bg-purple-600 hover:bg-purple-500 disabled:bg-slate-700 rounded-xl text-lg font-semibold transition-all">
-              {loading ? 'Starting...' : '🤖 Start Game vs AI'}
-            </button>
-            <button onClick={() => { setModeLocal('menu'); setErrorMsg(''); }}
-              className="w-full p-2 text-slate-400 hover:text-slate-300 text-sm">← Back</button>
           </div>
         )}
 
+        {/* Create Room */}
         {mode === 'create' && (
-          <div className="space-y-4 animate-fade-in">
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Your Name</label>
-              <input
-                type="text" value={name} onChange={(e) => setName(e.target.value)}
-                placeholder="Enter your name..." autoFocus maxLength={20}
-                className="w-full p-3 bg-slate-800 border border-slate-700 rounded-lg text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-blue-500"
-              />
+          <div className="glass-card rounded-2xl overflow-hidden animate-fade-in">
+            <div className="p-5 border-b border-game-border bg-gradient-to-r from-blue-950/30 to-transparent">
+              <h2 className="text-xl font-bold font-display text-blue-300">Create Multiplayer Room</h2>
+              <p className="text-xs text-game-muted mt-1">Your friend will join using the room code</p>
             </div>
-            <button onClick={handleCreate} disabled={loading}
-              className="w-full p-4 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 rounded-xl text-lg font-semibold transition-all">
-              {loading ? 'Creating...' : '👥 Create Game Room'}
-            </button>
-            <button onClick={() => { setModeLocal('menu'); setErrorMsg(''); }}
-              className="w-full p-2 text-slate-400 hover:text-slate-300 text-sm">← Back</button>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-[10px] text-game-muted uppercase tracking-wider mb-1.5 font-bold">Your Name</label>
+                <input type="text" value={name} onChange={(e) => setName(e.target.value)}
+                  placeholder="Enter your name..." autoFocus maxLength={20}
+                  className="w-full p-2.5 bg-game-bg border border-game-border rounded-lg text-white text-sm placeholder:text-game-muted/50 focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/20 transition-all" />
+              </div>
+            </div>
+            <div className="p-4 border-t border-game-border bg-game-card/50 flex gap-2">
+              <button onClick={() => { setModeLocal('menu'); setErrorMsg(''); }}
+                className="px-4 py-2.5 rounded-lg text-sm text-game-muted hover:text-white transition-all hover:bg-white/[0.03]">
+                ← Back
+              </button>
+              <button onClick={handleCreate} disabled={loading}
+                className="flex-1 py-2.5 rounded-xl text-sm font-bold btn-primary disabled:opacity-50">
+                {loading ? 'Creating...' : 'Create Room'}
+              </button>
+            </div>
           </div>
         )}
 
+        {/* Join Room */}
         {mode === 'join' && (
-          <div className="space-y-4 animate-fade-in">
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Your Name</label>
-              <input
-                type="text" value={name} onChange={(e) => setName(e.target.value)}
-                placeholder="Enter your name..." autoFocus maxLength={20}
-                className="w-full p-3 bg-slate-800 border border-slate-700 rounded-lg text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-blue-500"
-              />
+          <div className="glass-card rounded-2xl overflow-hidden animate-fade-in">
+            <div className="p-5 border-b border-game-border bg-gradient-to-r from-amber-950/30 to-transparent">
+              <h2 className="text-xl font-bold font-display text-amber-300">Join Game</h2>
+              <p className="text-xs text-game-muted mt-1">Enter the room code shared by the host</p>
             </div>
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Room Code</label>
-              <input
-                type="text" value={joinCode} onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-                placeholder="ABCDEF" maxLength={6}
-                className="w-full p-3 bg-slate-800 border border-slate-700 rounded-lg text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-blue-500 tracking-[0.3em] text-center text-xl font-mono"
-              />
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-[10px] text-game-muted uppercase tracking-wider mb-1.5 font-bold">Your Name</label>
+                <input type="text" value={name} onChange={(e) => setName(e.target.value)}
+                  placeholder="Enter your name..." autoFocus maxLength={20}
+                  className="w-full p-2.5 bg-game-bg border border-game-border rounded-lg text-white text-sm placeholder:text-game-muted/50 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 transition-all" />
+              </div>
+              <div>
+                <label className="block text-[10px] text-game-muted uppercase tracking-wider mb-1.5 font-bold">Room Code</label>
+                <input type="text" value={joinCode} onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                  placeholder="ABCDEF" maxLength={6}
+                  className="w-full p-3 bg-game-bg border border-game-border rounded-lg text-white placeholder:text-game-muted/30 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 tracking-[0.4em] text-center text-2xl font-mono transition-all" />
+              </div>
             </div>
-            <button onClick={handleJoin} disabled={loading}
-              className="w-full p-4 bg-red-600 hover:bg-red-500 disabled:bg-slate-700 rounded-xl text-lg font-semibold transition-all">
-              {loading ? 'Joining...' : '🔗 Join Game'}
-            </button>
-            <button onClick={() => { setModeLocal('menu'); setErrorMsg(''); }}
-              className="w-full p-2 text-slate-400 hover:text-slate-300 text-sm">← Back</button>
+            <div className="p-4 border-t border-game-border bg-game-card/50 flex gap-2">
+              <button onClick={() => { setModeLocal('menu'); setErrorMsg(''); }}
+                className="px-4 py-2.5 rounded-lg text-sm text-game-muted hover:text-white transition-all hover:bg-white/[0.03]">
+                ← Back
+              </button>
+              <button onClick={handleJoin} disabled={loading}
+                className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-gradient-to-r from-amber-600 to-amber-500 text-white disabled:opacity-50">
+                {loading ? 'Joining...' : 'Join Game'}
+              </button>
+            </div>
           </div>
         )}
       </div>
