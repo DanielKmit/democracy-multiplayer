@@ -58,113 +58,111 @@ export function Lobby({ roomId }: { roomId: string }) {
 
       {/* Leave confirmation modal */}
       {showLeaveConfirm && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <div className="bg-game-card border border-game-border rounded-xl p-6 max-w-sm mx-4 animate-fade-in">
+        <motion.div className="fixed inset-0 z-50 flex items-center justify-center"
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+          <motion.div className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+            onClick={() => setShowLeaveConfirm(false)} />
+          <motion.div className="relative glass-card rounded-2xl p-6 max-w-sm mx-4"
+            initial={{ opacity: 0, scale: 0.9, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} transition={springs.gentle}>
             <h3 className="text-lg font-bold mb-2">Leave this game?</h3>
-            <p className="text-game-secondary text-sm mb-6">You'll disconnect from the room and return to the menu.</p>
+            <p className="text-game-secondary text-sm mb-6">You&apos;ll disconnect from the room and return to the menu.</p>
             <div className="flex gap-3">
-              <button
-                onClick={() => setShowLeaveConfirm(false)}
-                className="flex-1 py-2 bg-game-border hover:bg-game-muted/30 rounded-lg text-sm font-medium transition-all cursor-pointer"
-              >
+              <motion.button onClick={() => setShowLeaveConfirm(false)}
+                whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} transition={springs.snappy}
+                className="flex-1 py-2.5 btn-secondary rounded-xl text-sm font-medium">
                 Cancel
-              </button>
-              <button
-                onClick={handleLeave}
-                className="flex-1 py-2 bg-red-600 hover:bg-red-500 rounded-lg text-sm font-medium transition-all cursor-pointer"
-              >
+              </motion.button>
+              <motion.button onClick={handleLeave}
+                whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} transition={springs.snappy}
+                className="flex-1 py-2.5 btn-danger rounded-xl text-sm font-medium">
                 Leave
-              </button>
+              </motion.button>
             </div>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       )}
 
       <motion.div className="text-center max-w-lg"
         initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={springs.gentle}>
         <motion.div className="text-6xl mb-6"
           initial={{ scale: 0 }} animate={{ scale: 1 }} transition={springs.bouncy}>🏛️</motion.div>
-        <h2 className="text-2xl font-bold mb-1">Republic of Novaria</h2>
+        <h2 className="text-2xl font-bold mb-1 font-display">Republic of Novaria</h2>
         <div className="flex items-center justify-center gap-2 mb-8">
           <PulseIndicator color="blue" />
           <p className="text-game-secondary">Waiting for opponent to join</p>
         </div>
 
-        {/* Room code + Copy button */}
-        <div className="bg-game-card border border-game-border rounded-xl p-6 mb-6 inline-block">
-          <div className="text-xs text-game-muted uppercase tracking-wider mb-2">Room Code</div>
+        {/* Room code */}
+        <motion.div className="hero-card rounded-2xl p-6 mb-6 inline-block"
+          initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ ...springs.smooth, delay: 0.2 }}>
+          <div className="text-label mb-2">Room Code</div>
           <div className="flex items-center gap-3 justify-center">
-            <span className="text-4xl font-mono font-bold tracking-[0.4em] text-blue-400">
+            <span className="text-4xl font-mono font-bold tracking-[0.3em] text-blue-400">
               {roomId}
             </span>
           </div>
-          <button
+          <motion.button
             onClick={handleCopy}
-            className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-medium transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer inline-flex items-center gap-2"
+            whileHover={{ scale: 1.03, y: -1 }} whileTap={{ scale: 0.97 }} transition={springs.snappy}
+            className="mt-4 px-5 py-2 btn-primary rounded-xl text-sm font-medium inline-flex items-center gap-2"
           >
-            {copied ? '✅ Link copied!' : '📋 Copy Link'}
-          </button>
+            {copied ? '✅ Link copied!' : '📋 Copy Invite Link'}
+          </motion.button>
           {copied && (
-            <p className="text-xs text-emerald-400 mt-2 animate-fade-in">Share with your opponent</p>
+            <motion.p className="text-xs text-emerald-400 mt-2"
+              initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} transition={springs.snappy}>
+              Share with your opponent
+            </motion.p>
           )}
-        </div>
+        </motion.div>
 
         {/* Share buttons */}
         <div className="mb-8">
-          <p className="text-xs text-game-muted uppercase tracking-wider mb-3">📤 Invite Friend</p>
-          <div className="flex gap-3 justify-center flex-wrap">
-            <a
-              href={whatsappUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-sm font-medium transition-all hover:scale-[1.02] cursor-pointer"
-            >
+          <div className="text-label mb-3">Invite Friend</div>
+          <div className="flex gap-2 justify-center flex-wrap">
+            <motion.a href={whatsappUrl} target="_blank" rel="noopener noreferrer"
+              whileHover={{ scale: 1.03, y: -1 }} whileTap={{ scale: 0.97 }} transition={springs.snappy}
+              className="px-4 py-2 rounded-xl text-sm font-medium bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 hover:border-emerald-500/40">
               💬 WhatsApp
-            </a>
-            <a
-              href={twitterUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="px-4 py-2 bg-game-border hover:bg-game-muted/30 rounded-lg text-sm font-medium transition-all hover:scale-[1.02] cursor-pointer"
-            >
+            </motion.a>
+            <motion.a href={twitterUrl} target="_blank" rel="noopener noreferrer"
+              whileHover={{ scale: 1.03, y: -1 }} whileTap={{ scale: 0.97 }} transition={springs.snappy}
+              className="px-4 py-2 rounded-xl text-sm font-medium btn-secondary">
               🐦 Twitter
-            </a>
-            <button
-              onClick={handleCopy}
-              className="px-4 py-2 bg-game-border hover:bg-game-muted/30 rounded-lg text-sm font-medium transition-all hover:scale-[1.02] cursor-pointer"
-            >
+            </motion.a>
+            <motion.button onClick={handleCopy}
+              whileHover={{ scale: 1.03, y: -1 }} whileTap={{ scale: 0.97 }} transition={springs.snappy}
+              className="px-4 py-2 rounded-xl text-sm font-medium btn-secondary">
               🔗 Copy Link
-            </button>
+            </motion.button>
           </div>
         </div>
 
-        {/* Show connected players' party cards */}
+        {/* Connected players */}
         {gameState && gameState.players.length > 0 && (
-          <div className="space-y-3 mb-8">
+          <MotionList className="space-y-2 mb-8">
             {gameState.players.map(player => (
-              <div
-                key={player.id}
-                className="flex items-center gap-3 p-3 bg-game-card/50 rounded-lg border border-game-border"
-              >
-                <div
-                  className="w-10 h-10 rounded-lg flex items-center justify-center"
-                  style={{
-                    backgroundColor: PARTY_COLORS[player.party.partyColor] + '30',
-                    border: `2px solid ${PARTY_COLORS[player.party.partyColor]}`,
-                  }}
-                >
-                  <PartyLogoIcon name={player.party.logo} color={PARTY_COLORS[player.party.partyColor]} size={24} />
-                </div>
-                <div className="text-left">
-                  <div className="text-sm font-medium" style={{ color: PARTY_COLORS[player.party.partyColor] }}>
-                    {player.party.partyName !== 'Default Party' ? player.party.partyName : player.name}
+              <MotionListItem key={player.id}>
+                <div className="flex items-center gap-3 p-3 glass-card rounded-xl">
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center"
+                    style={{
+                      backgroundColor: PARTY_COLORS[player.party.partyColor] + '20',
+                      border: `1.5px solid ${PARTY_COLORS[player.party.partyColor]}50`,
+                    }}>
+                    <PartyLogoIcon name={player.party.logo} color={PARTY_COLORS[player.party.partyColor]} size={24} />
                   </div>
-                  <div className="text-xs text-game-muted">{player.role === 'ruling' ? '🏛️ Ruling' : '⚔️ Opposition'}</div>
+                  <div className="text-left">
+                    <div className="text-sm font-medium" style={{ color: PARTY_COLORS[player.party.partyColor] }}>
+                      {player.party.partyName !== 'Default Party' ? player.party.partyName : player.name}
+                    </div>
+                    <div className="text-xs text-game-muted">{player.role === 'ruling' ? '🏛️ Ruling' : '⚔️ Opposition'}</div>
+                  </div>
+                  <div className="ml-auto"><PulseIndicator color="green" /></div>
                 </div>
-                <div className="ml-auto w-2 h-2 bg-green-500 rounded-full" />
-              </div>
+              </MotionListItem>
             ))}
-          </div>
+          </MotionList>
         )}
 
         {/* Game Settings */}
@@ -174,14 +172,16 @@ export function Lobby({ roomId }: { roomId: string }) {
           </div>
         )}
 
-        {/* Waiting animation with pulsing dots */}
+        {/* Waiting animation */}
         <div className="flex items-center justify-center gap-2 text-game-muted">
-          <span className="flex gap-1">
-            <span className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-            <span className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-            <span className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+          <span className="flex gap-1.5">
+            {[0, 1, 2].map(i => (
+              <motion.span key={i} className="w-2 h-2 bg-blue-400/60 rounded-full"
+                animate={{ y: [0, -6, 0] }}
+                transition={{ duration: 0.6, repeat: Infinity, delay: i * 0.15, ease: 'easeInOut' }} />
+            ))}
           </span>
-          <span>Waiting for Player 2 to join...</span>
+          <span className="text-sm">Waiting for Player 2 to join...</span>
         </div>
       </motion.div>
     </div>

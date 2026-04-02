@@ -183,16 +183,55 @@ function recalculate(state: GameState) {
     state.budget = calculateBudget(state.policies, state.simulation, state.budget.debtTotal ?? 200);
   }
 
-  // Apply situation effects to simulation
+  // Apply situation effects to simulation AND voter satisfaction
   for (const activeSit of state.activeSituations) {
     const sitDef = getSituationById(activeSit.id);
     if (sitDef) {
+      // Simulation effects (scaled by 0.5 per turn — accumulates while active)
       for (const [key, val] of Object.entries(sitDef.effects)) {
         const k = key as keyof typeof state.simulation;
         if (state.simulation[k] !== undefined) {
           (state.simulation as unknown as Record<string, number>)[k] += val * 0.5;
         }
       }
+
+      // Voter satisfaction effects — situations anger/please specific groups
+      if (sitDef.voterEffects) {
+        const ruling = state.players.find(p => p.role === 'ruling');
+        if (ruling && state.voterSatisfaction[ruling.id]) {
+          for (const [groupId, delta] of Object.entries(sitDef.voterEffects)) {
+            const current = state.voterSatisfaction[ruling.id][groupId] ?? 50;
+            // Scale by 0.3 per turn so it accumulates but doesn't overwhelm
+            state.voterSatisfaction[ruling.id][groupId] = Math.max(0, Math.min(100, current + delta * 0.3));
+          }
+        }
+      }
+    }
+  }
+
+  // Budget → Simulation feedback: debt crisis affects GDP and interest rates
+  if (state.budget.debtToGdp > 100) {
+    const debtPenalty = (state.budget.debtToGdp - 100) * 0.01;
+    state.simulation.gdpGrowth -= debtPenalty;
+    state.simulation.inflation += debtPenalty * 0.5;
+  }
+  if (state.budget.creditDowngrade) {
+    state.simulation.gdpGrowth -= 0.5; // Credit downgrade scares investors
+  }
+
+  // Scandal → Simulation feedback: active scandals erode trust and governance
+  if (state.activeScandals && state.activeScandals.length > 0) {
+    const scandalCount = state.activeScandals.filter(s => s.exposed).length;
+    state.simulation.corruption += scandalCount * 2; // Exposed corruption breeds more corruption
+    state.simulation.corruption = Math.min(100, state.simulation.corruption);
+  }
+
+  // Extremism → Simulation feedback: high extremism causes unrest
+  if (state.extremism) {
+    const maxExtremism = Math.max(state.extremism.far_left, state.extremism.far_right, state.extremism.religious, state.extremism.eco);
+    if (maxExtremism > 50) {
+      state.simulation.nationalSecurity -= (maxExtremism - 50) * 0.1;
+      state.simulation.crime += (maxExtremism - 50) * 0.05;
     }
   }
 
@@ -208,6 +247,35 @@ function recalculate(state: GameState) {
       state.campaignBonuses,
       state.perception,
     );
+
+    // === DEBT VISIBILITY — voters react to fiscal irresponsibility ===
+    const rulingForDebt = state.players.find(p => p.role === 'ruling');
+    if (rulingForDebt && state.voterSatisfaction[rulingForDebt.id] && state.budget) {
+      const debtGdp = state.budget.debtToGdp ?? 40;
+      if (debtGdp > 80) {
+        const debtPenalty = (debtGdp - 80) * 0.15;
+        // Business owners hate fiscal irresponsibility
+        state.voterSatisfaction[rulingForDebt.id]['business'] = Math.max(0,
+          (state.voterSatisfaction[rulingForDebt.id]['business'] ?? 50) - debtPenalty);
+        // Retirees fear their pensions won't be paid
+        state.voterSatisfaction[rulingForDebt.id]['retirees'] = Math.max(0,
+          (state.voterSatisfaction[rulingForDebt.id]['retirees'] ?? 50) - debtPenalty * 0.7);
+      }
+      // Credit downgrade is a major crisis — everyone notices
+      if (state.budget.creditDowngrade) {
+        for (const groupId of Object.keys(state.voterSatisfaction[rulingForDebt.id])) {
+          state.voterSatisfaction[rulingForDebt.id][groupId] = Math.max(0,
+            (state.voterSatisfaction[rulingForDebt.id][groupId] ?? 50) - 3);
+        }
+      }
+    }
+
+    // === EQUALITY → EXTREMISM — inequality fuels radicalization ===
+    if (state.extremism && state.simulation.equality < 35) {
+      const inequalityFactor = (35 - state.simulation.equality) * 0.1;
+      state.extremism.far_left += inequalityFactor; // Left radicalized by inequality
+      state.extremism.far_right += inequalityFactor * 0.5; // Right blames immigrants for poverty
+    }
 
     // Per-party approval ratings
     state.approvalRating = computeAllApprovalRatings(state.voterSatisfaction, state.activeEffects);
