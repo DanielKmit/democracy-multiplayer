@@ -2449,10 +2449,12 @@ function handleEndTurnPhase(playerId?: string) {
 
     gameState.pendingPolicyChanges = [];
 
-    // Always skip through bill_voting → resolution → opposition
-    // Pending bills stay pending and can be voted on next turn — never block the turn
-    advancePhase(gameState); // -> bill_voting
-    advancePhase(gameState); // -> resolution
+    // Advance ruling → opposition, accounting for bill_voting being conditionally skipped
+    // advancePhase(ruling) may go to bill_voting OR directly to resolution (if no active bills)
+    advancePhase(gameState); // -> bill_voting or resolution
+    if ((gameState.phase as string) === 'bill_voting') {
+      advancePhase(gameState); // bill_voting -> resolution
+    }
     recalculate(gameState);
     advancePhase(gameState); // resolution -> opposition
     addLogEntry(gameState, 'Opposition phase.', 'info');
