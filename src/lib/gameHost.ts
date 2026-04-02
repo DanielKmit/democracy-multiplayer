@@ -2183,6 +2183,9 @@ function handleEndTurnPhase(playerId?: string) {
       );
       gameState.electionHistory.push(result);
 
+      // C1 fix: Reset debate so it triggers again next election
+      gameState.debate = null;
+
       // Update parliament seats with ALL parties
       const regionVoteShares: Record<string, Record<string, number>> = {};
       for (const region of Object.keys(result.voteShares)) {
@@ -2432,6 +2435,12 @@ function handleEndTurnPhase(playerId?: string) {
 
     broadcastState();
   } else if (gameState.phase === 'ruling') {
+    // Only the ruling player can end the ruling phase
+    const rulingPlayer = gameState.players.find(p => p.role === 'ruling');
+    if (playerId && rulingPlayer && playerId !== rulingPlayer.id) {
+      return; // Wrong player trying to advance ruling phase
+    }
+
     // Mark ruling player as acted
     if (playerId) {
       if (!gameState.turnActedThisTurn) gameState.turnActedThisTurn = {};
@@ -2449,6 +2458,12 @@ function handleEndTurnPhase(playerId?: string) {
     addLogEntry(gameState, 'Opposition phase.', 'info');
     broadcastState();
   } else if (gameState.phase === 'opposition') {
+    // Only the opposition player can end the opposition phase
+    const oppPlayer = gameState.players.find(p => p.role === 'opposition');
+    if (playerId && oppPlayer && playerId !== oppPlayer.id) {
+      return; // Wrong player trying to advance opposition phase
+    }
+
     // Mark opposition player as acted (passed without actions)
     if (playerId) {
       if (!gameState.turnActedThisTurn) gameState.turnActedThisTurn = {};
@@ -2470,6 +2485,12 @@ function handleEndTurnPhase(playerId?: string) {
     addLogEntry(gameState, `📊 Ruling Approval: ${gameState.rulingApproval}%`, 'info');
     broadcastState();
   } else if (gameState.phase === 'events') {
+    // Only the ruling player advances the events phase
+    const eventRuler = gameState.players.find(p => p.role === 'ruling');
+    if (playerId && eventRuler && playerId !== eventRuler.id) {
+      return; // Wrong player trying to advance events phase
+    }
+
     gameState.currentEvent = null;
 
     // Check for dilemma

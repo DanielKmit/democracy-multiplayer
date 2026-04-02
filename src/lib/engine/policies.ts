@@ -191,6 +191,7 @@ export const POLICIES: PolicyDefinition[] = [
     effects: {
       freedomIndex: 0.03,      // Personal freedom
       crime: -0.03,            // Legal = less black market
+      propertyCrime: -0.02,    // Less desperation crime from addicts
       healthIndex: -0.02,      // More access = more health issues
       corruption: -0.01,       // Less drug money corruption
     },
@@ -212,6 +213,7 @@ export const POLICIES: PolicyDefinition[] = [
     defaultValue: 60,
     effects: {
       crime: -0.03,            // Fewer gun crimes
+      violentCrime: -0.03,     // Gun control directly reduces violence
       freedomIndex: -0.03,     // Restricts liberty
       nationalSecurity: 0.01,  // Less armed populace = easier security
     },
@@ -274,6 +276,8 @@ export const POLICIES: PolicyDefinition[] = [
     defaultValue: 50,
     effects: {
       crime: -0.06,            // Directly fights crime
+      violentCrime: -0.04,     // Patrols reduce violence
+      propertyCrime: -0.04,    // Patrols reduce theft
       freedomIndex: -0.03,     // More police = less personal freedom
       nationalSecurity: 0.02,  // Internal security
       corruption: 0.01,        // Police corruption possible at high levels
@@ -300,6 +304,7 @@ export const POLICIES: PolicyDefinition[] = [
       freedomIndex: -0.04,     // Mass surveillance
       corruption: -0.02,       // Can expose corruption
       crime: -0.01,            // Intel helps fight crime
+      whiteCollarCrime: -0.03, // Intelligence exposes financial crime
     },
     budgetCostPerPoint: 0.4,
   },
@@ -310,6 +315,8 @@ export const POLICIES: PolicyDefinition[] = [
     effects: {
       nationalSecurity: 0.03,  // Secure borders
       crime: -0.02,            // Less smuggling
+      violentCrime: -0.01,     // Reduces cross-border violence
+      propertyCrime: -0.01,    // Less smuggling-related theft
       freedomIndex: -0.02,     // Movement restrictions
       gdpGrowth: -0.01,        // Trade friction
     },

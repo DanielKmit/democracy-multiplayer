@@ -34,11 +34,11 @@ export function PromisesPanel() {
 
     return (
       <div key={`pledge-${isOpponent ? 'opp' : 'my'}-${i}`}
-        className={`glass-card p-2 ring-1 ${isOpponent ? 'ring-orange-700/30' : 'ring-slate-700/50'}`}>
+        className={`glass-card p-2 ring-1 ${isOpponent ? 'ring-orange-700/30' : 'ring-game-border/50'}`}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5">
             <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
-            <span className="text-xs text-slate-300 truncate">
+            <span className="text-xs text-white truncate">
               {player?.party.partyName ?? 'Unknown'}
             </span>
             {isOpponent && (
@@ -51,9 +51,9 @@ export function PromisesPanel() {
             {statusIcons[pledge.status ?? 'pending']} {(pledge.status ?? 'pending').toUpperCase()}
           </span>
         </div>
-        <div className="text-[10px] text-slate-400 mt-0.5">
+        <div className="text-[10px] text-game-secondary mt-0.5">
           {pledge.direction === 'increase' ? '↑' : '↓'} {policy?.name ?? pledge.policyId}
-          {pledge.regionId && <span className="ml-1 text-slate-500">(in {pledge.regionId})</span>}
+          {pledge.regionId && <span className="ml-1 text-game-muted">(in {pledge.regionId})</span>}
         </div>
         {pledge.attackedBy && (
           <div className="text-[9px] text-red-400 mt-0.5">
@@ -74,7 +74,7 @@ export function PromisesPanel() {
       {/* Your promises */}
       {myPledges.length > 0 && (
         <div className="space-y-1">
-          <p className="text-[9px] text-slate-500 uppercase tracking-wider">Your Promises</p>
+          <p className="text-[9px] text-game-muted uppercase tracking-wider">Your Promises</p>
           {myPledges.slice(-4).reverse().map((pledge, i) => renderPledge(pledge, i, false))}
         </div>
       )}

@@ -51,8 +51,8 @@ export function PolicyCard({ policy, currentValue, disabled, isFilibustered, onC
         isFilibustered
           ? 'bg-red-950/30 border-red-800/50'
           : expanded
-          ? 'bg-slate-800 border-blue-700/50 shadow-lg shadow-blue-900/20'
-          : 'bg-slate-800/60 border-slate-700/50 hover:border-slate-600 cursor-pointer'
+          ? 'bg-game-card border-blue-700/50 shadow-lg shadow-blue-900/20'
+          : 'bg-game-card/60 border-game-border hover:border-game-border cursor-pointer'
       }`}
       onClick={() => !expanded && !disabled && setExpanded(true)}
     >
@@ -61,7 +61,7 @@ export function PolicyCard({ policy, currentValue, disabled, isFilibustered, onC
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
             <span className="text-sm">{CATEGORY_ICONS[policy.category]}</span>
-            <span className="font-medium text-sm text-slate-200">{policy.name}</span>
+            <span className="font-medium text-sm text-white">{policy.name}</span>
             {isFilibustered && (
               <span className="text-[10px] bg-red-900/50 text-red-400 px-1.5 py-0.5 rounded-full border border-red-800/50">BLOCKED</span>
             )}
@@ -108,12 +108,12 @@ export function PolicyCard({ policy, currentValue, disabled, isFilibustered, onC
 
       {/* Expanded detail view */}
       {expanded && (
-        <div className="border-t border-slate-700/50 p-3 animate-fade-in">
-          <p className="text-xs text-slate-400 mb-3">{policy.description}</p>
+        <div className="border-t border-game-border p-3 animate-fade-in">
+          <p className="text-xs text-game-secondary mb-3">{policy.description}</p>
 
           {/* Stepped level selector */}
           <div className="mb-3">
-            <div className="text-[10px] text-slate-500 uppercase mb-1.5">Implementation Level</div>
+            <div className="text-[10px] text-game-muted uppercase mb-1.5">Implementation Level</div>
             <div className="flex gap-1">
               {POLICY_LEVELS.map((level) => {
                 const isSelected = level === selectedLevel;
@@ -127,12 +127,12 @@ export function PolicyCard({ policy, currentValue, disabled, isFilibustered, onC
                       isSelected
                         ? 'bg-blue-600/30 border-blue-500 text-blue-300'
                         : isCurrent
-                        ? 'bg-slate-700/50 border-slate-600 text-slate-300'
-                        : 'bg-slate-800/50 border-slate-700 text-slate-500 hover:border-slate-600'
+                        ? 'bg-game-border/50 border-game-border text-white'
+                        : 'bg-game-card/50 border-game-border text-game-muted hover:border-game-border'
                     }`}
                   >
                     {level}
-                    {isCurrent && !isSelected && <span className="block text-[8px] text-slate-600">current</span>}
+                    {isCurrent && !isSelected && <span className="block text-[8px] text-game-muted">current</span>}
                   </button>
                 );
               })}
@@ -141,14 +141,14 @@ export function PolicyCard({ policy, currentValue, disabled, isFilibustered, onC
 
           {/* Full effects list */}
           <div className="mb-3">
-            <div className="text-[10px] text-slate-500 uppercase mb-1">Effects</div>
+            <div className="text-[10px] text-game-muted uppercase mb-1">Effects</div>
             <div className="space-y-1">
               {effectEntries.map(([key, val]) => {
                 const isGood = (key === 'crime' || key === 'pollution' || key === 'corruption' || key === 'unemployment' || key === 'inflation')
                   ? val < 0 : val > 0;
                 return (
                   <div key={key} className="flex items-center justify-between text-xs">
-                    <span className="text-slate-400">{SIM_VAR_LABELS[key]}</span>
+                    <span className="text-game-secondary">{SIM_VAR_LABELS[key]}</span>
                     <span className={isGood ? 'text-green-400' : 'text-red-400'}>
                       {val > 0 ? '+' : ''}{(val * 100).toFixed(0)}%
                     </span>
@@ -165,14 +165,14 @@ export function PolicyCard({ policy, currentValue, disabled, isFilibustered, onC
               <div className="flex gap-2">
                 <button
                   onClick={(e) => { e.stopPropagation(); setSelectedLevel(currentLevel); setExpanded(false); }}
-                  className="px-3 py-1.5 text-xs bg-slate-700 hover:bg-slate-600 rounded-lg transition-all"
+                  className="px-3 py-1.5 text-xs bg-game-border hover:bg-game-muted/30 rounded-lg transition-all"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={(e) => { e.stopPropagation(); handleConfirm(); }}
                   disabled={disabled || isFilibustered}
-                  className="px-4 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 rounded-lg font-medium transition-all"
+                  className="px-4 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 disabled:bg-game-border rounded-lg font-medium transition-all"
                 >
                   Confirm
                 </button>
@@ -182,7 +182,7 @@ export function PolicyCard({ policy, currentValue, disabled, isFilibustered, onC
           {stepDiff === 0 && (
             <button
               onClick={(e) => { e.stopPropagation(); setExpanded(false); }}
-              className="w-full py-1.5 text-xs text-slate-500 hover:text-slate-300 transition-all"
+              className="w-full py-1.5 text-xs text-game-muted hover:text-white transition-all"
             >
               Close
             </button>

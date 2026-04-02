@@ -113,27 +113,27 @@ export function ParliamentVoteModal() {
         <div className="p-4 border-b border-game-border">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm font-bold text-emerald-400">
-              YES: {isFinalized ? lv.result!.votesFor : projectedYes}
+              YES: {isFinalized ? lv.result?.votesFor : projectedYes}
             </span>
             <span className={`text-xs font-bold px-2 py-0.5 rounded ${
-              (isFinalized ? lv.result!.passed : projectedPass)
+              (isFinalized ? lv.result?.passed : projectedPass)
                 ? 'bg-emerald-900/50 text-emerald-400'
                 : 'bg-red-900/50 text-red-400'
             }`}>
-              {(isFinalized ? lv.result!.passed : projectedPass) ? 'PROJECTED: PASS' : 'PROJECTED: FAIL'}
+              {(isFinalized ? lv.result?.passed : projectedPass) ? 'PROJECTED: PASS' : 'PROJECTED: FAIL'}
             </span>
             <span className="text-sm font-bold text-red-400">
-              NO: {isFinalized ? lv.result!.votesAgainst : projectedNo}
+              NO: {isFinalized ? lv.result?.votesAgainst : projectedNo}
             </span>
           </div>
           <div className="h-4 bg-game-border rounded-full overflow-hidden flex">
             <div
               className="h-full bg-emerald-500 transition-all duration-500"
-              style={{ width: `${((isFinalized ? lv.result!.votesFor : projectedYes) / 100) * 100}%` }}
+              style={{ width: `${(((isFinalized ? lv.result?.votesFor : projectedYes) ?? 0) / 100) * 100}%` }}
             />
             <div
               className="h-full bg-red-500 transition-all duration-500"
-              style={{ width: `${((isFinalized ? lv.result!.votesAgainst : projectedNo) / 100) * 100}%` }}
+              style={{ width: `${(((isFinalized ? lv.result?.votesAgainst : projectedNo) ?? 0) / 100) * 100}%` }}
             />
           </div>
           <div className="flex justify-center mt-1">
@@ -200,7 +200,7 @@ export function ParliamentVoteModal() {
               const leanColor = pp.intention > 0.3 ? 'text-emerald-400' : pp.intention < -0.3 ? 'text-red-400' : 'text-yellow-400';
 
               // For finalized, show actual votes
-              const finalVotes = isFinalized ? lv.result!.partyVotes[pp.id] : null;
+              const finalVotes = isFinalized ? lv.result?.partyVotes[pp.id] : null;
 
               // Human player vote labels
               const humanVoteLabel = pp.explicitVote === 'yes' ? 'Voting YES'
@@ -356,13 +356,13 @@ export function ParliamentVoteModal() {
           {isFinalized ? (
             <>
               <div className={`text-center py-3 rounded-lg font-bold text-lg ${
-                lv.result!.passed
+                lv.result?.passed
                   ? 'bg-emerald-900/30 text-emerald-400 border border-emerald-700/50'
                   : 'bg-red-900/30 text-red-400 border border-red-700/50'
               }`}>
-                {lv.result!.passed ? '✅ BILL PASSED' : '❌ BILL FAILED'}
+                {lv.result?.passed ? '✅ BILL PASSED' : '❌ BILL FAILED'}
                 <span className="text-sm font-normal ml-2">
-                  ({lv.result!.votesFor} — {lv.result!.votesAgainst})
+                  ({lv.result?.votesFor} — {lv.result?.votesAgainst})
                 </span>
               </div>
               <button

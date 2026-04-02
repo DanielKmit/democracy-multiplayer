@@ -48,7 +48,7 @@ export function CabinetPanel() {
 
   return (
     <div className="space-y-2">
-      <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Cabinet</h3>
+      <h3 className="text-xs font-semibold text-game-muted uppercase tracking-wider">Cabinet</h3>
 
       {ministryIds.map(mId => {
         const polId = ministers[mId];
@@ -61,14 +61,14 @@ export function CabinetPanel() {
             className={`p-2 rounded-lg border transition-all cursor-pointer ${
               selectedMinistry === mId
                 ? 'border-blue-600 bg-blue-900/20'
-                : 'border-slate-700 bg-slate-800/30 hover:border-slate-600'
+                : 'border-game-border bg-game-card/30 hover:border-game-border'
             }`}
             onClick={() => isRuling && setSelectedMinistry(selectedMinistry === mId ? null : mId)}
           >
             <div className="flex items-center gap-2">
               <span className="text-sm">{MINISTRY_ICONS[mId]}</span>
               <div className="flex-1 min-w-0">
-                <div className="text-xs text-slate-500 truncate">{MINISTRY_NAMES[mId].replace('Minister of ', '')}</div>
+                <div className="text-xs text-game-muted truncate">{MINISTRY_NAMES[mId].replace('Minister of ', '')}</div>
                 {politician ? (
                   <div>
                     <div className="flex items-center gap-1.5">
@@ -78,7 +78,7 @@ export function CabinetPanel() {
                       >
                         {politician.initials}
                       </div>
-                      <span className="text-xs text-slate-200 truncate">{politician.name}</span>
+                      <span className="text-xs text-white truncate">{politician.name}</span>
                       <span className={`text-[10px] ml-1 ${politician.loyalty < 3 ? 'text-red-400' : politician.loyalty < 5 ? 'text-orange-400' : 'text-emerald-400'}`}>
                         ♥{politician.loyalty}
                       </span>
@@ -92,7 +92,7 @@ export function CabinetPanel() {
                       )}
                       <span className={`text-[9px] ${
                         politician.loyalty < 3 ? 'text-red-400' :
-                        effComp >= 8 ? 'text-emerald-400' : 'text-slate-500'
+                        effComp >= 8 ? 'text-emerald-400' : 'text-game-muted'
                       }`}>
                         {politician.loyalty < 3 ? `⚠️ ${MINISTRY_BONUS_DESC[mId]} (penalty)` :
                          effComp >= 7 ? MINISTRY_BONUS_DESC[mId] : ''}
@@ -100,7 +100,7 @@ export function CabinetPanel() {
                     </div>
                   </div>
                 ) : (
-                  <span className="text-xs text-slate-600 italic">Vacant</span>
+                  <span className="text-xs text-game-muted italic">Vacant</span>
                 )}
               </div>
               {isRuling && politician && (
@@ -122,8 +122,8 @@ export function CabinetPanel() {
 
       {/* Appointment dropdown */}
       {isRuling && selectedMinistry && !ministers[selectedMinistry] && (
-        <div className="mt-2 p-2 bg-slate-800 border border-slate-700 rounded-lg animate-fade-in">
-          <div className="text-xs text-slate-400 mb-2">
+        <div className="mt-2 p-2 bg-game-card border border-game-border rounded-lg animate-fade-in">
+          <div className="text-xs text-game-secondary mb-2">
             Appoint {MINISTRY_NAMES[selectedMinistry]}:
           </div>
           <div className="space-y-1 max-h-40 overflow-y-auto">
@@ -138,7 +138,7 @@ export function CabinetPanel() {
                     appointMinister(selectedMinistry, pol.id);
                     setSelectedMinistry(null);
                   }}
-                  className="w-full flex items-center gap-2 p-1.5 rounded hover:bg-slate-700 transition-all text-left"
+                  className="w-full flex items-center gap-2 p-1.5 rounded hover:bg-game-border transition-all text-left"
                 >
                   <div
                     className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold text-white"
@@ -147,11 +147,11 @@ export function CabinetPanel() {
                     {pol.initials}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="text-xs text-slate-200 truncate">
+                    <div className="text-xs text-white truncate">
                       {pol.name}
                       {isSpecialist && <span className="text-green-400 ml-1">★</span>}
                     </div>
-                    <div className="text-[10px] text-slate-500">
+                    <div className="text-[10px] text-game-muted">
                       Comp: {effComp} | Loy: {pol.loyalty}
                     </div>
                   </div>

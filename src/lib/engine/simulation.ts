@@ -512,7 +512,7 @@ export function computeVoteShares(
         // D4: Voter complacency — very satisfied voters are less motivated to turn out
         // This prevents runaway victories and creates natural swing dynamics
         const sat = partySats[pid] ?? 50;
-        const complacencyPenalty = sat > 70 ? (sat - 70) * 0.005 : 0; // max ~15% reduction at sat=100
+        const complacencyPenalty = sat > 70 ? (sat - 70) * 0.008 : 0; // max ~24% reduction at sat=100
         const effectiveTurnout = turnoutMultiplier * (1 - complacencyPenalty);
 
         voteShares[pid] += (partySats[pid] / totalSat) * group.populationShare * 100 * effectiveTurnout;
@@ -904,7 +904,12 @@ export function createInitialGameState(roomId: string): GameState {
       { id: 'workers_herald', name: "Workers' Herald", bias: 'left', influence: 30, currentStance: 5, influencedUntil: 0 },
       { id: 'free_enterprise', name: 'Free Enterprise Journal', bias: 'right', influence: 30, currentStance: -5, influencedUntil: 0 },
     ],
-    perception: {},
+    perception: {
+      gdpGrowth: 2, unemployment: 8, inflation: 3, crime: 40,
+      violentCrime: 35, propertyCrime: 40, whiteCollarCrime: 30,
+      pollution: 50, equality: 50, healthIndex: 50, educationIndex: 50,
+      freedomIndex: 50, nationalSecurity: 50, corruption: 30,
+    },
     policyStability: {},
   };
 }
@@ -1820,6 +1825,12 @@ export function advancePhase(state: GameState): void {
     } else {
       state.phase = 'events';
     }
+    return;
+  }
+
+  // Debate phase: transitions to election (normally handled by handleEndTurnPhase, but safety fallback)
+  if (state.phase === 'debate') {
+    state.phase = 'election';
     return;
   }
 

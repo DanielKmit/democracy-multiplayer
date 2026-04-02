@@ -93,11 +93,11 @@ export function DebateScreen() {
                     </div>
                     <div className="flex items-center gap-4 text-xs">
                       <span style={{ color: PARTY_COLORS[p1?.party.partyColor ?? 'blue'] }}>
-                        {CHOICE_INFO[c1 as DebateChoice]?.icon} {c1}
+                        {c1 ? `${CHOICE_INFO[c1 as DebateChoice]?.icon ?? '?'} ${c1}` : '?'}
                       </span>
                       <span className="text-game-muted">vs</span>
                       <span style={{ color: PARTY_COLORS[p2?.party.partyColor ?? 'red'] }}>
-                        {CHOICE_INFO[c2 as DebateChoice]?.icon} {c2}
+                        {c2 ? `${CHOICE_INFO[c2 as DebateChoice]?.icon ?? '?'} ${c2}` : '?'}
                       </span>
                       <span className={`font-bold ${p1Won ? 'text-emerald-400' : p2Won ? 'text-red-400' : 'text-game-muted'}`}>
                         {p1Won ? `${p1?.party.partyName} ✓` : p2Won ? `${p2?.party.partyName} ✓` : 'Draw'}

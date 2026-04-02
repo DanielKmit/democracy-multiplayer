@@ -23,6 +23,7 @@ export const VOTER_GROUPS: VoterGroupDefinition[] = [
       unemployment: -0.9,   // #1 concern: losing their job
       inflation: -0.5,      // Prices eating their wages
       equality: 0.5,        // Want fairness
+      propertyCrime: -0.3,  // Neighbourhood crime
       gdpGrowth: 0.2,       // Care a bit about economy
       healthIndex: 0.3,     // Need affordable healthcare
     },
@@ -144,6 +145,7 @@ export const VOTER_GROUPS: VoterGroupDefinition[] = [
     populationShare: 0.10,
     concerns: {
       unemployment: -0.6,    // Rural jobs scarce
+      violentCrime: -0.3,    // Remote area vulnerability
       crime: -0.4,           // Safety in small towns
       gdpGrowth: 0.3,        // Economic survival
     },
@@ -191,6 +193,7 @@ export const VOTER_GROUPS: VoterGroupDefinition[] = [
     name: 'Religious Communities',
     populationShare: 0.05,
     concerns: {
+      violentCrime: -0.4,    // Moral concern about violence
       crime: -0.6,           // Moral order
       freedomIndex: -0.3,    // Too much freedom = moral decay
       equality: 0.2,         // Charity and compassion
@@ -216,6 +219,7 @@ export const VOTER_GROUPS: VoterGroupDefinition[] = [
     concerns: {
       freedomIndex: 0.95,    // Freedom is everything
       equality: 0.7,         // Social justice
+      whiteCollarCrime: -0.3,// Systemic injustice
       corruption: -0.5,      // Accountability
     },
     policyPreferences: {
