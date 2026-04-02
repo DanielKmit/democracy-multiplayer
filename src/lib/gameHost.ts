@@ -38,6 +38,7 @@ import {
   recalculateAfterPolicyChange,
 } from './engine/simulation';
 import { spinScandal } from './engine/scandals';
+import { updateReputation, getReputationEffects } from './engine/reputation';
 import { updateSupermajorityTracker, checkVictory } from './engine/victoryConditions';
 import { POLICY_MAP } from './engine/policies';
 import { VOTER_GROUPS } from './engine/voters';
@@ -277,6 +278,53 @@ function recalculate(state: GameState) {
           ruling.politicalCapital += 1;
           addLogEntry(state, `⚡ Crisis leadership: +1 PC from responding to ${getSituationById(sit.id)?.name ?? sit.id}`, 'info');
         }
+      }
+    }
+
+    // === D4: REPUTATION SYSTEM — Update and apply effects ===
+    if (state.reputation) {
+      for (const player of state.players) {
+        // Count active scandals targeting this player
+        const playerScandals = (state.activeScandals ?? []).filter(s => s.targetPlayerId === player.id).length;
+        // Check if any promise was broken/kept this turn
+        const brokenThisTurn = (state.pledges ?? []).some(
+          p => p.playerId === player.id && p.status === 'broken'
+            && (state.policyChangeHistory?.[p.policyId]?.includes(state.turn) ?? false)
+        );
+        const keptThisTurn = (state.pledges ?? []).some(
+          p => p.playerId === player.id && p.status === 'kept'
+        );
+        // Average cabinet competence
+        let avgComp = 5;
+        if (state.cabinet?.ministers && state.cabinet?.availablePool) {
+          let total = 0; let count = 0;
+          for (const polId of Object.values(state.cabinet.ministers)) {
+            if (polId) {
+              const pol = state.cabinet.availablePool.find(pp => pp.id === polId);
+              if (pol) { total += pol.competence; count++; }
+            }
+          }
+          if (count > 0) avgComp = total / count;
+        }
+
+        updateReputation(state.reputation, player.id, {
+          activeScandals: playerScandals,
+          brokenPromiseThisTurn: brokenThisTurn,
+          keptPromiseThisTurn: keptThisTurn,
+          approval: state.approvalRating[player.id] ?? 50,
+          cabinetCompetence: avgComp,
+          isRuling: player.role === 'ruling',
+        });
+
+        // Apply reputation effects to approval
+        const repScore = state.reputation.scores[player.id] ?? 60;
+        const effects = getReputationEffects(repScore);
+        state.approvalRating[player.id] = Math.max(0, Math.min(100,
+          (state.approvalRating[player.id] ?? 50) + effects.approvalModifier
+        ));
+      }
+      if (ruling) {
+        state.rulingApproval = state.approvalRating[ruling.id] ?? 50;
       }
     }
 

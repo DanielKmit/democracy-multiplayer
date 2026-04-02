@@ -111,6 +111,44 @@ export function PollingSummary() {
                 ))}
               </div>
 
+              {/* Turn summary — what changed */}
+              <div className="glass-card p-3 border-game-accent/10 bg-game-accent/[0.03]">
+                <div className="text-[10px] text-game-accent font-bold uppercase tracking-wider mb-2">📋 This Turn</div>
+                <div className="space-y-1.5 text-xs">
+                  {/* Delayed policies that took effect */}
+                  {gameState.delayedPolicies.filter(dp => dp.turnsRemaining <= 1).length > 0 && (
+                    <div className="text-emerald-400">
+                      ✅ {gameState.delayedPolicies.filter(dp => dp.turnsRemaining <= 1).length} policy change{gameState.delayedPolicies.filter(dp => dp.turnsRemaining <= 1).length !== 1 ? 's' : ''} taking effect
+                    </div>
+                  )}
+                  {/* Budget status */}
+                  <div className={gameState.budget.balance >= 0 ? 'text-emerald-400' : 'text-red-400'}>
+                    💰 Budget: {gameState.budget.balance >= 0 ? 'Surplus' : 'Deficit'} of {Math.abs(gameState.budget.balance).toFixed(1)}B
+                  </div>
+                  {/* Reputation */}
+                  {myPlayer && gameState.reputation && (
+                    <div className={`${(gameState.reputation.scores[myPlayer.id] ?? 60) > 55 ? 'text-game-secondary' : 'text-amber-400'}`}>
+                      ⭐ Reputation: {gameState.reputation.scores[myPlayer.id] ?? 60}/100
+                      {(gameState.reputation.promisesBroken[myPlayer.id] ?? 0) > 0 && (
+                        <span className="text-red-400 ml-1">({gameState.reputation.promisesBroken[myPlayer.id]} broken promises)</span>
+                      )}
+                    </div>
+                  )}
+                  {/* Active situations count */}
+                  {gameState.activeSituations.length > 0 && (
+                    <div className="text-orange-400">
+                      ⚠ {gameState.activeSituations.length} active {gameState.activeSituations.length === 1 ? 'crisis' : 'crises'}
+                    </div>
+                  )}
+                  {/* Pending bills */}
+                  {gameState.activeBills.filter(b => b.status === 'pending').length > 0 && (
+                    <div className="text-blue-400">
+                      📋 {gameState.activeBills.filter(b => b.status === 'pending').length} bill{gameState.activeBills.filter(b => b.status === 'pending').length !== 1 ? 's' : ''} awaiting vote
+                    </div>
+                  )}
+                </div>
+              </div>
+
               {/* Key stats grid */}
               <div className="grid grid-cols-5 gap-1.5">
                 <StatCard label="GDP" value={`${sim.gdpGrowth > 0 ? '+' : ''}${sim.gdpGrowth.toFixed(1)}%`} good={sim.gdpGrowth > 0} />

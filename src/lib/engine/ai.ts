@@ -257,6 +257,27 @@ function findBestBill(
     // Situation response: boost score if this addresses a crisis
     score += getSituationBonus(state, policy.id, proposedValue, currentValue) * personality.adaptiveness;
 
+    // D4: Synergy awareness — boost score if this policy would contribute to a known synergy combo
+    // Simple synergy boost: if policy is at extreme (>70 or <30) and moving it further
+    // aligns with common synergy patterns (education+tech, healthcare+spending, etc.)
+    const synergyPairs: Record<string, string[]> = {
+      education: ['tech_research'], tech_research: ['education'],
+      healthcare: ['govt_spending', 'pensions'], renewables: ['env_regulations', 'carbon_tax'],
+      env_regulations: ['renewables', 'carbon_tax'], carbon_tax: ['env_regulations', 'renewables'],
+      police: ['military', 'intelligence'], military: ['police', 'border_security'],
+      income_tax: ['healthcare', 'education'], corporate_tax: ['govt_spending'],
+    };
+    const partners = synergyPairs[policy.id];
+    if (partners) {
+      for (const partnerId of partners) {
+        const partnerVal = state.policies[partnerId] ?? 50;
+        // If partner is already high and we're pushing this one high too → synergy likely
+        if (partnerVal > 65 && proposedValue > 65) score += 15;
+        // If partner is low and we're pushing this low → inverse synergy
+        if (partnerVal < 35 && proposedValue < 35) score += 10;
+      }
+    }
+
     // Voter group benefit
     for (const group of VOTER_GROUPS) {
       const groupIdeal = group.policyPreferences[policy.id];
@@ -383,14 +404,26 @@ function makeOppositionDecision(
     }
   }
 
-  // Priority 4: Media attack on problem areas
+  // Priority 4: Media attack — target vars where perception gap would be most damaging
   if (pcBudget >= 2) {
-    const attackVar = findBestMediaAttackTarget(state);
-    if (attackVar) {
+    // D4: Smart targeting — find the sim var where distorting perception hurts ruling party most
+    // Prefer vars that are already mediocre (perception push makes them look bad)
+    let bestTarget: SimVarKey | null = null;
+    let bestImpact = 0;
+    const inversedVars: SimVarKey[] = ['unemployment', 'crime', 'pollution', 'corruption', 'inflation'];
+    for (const varKey of inversedVars) {
+      const actual = state.simulation[varKey];
+      const perceived = state.perception?.[varKey] ?? actual;
+      // Higher actual + not yet distorted = best target
+      const impact = actual * (1 - Math.abs(perceived - actual) / 50);
+      if (impact > bestImpact) { bestImpact = impact; bestTarget = varKey; }
+    }
+    if (!bestTarget) bestTarget = findBestMediaAttackTarget(state);
+    if (bestTarget) {
       actions.push({
         type: 'media_attack',
         cost: 2,
-        targetSimVar: attackVar,
+        targetSimVar: bestTarget,
       });
       pcBudget -= 2;
     }
