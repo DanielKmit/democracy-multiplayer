@@ -486,7 +486,13 @@ export function computeVoteShares(
     // Convert to proportional share for this group, weighted by population and turnout
     if (totalSat > 0) {
       for (const pid of partyIds) {
-        voteShares[pid] += (partySats[pid] / totalSat) * group.populationShare * 100 * turnoutMultiplier;
+        // D4: Voter complacency — very satisfied voters are less motivated to turn out
+        // This prevents runaway victories and creates natural swing dynamics
+        const sat = partySats[pid] ?? 50;
+        const complacencyPenalty = sat > 70 ? (sat - 70) * 0.005 : 0; // max ~15% reduction at sat=100
+        const effectiveTurnout = turnoutMultiplier * (1 - complacencyPenalty);
+
+        voteShares[pid] += (partySats[pid] / totalSat) * group.populationShare * 100 * effectiveTurnout;
       }
     }
   }
@@ -869,6 +875,7 @@ export function createInitialGameState(roomId: string): GameState {
     policyChangeHistory: {},
     flipFlopPenalty: {},
     focusGroupResult: null,
+    debate: null,
     perception: {},
     policyStability: {},
   };

@@ -73,6 +73,8 @@ export function useGameActions() {
       dispatch('readyPhase'),
     forceBillVote: (billId: string) =>
       dispatch('forceBillVote', { billId }),
+    submitDebateChoice: (choices: Record<string, 'attack' | 'defend' | 'pivot'>) =>
+      dispatch('submitDebateChoice', choices),
     endTurnPhase: () => dispatch('endTurnPhase'),
     runFocusGroup: (policyId: string, proposedValue: number) =>
       dispatch('runFocusGroup', { policyId, proposedValue }),

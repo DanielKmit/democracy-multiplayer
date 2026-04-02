@@ -92,9 +92,9 @@ export function ParliamentVoteModal() {
 
   return (
     <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4 animate-fade-in">
-      <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
+      <div className="bg-game-card border border-game-border rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
         {/* Header */}
-        <div className="p-4 border-b border-slate-700 bg-gradient-to-r from-blue-900/30 to-purple-900/30">
+        <div className="p-4 border-b border-game-border bg-gradient-to-r from-blue-900/30 to-purple-900/30">
           <div className="flex items-center justify-between mb-2">
             <h2 className="text-lg font-bold font-display flex items-center gap-2">
               🗳️ Parliament Vote
@@ -105,12 +105,12 @@ export function ParliamentVoteModal() {
           </div>
           <h3 className="text-base font-semibold text-white">{lv.bill.title}</h3>
           {lv.bill.description && (
-            <p className="text-xs text-slate-400 mt-1">{lv.bill.description}</p>
+            <p className="text-xs text-game-secondary mt-1">{lv.bill.description}</p>
           )}
         </div>
 
         {/* Vote Tally Bar */}
-        <div className="p-4 border-b border-slate-700">
+        <div className="p-4 border-b border-game-border">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm font-bold text-emerald-400">
               YES: {isFinalized ? lv.result!.votesFor : projectedYes}
@@ -126,7 +126,7 @@ export function ParliamentVoteModal() {
               NO: {isFinalized ? lv.result!.votesAgainst : projectedNo}
             </span>
           </div>
-          <div className="h-4 bg-slate-700 rounded-full overflow-hidden flex">
+          <div className="h-4 bg-game-border rounded-full overflow-hidden flex">
             <div
               className="h-full bg-emerald-500 transition-all duration-500"
               style={{ width: `${((isFinalized ? lv.result!.votesFor : projectedYes) / 100) * 100}%` }}
@@ -137,13 +137,13 @@ export function ParliamentVoteModal() {
             />
           </div>
           <div className="flex justify-center mt-1">
-            <span className="text-[10px] text-slate-500">Need 51 to pass</span>
+            <span className="text-[10px] text-game-muted">Need 51 to pass</span>
           </div>
         </div>
 
         {/* YOUR PARTY'S VOTE */}
         {!isFinalized && myPlayer && (
-          <div className="p-4 border-b border-slate-700 bg-gradient-to-r from-indigo-900/20 to-purple-900/20">
+          <div className="p-4 border-b border-game-border bg-gradient-to-r from-indigo-900/20 to-purple-900/20">
             <h4 className="text-xs font-bold text-white uppercase mb-2 flex items-center gap-1.5">
               🗳️ Your Party&apos;s Vote
             </h4>
@@ -151,12 +151,12 @@ export function ParliamentVoteModal() {
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full" style={{ backgroundColor: PARTY_COLORS[myPlayer.party.partyColor] }} />
                 <span className="text-sm font-medium text-white">{myPlayer.party.partyName}</span>
-                <span className="text-xs text-slate-400">({mySeats} seats)</span>
+                <span className="text-xs text-game-secondary">({mySeats} seats)</span>
               </div>
               <span className={`text-xs font-bold px-2 py-0.5 rounded ${
                 myVote === 'yes' ? 'bg-emerald-900/50 text-emerald-400 border border-emerald-700/50'
                   : myVote === 'no' ? 'bg-red-900/50 text-red-400 border border-red-700/50'
-                  : 'bg-slate-700/50 text-slate-400 border border-slate-600/50'
+                  : 'bg-game-border/50 text-game-secondary border border-game-border/50'
               }`}>
                 {myVote === 'yes' ? '✅ Voting YES' : myVote === 'no' ? '❌ Voting NO' : '⏸️ Abstaining'}
               </span>
@@ -184,7 +184,7 @@ export function ParliamentVoteModal() {
               </button>
             </div>
             {myVote === null && (
-              <p className="text-[10px] text-slate-500 mt-1.5 text-center">
+              <p className="text-[10px] text-game-muted mt-1.5 text-center">
                 Your {mySeats} seats will abstain if you don&apos;t vote
               </p>
             )}
@@ -192,8 +192,8 @@ export function ParliamentVoteModal() {
         )}
 
         {/* Party Breakdown */}
-        <div className="p-4 border-b border-slate-700">
-          <h4 className="text-xs font-bold text-slate-400 uppercase mb-2">Party Positions</h4>
+        <div className="p-4 border-b border-game-border">
+          <h4 className="text-xs font-bold text-game-secondary uppercase mb-2">Party Positions</h4>
           <div className="space-y-1.5">
             {partyProjections.map(pp => {
               const leanLabel = pp.intention > 0.3 ? 'Leaning YES' : pp.intention < -0.3 ? 'Leaning NO' : 'Undecided';
@@ -208,10 +208,10 @@ export function ParliamentVoteModal() {
                 : pp.isMe ? 'Abstaining' : null;
               const humanVoteColor = pp.explicitVote === 'yes' ? 'text-emerald-400'
                 : pp.explicitVote === 'no' ? 'text-red-400'
-                : 'text-slate-500';
+                : 'text-game-muted';
 
               return (
-                <div key={pp.id} className={`flex items-center gap-2 p-2 rounded ${pp.isMe ? 'bg-indigo-900/30 ring-1 ring-indigo-700/50' : 'bg-slate-800/50'}`}>
+                <div key={pp.id} className={`flex items-center gap-2 p-2 rounded ${pp.isMe ? 'bg-indigo-900/30 ring-1 ring-indigo-700/50' : 'bg-game-card/50'}`}>
                   <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: pp.color }} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between">
@@ -221,7 +221,7 @@ export function ParliamentVoteModal() {
                         {!pp.isMe && pp.explicitVote !== undefined && <span className="text-[9px] text-purple-400 ml-1">(Player)</span>}
                         {pp.isCoalition && <span className="text-[9px] text-cyan-400 ml-1">🤝 Coalition</span>}
                       </span>
-                      <span className="text-[10px] text-slate-500">{pp.seats} seats</span>
+                      <span className="text-[10px] text-game-muted">{pp.seats} seats</span>
                     </div>
                     <div className="flex items-center justify-between mt-0.5">
                       {isFinalized && finalVotes ? (
@@ -235,7 +235,7 @@ export function ParliamentVoteModal() {
                       ) : (
                         <>
                           <span className={`text-[10px] ${leanColor}`}>{leanLabel}</span>
-                          <div className="w-20 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                          <div className="w-20 h-1.5 bg-game-border rounded-full overflow-hidden">
                             <div
                               className="h-full rounded-full transition-all duration-300"
                               style={{
@@ -256,20 +256,20 @@ export function ParliamentVoteModal() {
 
         {/* Action Panel — only if not finalized */}
         {!isFinalized && (
-          <div className="p-4 border-b border-slate-700 space-y-3">
+          <div className="p-4 border-b border-game-border space-y-3">
             <div className="flex items-center justify-between">
-              <h4 className="text-xs font-bold text-slate-400 uppercase">Influence the Vote</h4>
+              <h4 className="text-xs font-bold text-game-secondary uppercase">Influence the Vote</h4>
               <span className="text-xs text-yellow-400">⚡ {pc} PC available (spent {totalSpent})</span>
             </div>
 
             {/* Lobby a party */}
-            <div className="p-3 bg-slate-800/50 rounded-lg space-y-2">
-              <label className="text-[10px] text-slate-500 uppercase font-bold">Lobby a Party</label>
+            <div className="p-3 bg-game-card/50 rounded-lg space-y-2">
+              <label className="text-[10px] text-game-muted uppercase font-bold">Lobby a Party</label>
               <div className="flex gap-2">
                 <select
                   value={lobbyTarget}
                   onChange={(e) => setLobbyTarget(e.target.value)}
-                  className="flex-1 text-xs bg-slate-700 rounded px-2 py-1.5 text-white border border-slate-600"
+                  className="flex-1 text-xs bg-game-border rounded px-2 py-1.5 text-white border border-game-border"
                 >
                   <option value="">Select party...</option>
                   {gameState.botParties.map(bp => (
@@ -281,7 +281,7 @@ export function ParliamentVoteModal() {
                 <select
                   value={lobbyDir}
                   onChange={(e) => setLobbyDir(e.target.value as 'support' | 'oppose')}
-                  className="text-xs bg-slate-700 rounded px-2 py-1.5 text-white border border-slate-600 w-24"
+                  className="text-xs bg-game-border rounded px-2 py-1.5 text-white border border-game-border w-24"
                 >
                   <option value="support">👍 For</option>
                   <option value="oppose">👎 Against</option>
@@ -325,8 +325,8 @@ export function ParliamentVoteModal() {
             )}
 
             {/* Public Campaign */}
-            <div className="p-3 bg-slate-800/50 rounded-lg space-y-2">
-              <label className="text-[10px] text-slate-500 uppercase font-bold">Public Campaign (shifts all parties)</label>
+            <div className="p-3 bg-game-card/50 rounded-lg space-y-2">
+              <label className="text-[10px] text-game-muted uppercase font-bold">Public Campaign (shifts all parties)</label>
               <div className="flex gap-1">
                 <button
                   onClick={() => campaignLiveVote(1, 'support')}
@@ -367,7 +367,7 @@ export function ParliamentVoteModal() {
               </div>
               <button
                 onClick={dismissLiveVote}
-                className="w-full py-2.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm font-medium transition-all"
+                className="w-full py-2.5 bg-game-border hover:bg-game-muted/30 rounded-lg text-sm font-medium transition-all"
               >
                 Close
               </button>
@@ -392,7 +392,7 @@ export function ParliamentVoteModal() {
                         <div key={p.id} className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full ${
                           isReady
                             ? 'bg-emerald-900/50 text-emerald-400 border border-emerald-700/50'
-                            : 'bg-slate-800/50 text-slate-500 border border-slate-700/50'
+                            : 'bg-game-card/50 text-game-muted border border-game-border'
                         }`}>
                           <span>{isReady ? '✅' : '⏳'}</span>
                           <span className="font-medium">{p.party.partyName}</span>
@@ -412,7 +412,7 @@ export function ParliamentVoteModal() {
                 ) : iAmReady ? (
                   <button
                     disabled
-                    className="w-full py-3 bg-slate-700 rounded-lg text-sm font-medium text-slate-400 cursor-not-allowed"
+                    className="w-full py-3 bg-game-border rounded-lg text-sm font-medium text-game-secondary cursor-not-allowed"
                   >
                     ⏳ Waiting for {isAI ? 'AI' : 'opponent'} to be ready... ({readyCount}/{totalPlayers})
                   </button>

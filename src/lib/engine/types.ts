@@ -389,6 +389,7 @@ export type TurnPhase =
   | 'waiting'
   | 'party_creation'
   | 'campaigning'        // Pre-first-election campaign phase
+  | 'debate'             // Pre-election debate between candidates
   | 'events'
   | 'dilemma'
   | 'ruling'
@@ -400,6 +401,25 @@ export type TurnPhase =
   | 'coalition_negotiation'  // Post-election coalition building
   | 'government_formation'
   | 'game_over';
+
+// ---- Debate System ----
+
+export type DebateChoice = 'attack' | 'defend' | 'pivot';
+
+export interface DebateTopic {
+  id: string;
+  name: string;
+  icon: string;
+  simVar: SimVarKey;
+}
+
+export interface DebateState {
+  topics: DebateTopic[];
+  playerChoices: Record<string, Record<string, DebateChoice>>; // playerId -> { topicId: choice }
+  scores: Record<string, number>;  // playerId -> total score
+  resolved: boolean;
+  winner: string | null;
+}
 
 // ---- Policy Change (legacy compat) ----
 
@@ -946,6 +966,8 @@ export interface GameState {
   flipFlopPenalty: Record<string, number>;  // partyId -> credibility penalty (0-30)
   // Focus group results (cached predictions)
   focusGroupResult: { policyId: string; predictedImpact: Record<string, number> } | null;
+  // D4: Pre-election debate
+  debate: DebateState | null;
   // D4: Perception vs reality — media/opposition can distort what voters think
   perception: Record<string, number>;  // simVarKey -> perceived value (diverges from actual)
   // D4: Policy momentum — tracks how long each policy has been stable

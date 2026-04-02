@@ -266,6 +266,15 @@ function recalculate(state: GameState) {
       }
     }
 
+    // === D4: TERM FATIGUE ===
+    // Voters get tired of the same party in power — creates natural alternation
+    if (ruling && state.consecutiveRulingPartyElections >= 2) {
+      const terms = state.consecutiveRulingPartyElections;
+      const fatiguePenalty = terms >= 3 ? 6 : 3;
+      state.approvalRating[ruling.id] = Math.max(0, (state.approvalRating[ruling.id] ?? 50) - fatiguePenalty);
+      state.rulingApproval = state.approvalRating[ruling.id] ?? 50;
+    }
+
     // === D4: CRISIS PC BONUS (Rally around the flag) ===
     if (ruling && state.activeSituations.length > 0) {
       const criticalSituations = state.activeSituations.filter(s => {
@@ -1967,6 +1976,82 @@ export function handleAction(playerId: string, action: string, payload?: unknown
       break;
     }
 
+    case 'submitDebateChoice': {
+      if (gameState.phase !== 'debate' || !gameState.debate || gameState.debate.resolved) return;
+      const choices = payload as Record<string, import('./engine/types').DebateChoice>;
+      gameState.debate.playerChoices[playerId] = choices;
+
+      // In AI games, auto-submit AI choices
+      if (gameState.isAIGame && gameState.aiPlayerId && !gameState.debate.playerChoices[gameState.aiPlayerId]) {
+        const aiChoices: Record<string, import('./engine/types').DebateChoice> = {};
+        for (const topic of gameState.debate.topics) {
+          // AI picks based on whether the topic favors them
+          const inversed = ['unemployment', 'crime', 'pollution', 'corruption'];
+          const val = gameState.simulation[topic.simVar as keyof typeof gameState.simulation] as number;
+          const isBad = inversed.includes(topic.simVar) ? val > 50 : val < 50;
+          // If topic is bad for ruling, AI (as opposition) attacks; if good, defends
+          const aiPlayer = gameState.players.find(p => p.id === gameState!.aiPlayerId);
+          if (aiPlayer?.role === 'opposition') {
+            aiChoices[topic.id] = isBad ? 'attack' : 'pivot';
+          } else {
+            aiChoices[topic.id] = isBad ? 'defend' : 'attack';
+          }
+        }
+        gameState.debate.playerChoices[gameState.aiPlayerId] = aiChoices;
+      }
+
+      // Check if all players have submitted
+      const allSubmitted = gameState.players.every(p => gameState!.debate!.playerChoices[p.id]);
+      if (allSubmitted) {
+        // Resolve debate: Attack beats Defend, Defend beats Pivot, Pivot beats Attack
+        const scores: Record<string, number> = {};
+        for (const p of gameState.players) scores[p.id] = 0;
+
+        for (const topic of gameState.debate.topics) {
+          const p1 = gameState.players[0];
+          const p2 = gameState.players[1];
+          if (!p1 || !p2) continue;
+          const c1 = gameState.debate.playerChoices[p1.id]?.[topic.id] ?? 'defend';
+          const c2 = gameState.debate.playerChoices[p2.id]?.[topic.id] ?? 'defend';
+
+          // Rock-paper-scissors: attack > defend > pivot > attack
+          const beats: Record<string, string> = { attack: 'defend', defend: 'pivot', pivot: 'attack' };
+          if (beats[c1] === c2) {
+            scores[p1.id] += 1;
+            addLogEntry(gameState, `📺 ${topic.name}: ${p1.party.partyName} wins (${c1} beats ${c2})`, 'election');
+          } else if (beats[c2] === c1) {
+            scores[p2.id] += 1;
+            addLogEntry(gameState, `📺 ${topic.name}: ${p2.party.partyName} wins (${c2} beats ${c1})`, 'election');
+          } else {
+            addLogEntry(gameState, `📺 ${topic.name}: Draw (both chose ${c1})`, 'election');
+          }
+        }
+
+        gameState.debate.scores = scores;
+        gameState.debate.resolved = true;
+
+        // Determine winner
+        const [id1, id2] = gameState.players.map(p => p.id);
+        if (scores[id1] > scores[id2]) {
+          gameState.debate.winner = id1;
+          gameState.approvalRating[id1] = Math.min(100, (gameState.approvalRating[id1] ?? 50) + 5);
+          gameState.approvalRating[id2] = Math.max(0, (gameState.approvalRating[id2] ?? 50) - 3);
+          addLogEntry(gameState, `🏆 ${gameState.players[0].party.partyName} wins the debate! +5 approval`, 'election');
+        } else if (scores[id2] > scores[id1]) {
+          gameState.debate.winner = id2;
+          gameState.approvalRating[id2] = Math.min(100, (gameState.approvalRating[id2] ?? 50) + 5);
+          gameState.approvalRating[id1] = Math.max(0, (gameState.approvalRating[id1] ?? 50) - 3);
+          addLogEntry(gameState, `🏆 ${gameState.players[1].party.partyName} wins the debate! +5 approval`, 'election');
+        } else {
+          addLogEntry(gameState, `🤝 Debate ends in a draw — no approval change`, 'election');
+        }
+
+        recalculate(gameState);
+      }
+      broadcastState();
+      break;
+    }
+
     case 'runFocusGroup': {
       // D4: Focus group — spend 1 PC to preview what a policy change would do to voter satisfaction
       const player = gameState.players.find(p => p.id === playerId);
@@ -2020,6 +2105,45 @@ function handleEndTurnPhase(playerId?: string) {
 
   if (gameState.phase === 'polling') {
     if (gameState.turnsUntilElection <= 0) {
+      // D4: Insert debate phase before election
+      if (!gameState.debate) {
+        // Pick 3 debate topics from weakest simulation variables
+        const sim = gameState.simulation;
+        const topicCandidates: import('./engine/types').DebateTopic[] = [
+          { id: 'economy', name: 'The Economy', icon: '💰', simVar: 'gdpGrowth' },
+          { id: 'jobs', name: 'Jobs & Employment', icon: '👷', simVar: 'unemployment' },
+          { id: 'crime', name: 'Crime & Safety', icon: '🔒', simVar: 'crime' },
+          { id: 'health', name: 'Healthcare', icon: '🏥', simVar: 'healthIndex' },
+          { id: 'education', name: 'Education', icon: '🎓', simVar: 'educationIndex' },
+          { id: 'environment', name: 'Environment', icon: '🌿', simVar: 'pollution' },
+          { id: 'freedom', name: 'Civil Liberties', icon: '⚖️', simVar: 'freedomIndex' },
+          { id: 'corruption', name: 'Corruption', icon: '🕳️', simVar: 'corruption' },
+        ];
+        // Sort by how bad the sim var is (voters care about problems)
+        const inversed = ['unemployment', 'crime', 'pollution', 'corruption'];
+        topicCandidates.sort((a, b) => {
+          const aVal = sim[a.simVar as keyof typeof sim] as number;
+          const bVal = sim[b.simVar as keyof typeof sim] as number;
+          const aBad = inversed.includes(a.simVar) ? aVal : 100 - aVal;
+          const bBad = inversed.includes(b.simVar) ? bVal : 100 - bVal;
+          return bBad - aBad;
+        });
+        const topics = topicCandidates.slice(0, 3);
+
+        gameState.debate = {
+          topics,
+          playerChoices: {},
+          scores: {},
+          resolved: false,
+          winner: null,
+        };
+        gameState.phase = 'debate';
+        addLogEntry(gameState, `📺 Pre-election debate! Topics: ${topics.map(t => t.name).join(', ')}`, 'election');
+        addNewsItem(gameState, `The candidates face off in a televised debate on ${topics.map(t => t.name).join(', ')}`, 'election');
+        broadcastState();
+        return;
+      }
+
       advancePhase(gameState); // -> election
 
       // Recalculate before election to get fresh voter data
@@ -2389,6 +2513,12 @@ function handleEndTurnPhase(playerId?: string) {
     advancePhase(gameState); // -> polling
     addLogEntry(gameState, `📊 Campaign standings update`, 'info');
     broadcastState();
+  } else if (gameState.phase === 'debate') {
+    // Debate resolved (or skipped) — proceed to election
+    gameState.phase = 'polling'; // Reset to polling so election logic fires
+    gameState.turnsUntilElection = 0;
+    handleEndTurnPhase(playerId); // This will now run the election since debate exists
+    return;
   } else if (gameState.phase === 'bill_voting') {
     // Skip through to resolution → opposition. Bills stay pending for next turn.
     advancePhase(gameState); // -> resolution

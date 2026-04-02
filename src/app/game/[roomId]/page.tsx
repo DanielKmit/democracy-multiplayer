@@ -16,6 +16,7 @@ import { ElectionScreen } from '@/components/ElectionScreen';
 import { CoalitionScreen } from '@/components/CoalitionScreen';
 import { CampaignDashboard } from '@/components/CampaignDashboard';
 import { GameOverScreen } from '@/components/GameOverScreen';
+import { DebateScreen } from '@/components/DebateScreen';
 import { PollingSummary } from '@/components/PollingSummary';
 import { ParliamentHemicycle } from '@/components/ParliamentHemicycle';
 import { CabinetPanel } from '@/components/CabinetPanel';
@@ -298,6 +299,7 @@ export default function GamePage() {
   }
 
   if (gameState.phase === 'game_over') return <GameOverScreen />;
+  if (gameState.phase === 'debate') return <DebateScreen />;
   if (gameState.phase === 'election') return <ElectionScreen />;
   if (gameState.phase === 'coalition_negotiation') return <CoalitionScreen />;
   if (gameState.phase === 'campaigning') return <CampaignDashboard />;
@@ -422,7 +424,7 @@ export default function GamePage() {
             </div>
           )}
 
-          {!['events', 'dilemma', 'ruling', 'resolution', 'opposition', 'government_formation', 'polling', 'campaigning', 'coalition_negotiation'].includes(gameState.phase) && (
+          {!['events', 'dilemma', 'ruling', 'resolution', 'opposition', 'government_formation', 'polling', 'campaigning', 'debate', 'coalition_negotiation'].includes(gameState.phase) && (
             <div className="flex-1 flex flex-col overflow-hidden">
               <CenterViewTabs centerView={centerView} setCenterView={setCenterView} showPolicyWeb={showPolicyWeb} showMap={showMap} />
               <CenterViewContent centerView={centerView} showPolicyWeb={showPolicyWeb} />

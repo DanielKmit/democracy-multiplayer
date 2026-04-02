@@ -281,22 +281,22 @@ export function OppositionActionPanel() {
   const filteredActions = ACTION_DEFS.filter(a => a.category === activeCategory);
 
   return (
-    <div className="w-80 border-l border-slate-700/50 bg-slate-900/50 overflow-y-auto flex-shrink-0 flex flex-col">
+    <div className="w-80 border-l border-game-border bg-game-card/50 overflow-y-auto flex-shrink-0 flex flex-col">
       {/* Header with credibility + PC */}
-      <div className="p-3 border-b border-slate-700/50">
+      <div className="p-3 border-b border-game-border">
         <div className="flex items-center justify-between mb-2">
           <h3 className="text-xs font-bold text-red-400 uppercase tracking-wider">Opposition Actions</h3>
           <span className="text-xs font-bold text-yellow-400">⚡{remainingPC}/{pc}</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-[10px] text-slate-500">Credibility:</span>
-          <div className="flex-1 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+          <span className="text-[10px] text-game-muted">Credibility:</span>
+          <div className="flex-1 h-1.5 bg-game-border rounded-full overflow-hidden">
             <div className="h-full rounded-full transition-all" style={{
               width: `${credibility}%`,
               backgroundColor: credibility > 60 ? '#22C55E' : credibility < 30 ? '#EF4444' : '#EAB308',
             }} />
           </div>
-          <span className="text-[10px] text-slate-400">{credibility}</span>
+          <span className="text-[10px] text-game-secondary">{credibility}</span>
         </div>
         {credibility < 30 && (
           <p className="text-[9px] text-red-400 mt-1">⚠️ Low credibility — actions cost 1.5x</p>
@@ -304,7 +304,7 @@ export function OppositionActionPanel() {
       </div>
 
       {/* Recommended Actions */}
-      <div className="p-3 border-b border-slate-700/50 bg-amber-950/10">
+      <div className="p-3 border-b border-game-border bg-amber-950/10">
         <div className="flex items-center justify-between mb-2">
           <h4 className="text-[10px] font-bold text-amber-400 uppercase tracking-wider">💡 Recommended</h4>
           <button
@@ -318,7 +318,7 @@ export function OppositionActionPanel() {
             className={`text-[9px] px-2 py-0.5 rounded-full border transition-all ${
               gameState.autoPilotOpposition
                 ? 'bg-amber-600/20 border-amber-600 text-amber-300'
-                : 'border-slate-600 text-slate-500 hover:text-amber-400'
+                : 'border-game-border text-game-muted hover:text-amber-400'
             }`}
           >
             {gameState.autoPilotOpposition ? '🤖 Auto-Pilot ON' : '🤖 Auto-Pilot'}
@@ -326,17 +326,17 @@ export function OppositionActionPanel() {
         </div>
         <div className="space-y-1">
           {getRecommendedActions(gameState).slice(0, 3).map((rec, i) => (
-            <div key={i} className="flex items-center gap-2 text-[10px] p-1.5 rounded bg-slate-800/30 border border-slate-700/30">
+            <div key={i} className="flex items-center gap-2 text-[10px] p-1.5 rounded bg-game-card/30 border border-game-border/30">
               <span className="text-amber-400">{rec.emoji}</span>
-              <span className="text-slate-300 flex-1">{rec.label}</span>
-              <span className="text-[9px] text-slate-500">{rec.cost} PC</span>
+              <span className="text-white flex-1">{rec.label}</span>
+              <span className="text-[9px] text-game-muted">{rec.cost} PC</span>
             </div>
           ))}
         </div>
       </div>
 
       {/* Category tabs */}
-      <div className="flex border-b border-slate-700/50">
+      <div className="flex border-b border-game-border">
         {categories.map(cat => (
           <button
             key={cat}
@@ -344,7 +344,7 @@ export function OppositionActionPanel() {
             className={`flex-1 py-2 text-[10px] font-medium transition-all ${
               activeCategory === cat
                 ? 'text-red-400 border-b-2 border-red-500 bg-red-950/10'
-                : 'text-slate-500 hover:text-slate-300'
+                : 'text-game-muted hover:text-white'
             }`}
           >
             {CATEGORY_LABELS[cat].icon}
@@ -369,19 +369,19 @@ export function OppositionActionPanel() {
                 selectedAction?.type === action.type
                   ? 'bg-red-950/30 border-red-700/50'
                   : canUse
-                  ? 'bg-slate-800/30 border-slate-700/30 hover:border-red-700/30'
-                  : 'bg-slate-800/10 border-slate-800/30 opacity-40'
+                  ? 'bg-game-card/30 border-game-border/30 hover:border-red-700/30'
+                  : 'bg-game-card/10 border-game-border/30 opacity-40'
               }`}
             >
               <div className="flex items-center justify-between mb-0.5">
-                <span className="text-xs font-medium text-slate-200">
+                <span className="text-xs font-medium text-white">
                   {action.emoji} {action.name}
                 </span>
                 <span className={`text-[10px] font-bold ${effectiveCost === 0 ? 'text-green-400' : 'text-yellow-400'}`}>
                   {effectiveCost === 0 ? 'FREE' : `${effectiveCost} PC`}
                 </span>
               </div>
-              <p className="text-[10px] text-slate-500 leading-relaxed">{action.description}</p>
+              <p className="text-[10px] text-game-muted leading-relaxed">{action.description}</p>
               {action.conditionLabel && !meetsCondition && (
                 <span className="text-[9px] text-red-400 mt-0.5 block">Requires: {action.conditionLabel}</span>
               )}
@@ -392,38 +392,38 @@ export function OppositionActionPanel() {
 
       {/* Target selection */}
       {selectedAction && (
-        <div className="p-3 border-t border-slate-700/50 bg-slate-800/30 animate-fade-in">
-          <h4 className="text-xs font-medium text-slate-300 mb-2">{selectedAction.emoji} {selectedAction.name}</h4>
+        <div className="p-3 border-t border-game-border bg-game-card/30 animate-fade-in">
+          <h4 className="text-xs font-medium text-white mb-2">{selectedAction.emoji} {selectedAction.name}</h4>
           {selectedAction.needsTarget === 'policy' && (
             <select value={targetPolicy} onChange={(e) => setTargetPolicy(e.target.value)}
-              className="w-full p-2 bg-slate-700 border border-slate-600 rounded-lg text-xs mb-2">
+              className="w-full p-2 bg-game-border border border-game-border rounded-lg text-xs mb-2">
               <option value="">Select policy...</option>
               {POLICIES.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           )}
           {selectedAction.needsTarget === 'group' && (
             <select value={targetGroup} onChange={(e) => setTargetGroup(e.target.value)}
-              className="w-full p-2 bg-slate-700 border border-slate-600 rounded-lg text-xs mb-2">
+              className="w-full p-2 bg-game-border border border-game-border rounded-lg text-xs mb-2">
               <option value="">Select group...</option>
               {VOTER_GROUPS.map(g => <option key={g.id} value={g.id}>{g.name} ({(g.populationShare * 100).toFixed(0)}%)</option>)}
             </select>
           )}
           {selectedAction.needsTarget === 'simvar' && (
             <select value={targetSimVar} onChange={(e) => setTargetSimVar(e.target.value as SimVarKey)}
-              className="w-full p-2 bg-slate-700 border border-slate-600 rounded-lg text-xs mb-2">
+              className="w-full p-2 bg-game-border border border-game-border rounded-lg text-xs mb-2">
               {SIM_VARS.map(v => <option key={v.key} value={v.key}>{v.label}</option>)}
             </select>
           )}
           {selectedAction.needsTarget === 'region' && (
             <select value={targetRegion} onChange={(e) => setTargetRegion(e.target.value)}
-              className="w-full p-2 bg-slate-700 border border-slate-600 rounded-lg text-xs mb-2">
+              className="w-full p-2 bg-game-border border border-game-border rounded-lg text-xs mb-2">
               <option value="">Select region...</option>
               {REGIONS.map(r => <option key={r.id} value={r.id}>{r.name} ({r.seats} seats)</option>)}
             </select>
           )}
           {selectedAction.needsTarget === 'bill' && (
             <select value={targetBill} onChange={(e) => setTargetBill(e.target.value)}
-              className="w-full p-2 bg-slate-700 border border-slate-600 rounded-lg text-xs mb-2">
+              className="w-full p-2 bg-game-border border border-game-border rounded-lg text-xs mb-2">
               <option value="">Select bill...</option>
               {(gameState.activeBills ?? []).filter(b => b.status === 'pending' || b.status === 'voting').map(b => (
                 <option key={b.id} value={b.id}>{b.title}</option>
@@ -432,7 +432,7 @@ export function OppositionActionPanel() {
           )}
           {selectedAction.needsTarget === 'coalition_partner' && (
             <select value={targetCoalitionPartner} onChange={(e) => setTargetCoalitionPartner(e.target.value)}
-              className="w-full p-2 bg-slate-700 border border-slate-600 rounded-lg text-xs mb-2">
+              className="w-full p-2 bg-game-border border border-game-border rounded-lg text-xs mb-2">
               <option value="">Select coalition partner...</option>
               {(gameState.coalitionPartners ?? []).map(cp => {
                 const bot = gameState.botParties.find(b => b.id === cp.botPartyId);
@@ -443,7 +443,7 @@ export function OppositionActionPanel() {
           {selectedAction.needsTarget === 'policy_value' && (
             <div className="space-y-2 mb-2">
               <select value={targetPolicy} onChange={(e) => setTargetPolicy(e.target.value)}
-                className="w-full p-2 bg-slate-700 border border-slate-600 rounded-lg text-xs">
+                className="w-full p-2 bg-game-border border border-game-border rounded-lg text-xs">
                 <option value="">Select policy...</option>
                 {POLICIES.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
@@ -453,7 +453,7 @@ export function OppositionActionPanel() {
                   return (
                     <button key={level} onClick={() => setProposedValue(val)}
                       className={`flex-1 py-1 text-[9px] rounded border ${
-                        proposedValue === val ? 'bg-red-600/20 border-red-600 text-red-300' : 'border-slate-600 text-slate-500'
+                        proposedValue === val ? 'bg-red-600/20 border-red-600 text-red-300' : 'border-game-border text-game-muted'
                       }`}>{level}</button>
                   );
                 })}
@@ -469,7 +469,7 @@ export function OppositionActionPanel() {
               (selectedAction.needsTarget === 'bill' && !targetBill) ||
               (selectedAction.needsTarget === 'coalition_partner' && !targetCoalitionPartner)
             }
-            className="w-full py-2 bg-red-600 hover:bg-red-500 disabled:bg-slate-700 rounded-lg text-xs font-medium transition-all">
+            className="w-full py-2 bg-red-600 hover:bg-red-500 disabled:bg-game-border rounded-lg text-xs font-medium transition-all">
             Add to Queue
           </button>
         </div>
@@ -477,13 +477,13 @@ export function OppositionActionPanel() {
 
       {/* Queue */}
       {pendingOppositionActions.length > 0 && (
-        <div className="p-3 border-t border-slate-700/50">
-          <h4 className="text-[10px] text-slate-500 uppercase mb-2">Queue ({pendingCost} PC)</h4>
+        <div className="p-3 border-t border-game-border">
+          <h4 className="text-[10px] text-game-muted uppercase mb-2">Queue ({pendingCost} PC)</h4>
           <div className="space-y-1 mb-3">
             {pendingOppositionActions.map((action, i) => {
               const def = ACTION_DEFS.find(a => a.type === action.type);
               return (
-                <div key={i} className="flex items-center justify-between p-2 bg-slate-800/50 rounded-lg text-xs">
+                <div key={i} className="flex items-center justify-between p-2 bg-game-card/50 rounded-lg text-xs">
                   <span>{def?.emoji} {def?.name}</span>
                   <div className="flex items-center gap-2">
                     <span className="text-yellow-400">{action.cost}</span>
@@ -497,13 +497,13 @@ export function OppositionActionPanel() {
       )}
 
       {/* Submit / Pass */}
-      <div className="p-3 border-t border-slate-700/50 space-y-2">
+      <div className="p-3 border-t border-game-border space-y-2">
         <button onClick={handleSubmit} disabled={pendingOppositionActions.length === 0 || remainingPC < 0}
-          className="w-full py-2.5 bg-red-600 hover:bg-red-500 disabled:bg-slate-700 disabled:text-slate-500 rounded-lg text-sm font-semibold transition-all">
+          className="w-full py-2.5 bg-red-600 hover:bg-red-500 disabled:bg-game-border disabled:text-game-muted rounded-lg text-sm font-semibold transition-all">
           Execute Actions
         </button>
         <button onClick={() => { endTurnPhase(); clearOppositionActions(); }}
-          className="w-full py-2.5 bg-gradient-to-r from-slate-700 to-slate-600 hover:from-slate-600 hover:to-slate-500 rounded-lg text-xs text-slate-200 font-semibold transition-all shadow-lg shadow-slate-900/30 hover:scale-[1.01] active:scale-[0.98]">
+          className="w-full py-2.5 bg-game-border hover:bg-white/[0.08] rounded-lg text-xs text-white font-semibold transition-all hover:scale-[1.01] active:scale-[0.98]">
           End Turn →
         </button>
       </div>

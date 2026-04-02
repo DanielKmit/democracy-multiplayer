@@ -23,7 +23,7 @@ export function EventCards({ inline }: { inline?: boolean } = {}) {
   if (!hasContent) return null;
 
   return (
-    <div className={inline ? '' : 'w-72 border-r border-slate-700/50 bg-slate-900/50 overflow-y-auto flex-shrink-0'}>
+    <div className={inline ? '' : 'w-72 border-r border-game-border bg-game-card/50 overflow-y-auto flex-shrink-0'}>
       {/* Active Crises */}
       {gameState.activeSituations.length > 0 && (
         <div className="p-3">
@@ -50,8 +50,8 @@ export function EventCards({ inline }: { inline?: boolean } = {}) {
                       {def.icon}
                     </span>
                     <div className="flex-1 min-w-0">
-                      <div className="text-xs font-bold text-slate-200">{def.name}</div>
-                      <div className="text-[10px] text-slate-400 mt-0.5 leading-relaxed">
+                      <div className="text-xs font-bold text-white">{def.name}</div>
+                      <div className="text-[10px] text-game-secondary mt-0.5 leading-relaxed">
                         {def.description}
                       </div>
                       <div className="flex items-center gap-2 mt-1.5">
@@ -61,7 +61,7 @@ export function EventCards({ inline }: { inline?: boolean } = {}) {
                         }}>
                           {def.severity}
                         </span>
-                        <span className="text-[9px] text-slate-500">
+                        <span className="text-[9px] text-game-muted">
                           {activeSit.turnsActive} turns
                         </span>
                       </div>
@@ -84,20 +84,20 @@ export function EventCards({ inline }: { inline?: boolean } = {}) {
 
       {/* Recent News */}
       <div className="p-3">
-        <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">
+        <h3 className="text-[10px] font-bold text-game-muted uppercase tracking-wider mb-2">
           Recent News
         </h3>
         <div className="space-y-1.5">
           {gameState.newsTicker.slice(0, 12).map(item => (
             <div
               key={item.id}
-              className="p-2 bg-slate-800/30 rounded-lg border border-slate-700/30 text-xs"
+              className="p-2 bg-game-card/30 rounded-lg border border-game-border/30 text-xs"
             >
               <div className="flex items-start gap-1.5">
                 <span className="text-sm flex-shrink-0">{newsTypeIcons[item.type] ?? '📢'}</span>
                 <div className="min-w-0">
-                  <p className="text-slate-300 leading-relaxed">{item.text}</p>
-                  <span className="text-[9px] text-slate-600">Turn {item.turn}</span>
+                  <p className="text-white leading-relaxed">{item.text}</p>
+                  <span className="text-[9px] text-game-muted">Turn {item.turn}</span>
                 </div>
               </div>
             </div>
