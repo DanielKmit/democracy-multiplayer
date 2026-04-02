@@ -32,6 +32,7 @@ export const POLICIES: PolicyDefinition[] = [
       unemployment: 0.025,   // Businesses hire less or leave
       equality: 0.02,        // Mild redistribution
       corruption: 0.01,      // Companies find loopholes when taxes high
+      whiteCollarCrime: 0.02, // Higher taxes = more evasion schemes
     },
     budgetCostPerPoint: -0.6,
   },
@@ -169,6 +170,7 @@ export const POLICIES: PolicyDefinition[] = [
     effects: {
       freedomIndex: 0.06,     // Freedom boost
       corruption: -0.04,      // Journalists expose corruption
+      whiteCollarCrime: -0.02, // Investigative journalism catches fraud
       nationalSecurity: -0.02, // Leaks happen
     },
     budgetCostPerPoint: 0.05,
@@ -234,6 +236,7 @@ export const POLICIES: PolicyDefinition[] = [
       gdpGrowth: -0.03,        // Real cost to business
       unemployment: 0.015,     // Some factories close
       healthIndex: 0.02,       // Cleaner air = healthier people
+      whiteCollarCrime: 0.01,  // More regulation = more creative fraud to evade it
     },
     budgetCostPerPoint: 0.3,
   },

@@ -248,6 +248,35 @@ function recalculate(state: GameState) {
       state.perception,
     );
 
+    // === DEBT VISIBILITY — voters react to fiscal irresponsibility ===
+    const rulingForDebt = state.players.find(p => p.role === 'ruling');
+    if (rulingForDebt && state.voterSatisfaction[rulingForDebt.id] && state.budget) {
+      const debtGdp = state.budget.debtToGdp ?? 40;
+      if (debtGdp > 80) {
+        const debtPenalty = (debtGdp - 80) * 0.15;
+        // Business owners hate fiscal irresponsibility
+        state.voterSatisfaction[rulingForDebt.id]['business'] = Math.max(0,
+          (state.voterSatisfaction[rulingForDebt.id]['business'] ?? 50) - debtPenalty);
+        // Retirees fear their pensions won't be paid
+        state.voterSatisfaction[rulingForDebt.id]['retirees'] = Math.max(0,
+          (state.voterSatisfaction[rulingForDebt.id]['retirees'] ?? 50) - debtPenalty * 0.7);
+      }
+      // Credit downgrade is a major crisis — everyone notices
+      if (state.budget.creditDowngrade) {
+        for (const groupId of Object.keys(state.voterSatisfaction[rulingForDebt.id])) {
+          state.voterSatisfaction[rulingForDebt.id][groupId] = Math.max(0,
+            (state.voterSatisfaction[rulingForDebt.id][groupId] ?? 50) - 3);
+        }
+      }
+    }
+
+    // === EQUALITY → EXTREMISM — inequality fuels radicalization ===
+    if (state.extremism && state.simulation.equality < 35) {
+      const inequalityFactor = (35 - state.simulation.equality) * 0.1;
+      state.extremism.far_left += inequalityFactor; // Left radicalized by inequality
+      state.extremism.far_right += inequalityFactor * 0.5; // Right blames immigrants for poverty
+    }
+
     // Per-party approval ratings
     state.approvalRating = computeAllApprovalRatings(state.voterSatisfaction, state.activeEffects);
 
