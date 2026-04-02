@@ -854,6 +854,8 @@ export function createInitialGameState(roomId: string): GameState {
     policyChangeHistory: {},
     flipFlopPenalty: {},
     focusGroupResult: null,
+    perception: {},
+    policyStability: {},
   };
 }
 
@@ -1014,7 +1016,14 @@ export function applyOppositionActions(state: GameState, actions: OppositionActi
             turnsRemaining: 2,
             data: { targetSimVar: action.targetSimVar },
           });
-          log.push(`Media Attack: Amplifying negative ${action.targetSimVar} coverage`);
+          // D4: Media attack distorts perception — makes things look 30% worse than reality
+          if (!state.perception) state.perception = {};
+          const actual = state.simulation[action.targetSimVar as keyof typeof state.simulation] as number;
+          const inversed = ['unemployment', 'crime', 'pollution', 'corruption', 'inflation'].includes(action.targetSimVar);
+          const distortion = inversed ? 15 : -15; // Make it look worse
+          state.perception[action.targetSimVar] = (state.perception[action.targetSimVar] ?? actual) + distortion;
+          const varLabel = action.targetSimVar.replace(/([A-Z])/g, ' $1').replace(/^./, (s: string) => s.toUpperCase());
+          log.push(`📺 Media Attack: ${varLabel} coverage amplified — public perception distorted!`);
         }
         break;
       }
@@ -1804,6 +1813,26 @@ export function advancePhase(state: GameState): void {
         for (const pid of Object.keys(state.flipFlopPenalty)) {
           state.flipFlopPenalty[pid] = Math.max(0, (state.flipFlopPenalty[pid] ?? 0) - 1);
         }
+      }
+
+      // D4: Perception drifts toward reality — gap closes by 20% per turn
+      if (!state.perception) state.perception = {};
+      const simVars: (keyof SimulationState)[] = ['gdpGrowth', 'unemployment', 'inflation', 'crime', 'pollution', 'equality', 'healthIndex', 'educationIndex', 'freedomIndex', 'nationalSecurity', 'corruption'];
+      for (const key of simVars) {
+        const actual = state.simulation[key] as number;
+        const perceived = state.perception[key] ?? actual;
+        // Drift 20% toward reality each turn
+        state.perception[key] = perceived + (actual - perceived) * 0.2;
+      }
+
+      // D4: Track policy stability — how many turns since last change
+      if (!state.policyStability) state.policyStability = {};
+      for (const policyId of Object.keys(state.policies)) {
+        state.policyStability[policyId] = (state.policyStability[policyId] ?? 0) + 1;
+      }
+      // Reset stability for policies that changed this turn
+      for (const change of (state.lastTurnPolicyChanges ?? [])) {
+        state.policyStability[change.policyId] = 0;
       }
 
       // D4: Save voter memory at end of each turn for honeymoon tracking

@@ -946,6 +946,10 @@ export interface GameState {
   flipFlopPenalty: Record<string, number>;  // partyId -> credibility penalty (0-30)
   // Focus group results (cached predictions)
   focusGroupResult: { policyId: string; predictedImpact: Record<string, number> } | null;
+  // D4: Perception vs reality — media/opposition can distort what voters think
+  perception: Record<string, number>;  // simVarKey -> perceived value (diverges from actual)
+  // D4: Policy momentum — tracks how long each policy has been stable
+  policyStability: Record<string, number>;  // policyId -> turns since last change
 }
 
 // ---- Peer Messages ----
