@@ -37,54 +37,62 @@ export const VICTORY_CONDITIONS: VictoryCondition[] = [
   {
     type: 'economic',
     name: 'Economic Miracle',
-    description: 'Achieve GDP growth above 5% for 5 consecutive turns while ruling',
+    description: 'Achieve GDP > 4% AND unemployment < 6% for 4 consecutive turns while ruling',
     icon: '📈',
     checkVictory: (state, playerId) => {
       const tracker = state.victoryTrackers?.[playerId];
-      return (tracker?.consecutiveHighGDP ?? 0) >= 5;
+      return (tracker?.consecutiveHighGDP ?? 0) >= 4;
     },
     getProgress: (state, playerId) => {
       const tracker = state.victoryTrackers?.[playerId];
       return {
         current: tracker?.consecutiveHighGDP ?? 0,
-        required: 5,
-        label: 'Consecutive High GDP Turns',
+        required: 4,
+        label: 'Consecutive Strong Economy Turns',
       };
     },
   },
   {
     type: 'approval',
     name: 'People\'s Champion',
-    description: 'Maintain approval above 70% for 8 consecutive turns while ruling',
+    description: 'Maintain approval above 65% for 6 consecutive turns while ruling',
     icon: '❤️',
     checkVictory: (state, playerId) => {
       const tracker = state.victoryTrackers?.[playerId];
-      return (tracker?.consecutiveHighApproval ?? 0) >= 8;
+      return (tracker?.consecutiveHighApproval ?? 0) >= 6;
     },
     getProgress: (state, playerId) => {
       const tracker = state.victoryTrackers?.[playerId];
       return {
         current: tracker?.consecutiveHighApproval ?? 0,
-        required: 8,
+        required: 6,
         label: 'Consecutive High Approval Turns',
       };
     },
   },
   {
     type: 'parliamentary',
-    name: 'Supermajority',
-    description: 'Hold 75+ parliamentary seats across 2 consecutive elections',
+    name: 'Total Dominance',
+    description: 'Hold 65+ seats AND lead in 5+ regions in a single election',
     icon: '🏛️',
     checkVictory: (state, playerId) => {
       const tracker = state.victoryTrackers?.[playerId];
-      return (tracker?.consecutiveSupermajority ?? 0) >= 2;
+      return (tracker?.consecutiveSupermajority ?? 0) >= 1;
     },
     getProgress: (state, playerId) => {
-      const tracker = state.victoryTrackers?.[playerId];
+      const seats = state.parliament.seatsByParty[playerId] ?? 0;
+      // Count regions where this player leads
+      let leadingRegions = 0;
+      for (const regionId of Object.keys(state.regionalSatisfaction)) {
+        const mySat = state.regionalSatisfaction[regionId]?.[playerId] ?? 0;
+        const otherMax = Math.max(...state.players.filter(p => p.id !== playerId).map(p => state.regionalSatisfaction[regionId]?.[p.id] ?? 0));
+        if (mySat > otherMax) leadingRegions++;
+      }
+      const progress = (seats >= 65 && leadingRegions >= 5) ? 1 : 0;
       return {
-        current: tracker?.consecutiveSupermajority ?? 0,
-        required: 2,
-        label: 'Consecutive Supermajority Elections',
+        current: progress,
+        required: 1,
+        label: `${seats}/65 seats, ${leadingRegions}/5 regions`,
       };
     },
   },
@@ -118,16 +126,16 @@ export function updateVictoryTrackers(
     }
     const tracker = state.victoryTrackers[player.id];
 
-    // Economic: GDP > 5% while ruling
-    if (player.role === 'ruling' && state.simulation.gdpGrowth > 5) {
+    // Economic: GDP > 4% AND unemployment < 6% while ruling
+    if (player.role === 'ruling' && state.simulation.gdpGrowth > 4 && state.simulation.unemployment < 6) {
       tracker.consecutiveHighGDP++;
     } else {
       tracker.consecutiveHighGDP = 0;
     }
 
-    // Approval: > 70% while ruling
+    // Approval: > 65% while ruling
     const approval = state.approvalRating[player.id] ?? 0;
-    if (player.role === 'ruling' && approval > 70) {
+    if (player.role === 'ruling' && approval > 65) {
       tracker.consecutiveHighApproval++;
     } else {
       tracker.consecutiveHighApproval = 0;
@@ -150,7 +158,17 @@ export function updateSupermajorityTracker(
     const tracker = state.victoryTrackers[player.id];
     const seats = state.parliament.seatsByParty[player.id] ?? 0;
 
-    if (seats >= 75) {
+    // Total Dominance: 65+ seats AND leading in 5+ regions
+    let leadingRegions = 0;
+    if (state.regionalSatisfaction) {
+      for (const regionId of Object.keys(state.regionalSatisfaction)) {
+        const mySat = state.regionalSatisfaction[regionId]?.[player.id] ?? 0;
+        const otherMax = Math.max(0, ...state.players.filter(p => p.id !== player.id).map(p => state.regionalSatisfaction[regionId]?.[p.id] ?? 0));
+        if (mySat > otherMax) leadingRegions++;
+      }
+    }
+
+    if (seats >= 65 && leadingRegions >= 5) {
       tracker.consecutiveSupermajority++;
     } else {
       tracker.consecutiveSupermajority = 0;

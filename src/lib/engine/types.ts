@@ -937,6 +937,19 @@ export interface GameState {
   liveVote: LiveVoteState | null;
   // Track which cabinet appointments were blocked
   blockedAppointments: MinistryId[];
+  // === D4 ADVANCED FEATURES ===
+  // Voter memory: tracks satisfaction from previous term for honeymoon/penalty effects
+  voterMemory: Record<string, number>;  // partyId -> previous term avg approval
+  // Policy flip-flop tracking: how many times each policy was changed recently
+  policyChangeHistory: Record<string, number[]>;  // policyId -> [turnChanged1, turnChanged2, ...]
+  // Credibility penalty from flip-flopping
+  flipFlopPenalty: Record<string, number>;  // partyId -> credibility penalty (0-30)
+  // Focus group results (cached predictions)
+  focusGroupResult: { policyId: string; predictedImpact: Record<string, number> } | null;
+  // D4: Perception vs reality — media/opposition can distort what voters think
+  perception: Record<string, number>;  // simVarKey -> perceived value (diverges from actual)
+  // D4: Policy momentum — tracks how long each policy has been stable
+  policyStability: Record<string, number>;  // policyId -> turns since last change
 }
 
 // ---- Peer Messages ----

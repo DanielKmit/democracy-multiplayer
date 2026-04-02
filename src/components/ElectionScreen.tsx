@@ -133,7 +133,7 @@ export function ElectionScreen() {
           <div className="flex gap-3 justify-center">
             <button
               onClick={() => setShowShareCard(true)}
-              className="px-6 py-3 bg-slate-700 hover:bg-slate-600 rounded-lg font-semibold transition-all cursor-pointer"
+              className="px-6 py-3 glass-card rounded-lg font-semibold transition-all cursor-pointer text-game-secondary hover:text-white"
             >
               📸 Share Results
             </button>

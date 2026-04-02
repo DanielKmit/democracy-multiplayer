@@ -38,6 +38,7 @@ import {
   recalculateAfterPolicyChange,
 } from './engine/simulation';
 import { spinScandal } from './engine/scandals';
+import { updateReputation, getReputationEffects } from './engine/reputation';
 import { updateSupermajorityTracker, checkVictory } from './engine/victoryConditions';
 import { POLICY_MAP } from './engine/policies';
 import { VOTER_GROUPS } from './engine/voters';
@@ -205,6 +206,7 @@ function recalculate(state: GameState) {
       state.ngoAlliances ?? [],
       state.botParties,
       state.campaignBonuses,
+      state.perception,
     );
 
     // Per-party approval ratings
@@ -223,6 +225,107 @@ function recalculate(state: GameState) {
         }
       }
       state.rulingApproval = state.approvalRating[ruling.id] ?? 50;
+    }
+
+    // === D4: VOTER MEMORY / HONEYMOON EFFECT ===
+    // New ruling party gets a honeymoon boost that decays over time
+    if (ruling && state.voterMemory) {
+      const prevApproval = state.voterMemory[ruling.id] ?? 50;
+      const turnsSinceElection = state.turn % 8; // turns since last election
+      if (turnsSinceElection <= 2 && prevApproval < 45) {
+        // Honeymoon: new government gets benefit of the doubt (+5 to +10 approval)
+        const honeymoonBonus = Math.max(0, (45 - prevApproval) * 0.3) * Math.max(0, 1 - turnsSinceElection * 0.3);
+        state.approvalRating[ruling.id] = Math.min(100, (state.approvalRating[ruling.id] ?? 50) + honeymoonBonus);
+      }
+    }
+
+    // === D4: FLIP-FLOP PENALTY ===
+    // Parties that rapidly change policies lose credibility
+    if (ruling && state.flipFlopPenalty) {
+      const penalty = state.flipFlopPenalty[ruling.id] ?? 0;
+      if (penalty > 0) {
+        // Reduce approval by flip-flop penalty (max -15)
+        const effectivePenalty = Math.min(15, penalty * 0.5);
+        state.approvalRating[ruling.id] = Math.max(0, (state.approvalRating[ruling.id] ?? 50) - effectivePenalty);
+        state.rulingApproval = state.approvalRating[ruling.id] ?? 50;
+      }
+    }
+
+    // === D4: POLICY STABILITY BONUS ===
+    // Stable policies (unchanged for 4+ turns) give a small approval boost
+    if (ruling && state.policyStability) {
+      let stableCount = 0;
+      for (const turns of Object.values(state.policyStability)) {
+        if ((turns as number) >= 4) stableCount++;
+      }
+      // Each stable policy gives +0.15 approval (up to +4.5 for all 30 stable)
+      if (stableCount > 10) {
+        const stabilityBonus = Math.min(5, (stableCount - 10) * 0.25);
+        state.approvalRating[ruling.id] = Math.min(100, (state.approvalRating[ruling.id] ?? 50) + stabilityBonus);
+        state.rulingApproval = state.approvalRating[ruling.id] ?? 50;
+      }
+    }
+
+    // === D4: CRISIS PC BONUS (Rally around the flag) ===
+    if (ruling && state.activeSituations.length > 0) {
+      const criticalSituations = state.activeSituations.filter(s => {
+        const def = getSituationById(s.id);
+        return def && def.severity === 'critical';
+      });
+      // Grant +1 PC for each new critical situation (first turn only)
+      for (const sit of criticalSituations) {
+        if (sit.turnsActive === 0) {
+          ruling.politicalCapital += 1;
+          addLogEntry(state, `⚡ Crisis leadership: +1 PC from responding to ${getSituationById(sit.id)?.name ?? sit.id}`, 'info');
+        }
+      }
+    }
+
+    // === D4: REPUTATION SYSTEM — Update and apply effects ===
+    if (state.reputation) {
+      for (const player of state.players) {
+        // Count active scandals targeting this player
+        const playerScandals = (state.activeScandals ?? []).filter(s => s.targetPlayerId === player.id).length;
+        // Check if any promise was broken/kept this turn
+        const brokenThisTurn = (state.pledges ?? []).some(
+          p => p.playerId === player.id && p.status === 'broken'
+            && (state.policyChangeHistory?.[p.policyId]?.includes(state.turn) ?? false)
+        );
+        const keptThisTurn = (state.pledges ?? []).some(
+          p => p.playerId === player.id && p.status === 'kept'
+        );
+        // Average cabinet competence
+        let avgComp = 5;
+        if (state.cabinet?.ministers && state.cabinet?.availablePool) {
+          let total = 0; let count = 0;
+          for (const polId of Object.values(state.cabinet.ministers)) {
+            if (polId) {
+              const pol = state.cabinet.availablePool.find(pp => pp.id === polId);
+              if (pol) { total += pol.competence; count++; }
+            }
+          }
+          if (count > 0) avgComp = total / count;
+        }
+
+        updateReputation(state.reputation, player.id, {
+          activeScandals: playerScandals,
+          brokenPromiseThisTurn: brokenThisTurn,
+          keptPromiseThisTurn: keptThisTurn,
+          approval: state.approvalRating[player.id] ?? 50,
+          cabinetCompetence: avgComp,
+          isRuling: player.role === 'ruling',
+        });
+
+        // Apply reputation effects to approval
+        const repScore = state.reputation.scores[player.id] ?? 60;
+        const effects = getReputationEffects(repScore);
+        state.approvalRating[player.id] = Math.max(0, Math.min(100,
+          (state.approvalRating[player.id] ?? 50) + effects.approvalModifier
+        ));
+      }
+      if (ruling) {
+        state.rulingApproval = state.approvalRating[ruling.id] ?? 50;
+      }
     }
 
     // Regional satisfaction using per-party voter sat
@@ -937,7 +1040,14 @@ export function handleAction(playerId: string, action: string, payload?: unknown
             break;
           }
           case 'state_position': {
-            addLogEntry(gameState, `📢 ${player.party.partyName} takes a public stance`, 'info');
+            // Taking a position gives broad +2 support across all groups
+            const bonuses = gameState.campaignBonuses[player.id] ?? {};
+            for (const group of VOTER_GROUPS) {
+              bonuses[group.id] = (bonuses[group.id] ?? 0) + 2;
+            }
+            gameState.campaignBonuses[player.id] = bonuses;
+            addLogEntry(gameState, `📢 ${player.party.partyName} takes a public stance — +2% across all voter groups`, 'info');
+            addNewsItem(gameState, `${player.party.partyName} makes bold policy statement on the campaign trail`, 'election');
             break;
           }
           case 'attack_ad': {
@@ -1854,6 +1964,47 @@ export function handleAction(playerId: string, action: string, payload?: unknown
       } else {
         broadcastState();
       }
+      break;
+    }
+
+    case 'runFocusGroup': {
+      // D4: Focus group — spend 1 PC to preview what a policy change would do to voter satisfaction
+      const player = gameState.players.find(p => p.id === playerId);
+      if (!player) return;
+      if (player.politicalCapital < 1) {
+        addLogEntry(gameState, 'Not enough PC for focus group (need 1)', 'info');
+        broadcastState();
+        return;
+      }
+
+      const { policyId, proposedValue } = payload as { policyId: string; proposedValue: number };
+      const policy = POLICY_MAP.get(policyId);
+      if (!policy) return;
+
+      player.politicalCapital -= 1;
+
+      // Simulate what would happen to each voter group
+      const currentValue = gameState.policies[policyId] ?? 50;
+      const predictedImpact: Record<string, number> = {};
+      for (const group of VOTER_GROUPS) {
+        const ideal = group.policyPreferences[policyId];
+        if (ideal !== undefined) {
+          const currentDist = Math.abs(currentValue - ideal);
+          const proposedDist = Math.abs(proposedValue - ideal);
+          const delta = (currentDist - proposedDist) * 0.3; // Positive = closer to ideal = good
+          predictedImpact[group.id] = Math.round(delta * 10) / 10;
+        }
+      }
+
+      gameState.focusGroupResult = { policyId, predictedImpact };
+      addLogEntry(gameState, `🔍 Focus group polled on ${policy.name}: ${currentValue} → ${proposedValue}`, 'info');
+      broadcastState();
+      break;
+    }
+
+    case 'dismissFocusGroup': {
+      gameState.focusGroupResult = null;
+      broadcastState();
       break;
     }
 

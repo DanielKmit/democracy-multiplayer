@@ -138,20 +138,22 @@ function computeSinglePartySatisfaction(
   simulation: SimulationState,
   activeEffects: ActiveEffect[],
   ngoAlliances: NGOAlliance[],
+  perception?: Record<string, number>,
 ): Record<string, number> {
   const satisfaction: Record<string, number> = {};
 
   for (const group of VOTER_GROUPS) {
     let score = 50;
 
-    // 1. Simulation variable concerns (everyone affected by reality)
+    // 1. Simulation variable concerns — voters react to PERCEPTION, not reality
+    // D4: Media attacks distort perception, so voters may think things are worse than they are
     for (const [varKey, weight] of Object.entries(group.concerns)) {
-      const simVal = simulation[varKey as SimVarKey];
+      const actualVal = simulation[varKey as SimVarKey];
+      // Use perceived value if available, otherwise raw value
+      const simVal = perception?.[varKey] ?? actualVal;
       if (weight! > 0) {
-        // Positive concern: higher is better (e.g., gdpGrowth, healthIndex)
         score += (simVal - 50) * weight! * 0.4;
       } else {
-        // Negative concern: lower is better (e.g., unemployment, crime)
         score += (50 - simVal) * Math.abs(weight!) * 0.4;
       }
     }
@@ -262,6 +264,7 @@ export function computeAllVoterSatisfaction(
   ngoAlliances: NGOAlliance[],
   botParties?: BotParty[],
   campaignBonuses?: Record<string, Record<string, number>>,
+  perception?: Record<string, number>,
 ): Record<string, Record<string, number>> {
   const allSatisfaction: Record<string, Record<string, number>> = {};
 
@@ -274,6 +277,7 @@ export function computeAllVoterSatisfaction(
       simulation,
       activeEffects,
       player.role === 'ruling' ? [] : ngoAlliances,
+      perception,
     );
 
     // Apply campaign bonuses to voter satisfaction (visible during campaign)
@@ -311,7 +315,7 @@ export function computeAllVoterSatisfaction(
     }
   }
 
-  // Bot parties
+  // Bot parties — they also compete for votes based on ideology alignment
   for (const bot of (botParties ?? [])) {
     allSatisfaction[bot.id] = computeSinglePartySatisfaction(
       bot.id,
@@ -319,8 +323,9 @@ export function computeAllVoterSatisfaction(
       false, // bots are never ruling
       policyValues,
       simulation,
+      activeEffects,
       [],
-      [],
+      perception,
     );
   }
 
@@ -525,11 +530,14 @@ export function computePoliticalCapital(
   cabinet?: CabinetState
 ): number {
   if (player.role === 'ruling') {
-    let pc = 6;
-    if (partyApproval > 60) pc += 1;
-    if (partyApproval < 30) pc -= 1;
+    let pc = 5; // Base reduced from 6 — now governance quality matters more
+    // Approval-based scaling (wider range: +2 to -2)
+    if (partyApproval > 70) pc += 2;
+    else if (partyApproval > 55) pc += 1;
+    if (partyApproval < 25) pc -= 2;
+    else if (partyApproval < 35) pc -= 1;
 
-    // Cabinet competence bonus
+    // Cabinet competence bonus (wider range)
     if (cabinet) {
       let totalCompetence = 0;
       let filledCount = 0;
@@ -544,19 +552,26 @@ export function computePoliticalCapital(
       }
       if (filledCount > 0) {
         const avgComp = totalCompetence / filledCount;
-        if (avgComp > 7) pc += 1;
-        if (avgComp < 4) pc -= 1;
+        if (avgComp > 8) pc += 2;
+        else if (avgComp > 6) pc += 1;
+        if (avgComp < 3) pc -= 2;
+        else if (avgComp < 5) pc -= 1;
       }
+      // Penalty for empty ministries
+      const emptyMinistries = Object.values(cabinet.ministers).filter(m => !m).length;
+      if (emptyMinistries >= 4) pc -= 1;
     }
 
-    return Math.max(1, pc);
+    return Math.max(1, pc); // Range: 1-9 (was 5-7)
   } else {
     let pc = 4;
-    // Opposition gets more PC when ruling party is unpopular
-    if (rulingApproval < 40) pc += 1;
+    // Opposition gets more PC when ruling party is unpopular (wider)
+    if (rulingApproval < 30) pc += 2;
+    else if (rulingApproval < 45) pc += 1;
     // And when their own support is strong
-    if (partyApproval > 35) pc += 1;
-    return Math.max(1, pc);
+    if (partyApproval > 45) pc += 2;
+    else if (partyApproval > 30) pc += 1;
+    return Math.max(1, pc); // Range: 1-8 (was 4-6)
   }
 }
 
@@ -849,6 +864,13 @@ export function createInitialGameState(roomId: string): GameState {
     activeDiplomaticIncident: null,
     liveVote: null,
     blockedAppointments: [],
+    // D4 advanced features
+    voterMemory: {},
+    policyChangeHistory: {},
+    flipFlopPenalty: {},
+    focusGroupResult: null,
+    perception: {},
+    policyStability: {},
   };
 }
 
@@ -880,15 +902,60 @@ export function applyPolicyChanges(state: GameState, changes: PolicyChange[]): s
     }
 
     totalCost += cost;
+
+    // === D4: MINISTER EFFECTIVENESS ===
+    // Ministers affect how much of the policy change actually gets implemented
+    let effectiveNewValue = clamp(change.newValue, 0, 100);
+    const ministryForPolicy: Record<string, string> = {
+      income_tax: 'finance', corporate_tax: 'finance', trade_openness: 'finance',
+      govt_spending: 'finance', minimum_wage: 'finance', tech_research: 'finance',
+      healthcare: 'health', pensions: 'health',
+      education: 'education',
+      env_regulations: 'environment', renewables: 'environment', carbon_tax: 'environment',
+      police: 'interior', gun_control: 'interior', drug_policy: 'interior',
+      military: 'defense', intelligence: 'defense', border_security: 'defense',
+      civil_rights: 'justice', press_freedom: 'justice', religious_freedom: 'justice',
+      immigration: 'interior', housing_subsidies: 'interior',
+      public_transport: 'finance', roads_rail: 'finance', urban_dev: 'finance',
+      agriculture: 'finance', foreign_aid: 'foreign',
+    };
+    const relevantMinistry = ministryForPolicy[change.policyId];
+    if (relevantMinistry && state.cabinet?.ministers) {
+      const ministerId = state.cabinet.ministers[relevantMinistry as MinistryId];
+      if (ministerId) {
+        const minister = state.cabinet.availablePool?.find(p => p.id === ministerId);
+        if (minister) {
+          // Competence 1-10: 5=neutral, 10=120% effective, 1=60% effective
+          const competence = minister.competence ?? 5;
+          const effectiveness = 0.6 + (competence / 10) * 0.6; // 0.6 to 1.2
+          const diff = change.newValue - change.oldValue;
+          effectiveNewValue = clamp(Math.round(change.oldValue + diff * effectiveness), 0, 100);
+        }
+      }
+    }
+
+    // === D4: FLIP-FLOP TRACKING ===
+    if (!state.policyChangeHistory) state.policyChangeHistory = {};
+    if (!state.policyChangeHistory[change.policyId]) state.policyChangeHistory[change.policyId] = [];
+    state.policyChangeHistory[change.policyId].push(state.turn);
+    // Check for flip-flopping (changed same policy within 4 turns)
+    const recentChanges = state.policyChangeHistory[change.policyId].filter(t => state.turn - t <= 4);
+    if (recentChanges.length >= 2 && ruling) {
+      if (!state.flipFlopPenalty) state.flipFlopPenalty = {};
+      state.flipFlopPenalty[ruling.id] = Math.min(30, (state.flipFlopPenalty[ruling.id] ?? 0) + 3);
+      log.push(`⚠️ Flip-flopping on ${policy.name}! Credibility -3`);
+    }
+
     // D4: Policy changes don't take effect immediately — delayed by 2 turns
     state.delayedPolicies.push({
       policyId: change.policyId,
       originalValue: change.oldValue,
-      newValue: clamp(change.newValue, 0, 100),
+      newValue: effectiveNewValue,
       turnsRemaining: 2,
       source: 'bill',
     });
-    log.push(`${policy.name}: ${change.oldValue} → ${change.newValue} (${cost} PC, takes effect in 2 turns)`);
+    const effNote = effectiveNewValue !== clamp(change.newValue, 0, 100) ? ` (minister effectiveness: ${effectiveNewValue})` : '';
+    log.push(`${policy.name}: ${change.oldValue} → ${effectiveNewValue}${effNote} (${cost} PC, takes effect in 2 turns)`);
   }
 
   ruling.politicalCapital -= totalCost;
@@ -964,7 +1031,14 @@ export function applyOppositionActions(state: GameState, actions: OppositionActi
             turnsRemaining: 2,
             data: { targetSimVar: action.targetSimVar },
           });
-          log.push(`Media Attack: Amplifying negative ${action.targetSimVar} coverage`);
+          // D4: Media attack distorts perception — makes things look 30% worse than reality
+          if (!state.perception) state.perception = {};
+          const actual = state.simulation[action.targetSimVar as keyof typeof state.simulation] as number;
+          const inversed = ['unemployment', 'crime', 'pollution', 'corruption', 'inflation'].includes(action.targetSimVar);
+          const distortion = inversed ? 15 : -15; // Make it look worse
+          state.perception[action.targetSimVar] = (state.perception[action.targetSimVar] ?? actual) + distortion;
+          const varLabel = action.targetSimVar.replace(/([A-Z])/g, ' $1').replace(/^./, (s: string) => s.toUpperCase());
+          log.push(`📺 Media Attack: ${varLabel} coverage amplified — public perception distorted!`);
         }
         break;
       }
@@ -997,12 +1071,27 @@ export function applyOppositionActions(state: GameState, actions: OppositionActi
         break;
       }
       case 'lobby_votes': {
-        log.push('Lobbying parliament members to rebel on next vote.');
+        // Lobby parliament members — increases rebel chance on next bill vote
+        // This weakens coalition discipline, making ruling party bills harder to pass
+        for (const bill of state.activeBills.filter(b => b.status === 'pending' || b.status === 'voting')) {
+          bill.publicPressure = Math.max(-20, (bill.publicPressure ?? 0) - 3);
+        }
+        // Also reduce ruling credibility slightly
+        modifyRulingApproval(state, -2);
+        log.push('🏛️ Lobbying parliament — coalition discipline weakened, ruling approval -2%');
         break;
       }
       case 'propose_amendment': {
         if (action.targetBillId) {
-          log.push(`Amendment proposed for bill ${action.targetBillId}`);
+          const bill = state.activeBills.find(b => b.id === action.targetBillId);
+          if (bill && (bill.status === 'pending' || bill.status === 'voting')) {
+            // Amendment reduces the bill's effectiveness and public support
+            bill.publicPressure = Math.max(-20, (bill.publicPressure ?? 0) - 5);
+            bill.constitutionalScore = Math.max(20, (bill.constitutionalScore ?? 70) - 10);
+            log.push(`📝 Amendment proposed for "${bill.title}" — public pressure -5, constitutional risk increased`);
+          } else {
+            log.push(`No active bill found for amendment`);
+          }
         }
         break;
       }
@@ -1656,7 +1745,7 @@ export function recalculateAfterPolicyChange(
     state.voterSatisfaction = computeAllVoterSatisfaction(
       state.players, state.policies, state.simulation,
       state.activeEffects, state.ngoAlliances ?? [], state.botParties,
-      state.campaignBonuses,
+      state.campaignBonuses, state.perception,
     );
     state.approvalRating = computeAllApprovalRatings(state.voterSatisfaction, state.activeEffects);
     state.voteShares = computeVoteShares(state.voterSatisfaction, state.voterCynicism);
@@ -1748,6 +1837,39 @@ export function advancePhase(state: GameState): void {
       }
 
       tickActiveEffects(state);
+
+      // D4: Decay flip-flop penalty by 1 per turn
+      if (state.flipFlopPenalty) {
+        for (const pid of Object.keys(state.flipFlopPenalty)) {
+          state.flipFlopPenalty[pid] = Math.max(0, (state.flipFlopPenalty[pid] ?? 0) - 1);
+        }
+      }
+
+      // D4: Perception drifts toward reality — gap closes by 20% per turn
+      if (!state.perception) state.perception = {};
+      const simVars: (keyof SimulationState)[] = ['gdpGrowth', 'unemployment', 'inflation', 'crime', 'pollution', 'equality', 'healthIndex', 'educationIndex', 'freedomIndex', 'nationalSecurity', 'corruption'];
+      for (const key of simVars) {
+        const actual = state.simulation[key] as number;
+        const perceived = state.perception[key] ?? actual;
+        // Drift 20% toward reality each turn
+        state.perception[key] = perceived + (actual - perceived) * 0.2;
+      }
+
+      // D4: Track policy stability — how many turns since last change
+      if (!state.policyStability) state.policyStability = {};
+      for (const policyId of Object.keys(state.policies)) {
+        state.policyStability[policyId] = (state.policyStability[policyId] ?? 0) + 1;
+      }
+      // Reset stability for policies that changed this turn
+      for (const change of (state.lastTurnPolicyChanges ?? [])) {
+        state.policyStability[change.policyId] = 0;
+      }
+
+      // D4: Save voter memory at end of each turn for honeymoon tracking
+      if (state.voterMemory === undefined) state.voterMemory = {};
+      for (const p of state.players) {
+        state.voterMemory[p.id] = state.approvalRating?.[p.id] ?? 50;
+      }
 
       // Decay NGO alliances — reduce bonus by 1 per turn, remove when depleted
       if (state.ngoAlliances && state.ngoAlliances.length > 0) {
@@ -2190,7 +2312,7 @@ export function advancePhase(state: GameState): void {
       state.voterSatisfaction = computeAllVoterSatisfaction(
         state.players, state.policies, state.simulation,
         state.activeEffects, state.ngoAlliances ?? [], state.botParties,
-        state.campaignBonuses,
+        state.campaignBonuses, state.perception,
       );
       state.approvalRating = computeAllApprovalRatings(state.voterSatisfaction, state.activeEffects);
       state.voteShares = computeVoteShares(state.voterSatisfaction, state.voterCynicism);
