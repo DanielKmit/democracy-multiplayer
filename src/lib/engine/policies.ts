@@ -93,6 +93,7 @@ export const POLICIES: PolicyDefinition[] = [
     effects: {
       healthIndex: 0.08,     // Direct health improvement
       gdpGrowth: -0.015,    // Costs drag on economy
+      unemployment: -0.01,  // Healthy workers miss fewer days
       equality: 0.02,        // Poor get access to care
       inflation: 0.01,       // Healthcare spending is inflationary
     },
@@ -106,6 +107,7 @@ export const POLICIES: PolicyDefinition[] = [
       educationIndex: 0.08,  // Direct improvement
       gdpGrowth: 0.01,       // Educated workforce
       equality: 0.02,        // Social mobility
+      crime: -0.02,          // Educated youth less likely to turn to crime
       corruption: -0.01,     // Educated citizens fight corruption
     },
     budgetCostPerPoint: 0.5,
@@ -178,9 +180,11 @@ export const POLICIES: PolicyDefinition[] = [
     effects: {
       gdpGrowth: 0.02,        // Immigrants boost economy
       crime: 0.015,            // Some increase (perception or real)
+      violentCrime: 0.005,     // Perception-driven or real (small)
       freedomIndex: 0.02,      // Open society
       equality: -0.02,         // Wage competition hurts poorest
-      unemployment: 0.01,      // More labor supply
+      unemployment: 0.015,     // More labor supply pressures jobs
+      healthIndex: -0.005,     // Strain on public health system
     },
     budgetCostPerPoint: 0.2,
   },
@@ -331,6 +335,7 @@ export const POLICIES: PolicyDefinition[] = [
     effects: {
       pollution: -0.02,        // Less car use
       gdpGrowth: 0.01,         // Better mobility
+      unemployment: -0.01,    // Workers can reach jobs
       equality: 0.02,          // Poor can commute
       healthIndex: 0.005,      // Less pollution = health
     },

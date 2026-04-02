@@ -38,7 +38,7 @@ import { calculateBudget } from './budget';
 import { getInitialPoliticianPool, getPoliticianById } from './politicians';
 import { createInitialParliament } from './parliament';
 import { createInitialExtremism, updateExtremism } from './extremism';
-import { checkSituations, shouldResolveSituation } from './situations';
+import { checkSituations, shouldResolveSituation, getSituationById } from './situations';
 import { checkRegionalEvents, getRegionalEventById } from './regionalEvents';
 import { checkMediaEvents } from './mediaEvents';
 import { checkVoterGroupEvents } from './voterGroupEvents';
@@ -123,6 +123,68 @@ export function computeSimulation(policyValues: Record<string, number>, activeEf
   sim.crime = sim.violentCrime * 0.4 + sim.propertyCrime * 0.35 + sim.whiteCollarCrime * 0.25;
 
   // Clamp
+  sim.gdpGrowth = clamp(sim.gdpGrowth, -5, 8);
+  sim.unemployment = clamp(sim.unemployment, 0, 30);
+  sim.inflation = clamp(sim.inflation, 0, 20);
+  sim.violentCrime = clamp(sim.violentCrime, 0, 100);
+  sim.propertyCrime = clamp(sim.propertyCrime, 0, 100);
+  sim.whiteCollarCrime = clamp(sim.whiteCollarCrime, 0, 100);
+  sim.crime = clamp(sim.crime, 0, 100);
+  sim.pollution = clamp(sim.pollution, 0, 100);
+  sim.equality = clamp(sim.equality, 0, 100);
+  sim.healthIndex = clamp(sim.healthIndex, 0, 100);
+  sim.educationIndex = clamp(sim.educationIndex, 0, 100);
+  sim.freedomIndex = clamp(sim.freedomIndex, 0, 100);
+  sim.nationalSecurity = clamp(sim.nationalSecurity, 0, 100);
+  sim.corruption = clamp(sim.corruption, 0, 100);
+
+  // ===== FEEDBACK LOOPS — everything affects everything =====
+  // These create realistic interconnections where no policy exists in isolation
+
+  // 1. GDP ↔ Unemployment: weak economy = more joblessness, and vice versa
+  sim.unemployment += (2 - sim.gdpGrowth) * 0.5; // GDP below 2% pushes unemployment up
+  sim.gdpGrowth -= Math.max(0, sim.unemployment - 8) * 0.15; // High unemployment drags GDP
+
+  // 2. Crime → GDP: high crime hurts the economy (businesses leave)
+  sim.gdpGrowth -= Math.max(0, (sim.crime - 40)) * 0.03;
+
+  // 3. Pollution → Health: dirty air kills people
+  sim.healthIndex -= Math.max(0, (sim.pollution - 50)) * 0.15;
+
+  // 4. Education → GDP (long-term): educated workforce = productive economy
+  sim.gdpGrowth += Math.max(0, (sim.educationIndex - 50)) * 0.02;
+
+  // 5. Corruption → GDP: corruption is a tax on everything
+  sim.gdpGrowth -= Math.max(0, (sim.corruption - 30)) * 0.04;
+
+  // 6. Inequality → Crime: desperate people turn to crime
+  const ineq = 100 - sim.equality;
+  sim.crime += Math.max(0, (ineq - 50)) * 0.1;
+  sim.propertyCrime += Math.max(0, (ineq - 50)) * 0.15;
+
+  // 7. Unemployment → Crime: jobless people = more property crime
+  sim.propertyCrime += Math.max(0, (sim.unemployment - 8)) * 0.3;
+  sim.violentCrime += Math.max(0, (sim.unemployment - 12)) * 0.2;
+
+  // 8. Freedom → Corruption (inverse): free press catches corruption
+  sim.corruption -= Math.max(0, (sim.freedomIndex - 50)) * 0.05;
+
+  // 9. Health → GDP: sick workers = less productive economy
+  sim.gdpGrowth -= Math.max(0, (50 - sim.healthIndex)) * 0.03;
+
+  // 10. National Security → GDP: war threats scare investors
+  sim.gdpGrowth -= Math.max(0, (50 - sim.nationalSecurity)) * 0.02;
+
+  // 11. Inflation → Equality: inflation is a hidden tax on the poor
+  sim.equality -= Math.max(0, (sim.inflation - 3)) * 0.5;
+
+  // 12. Crime → Freedom: high crime leads to authoritarian crackdowns
+  if (sim.crime > 60) sim.freedomIndex -= (sim.crime - 60) * 0.05;
+
+  // 13. GDP → Health: wealthy nations have better healthcare access
+  sim.healthIndex += Math.max(0, (sim.gdpGrowth - 2)) * 1;
+
+  // Re-clamp after feedback loops
   sim.gdpGrowth = clamp(sim.gdpGrowth, -5, 8);
   sim.unemployment = clamp(sim.unemployment, 0, 30);
   sim.inflation = clamp(sim.inflation, 0, 20);
@@ -1984,6 +2046,26 @@ export function advancePhase(state: GameState): void {
       const newSits = checkSituations(state.policies, state.simulation, activeSitIds, state.consecutiveLowEnvRegulations, state.budget);
       for (const sitId of newSits) {
         state.activeSituations.push({ id: sitId, turnsActive: 0, acknowledged: false });
+        addLogEntry(state, `⚠️ Situation: ${getSituationById(sitId)?.name ?? sitId}`, 'situation');
+        addNewsItem(state, `${getSituationById(sitId)?.icon ?? '⚠️'} ${getSituationById(sitId)?.name ?? sitId} has emerged`, 'situation');
+
+        // Cascade: situations can trigger other situations
+        const sitDef = getSituationById(sitId);
+        if (sitDef?.cascades) {
+          for (const cascadeId of sitDef.cascades) {
+            if (!activeSitIds.includes(cascadeId) && !newSits.includes(cascadeId)) {
+              // 40% chance to cascade per turn (builds tension)
+              if (Math.random() < 0.4) {
+                state.activeSituations.push({ id: cascadeId, turnsActive: 0, acknowledged: false });
+                const cascadeDef = getSituationById(cascadeId);
+                if (cascadeDef) {
+                  addLogEntry(state, `🔗 ${cascadeDef.name} cascaded from ${sitDef.name}`, 'situation');
+                  addNewsItem(state, `${cascadeDef.icon} CRISIS SPREADS: ${cascadeDef.name}`, 'situation');
+                }
+              }
+            }
+          }
+        }
       }
       state.activeSituations = state.activeSituations.filter(s => {
         if (shouldResolveSituation(s.id, state.policies, state.simulation, state.consecutiveLowEnvRegulations, state.budget)) {
@@ -2017,13 +2099,36 @@ export function advancePhase(state: GameState): void {
             addNewsItem(state, `💀 Assassination Attempt Succeeds — Leader of ${rulingName} eliminated by ${group.name}!`, 'event');
             addLogEntry(state, `💀 ASSASSINATION! ${group.name} have assassinated the leader!`, 'event');
             state.turnsUntilElection = 0; // Force snap election
+            // Realistic aftermath: assassination shocks the nation
+            state.simulation.nationalSecurity -= 15;
+            state.simulation.crime += 10;
+            state.simulation.freedomIndex -= 5; // Security crackdowns follow
+            // All voter groups react with fear
+            for (const p of state.players) {
+              if (state.voterSatisfaction[p.id]) {
+                for (const gid of Object.keys(state.voterSatisfaction[p.id])) {
+                  state.voterSatisfaction[p.id][gid] -= 5; // Universal shock
+                }
+              }
+            }
+            // Patriots and retirees become more security-demanding
+            if (rulingPlayer && state.voterSatisfaction[rulingPlayer.id]) {
+              state.voterSatisfaction[rulingPlayer.id]['patriots'] = Math.max(0, (state.voterSatisfaction[rulingPlayer.id]['patriots'] ?? 50) - 15);
+              state.voterSatisfaction[rulingPlayer.id]['retirees'] = Math.max(0, (state.voterSatisfaction[rulingPlayer.id]['retirees'] ?? 50) - 10);
+            }
             break; // Only one attempt per turn
           } else {
-            // Assassination foiled
+            // Assassination foiled — investigation follows
             state.extremism.assassinationAttempted = true;
             state.extremism[group.key] = Math.max(0, state.extremism[group.key] - 30);
+            // Foiled attempt still shakes society
+            state.simulation.nationalSecurity -= 5;
+            state.simulation.freedomIndex -= 3; // Increased surveillance follows
+            // But intelligence services get a popularity boost
             addNewsItem(state, `🚨 Assassination Plot Foiled by Intelligence Services — ${group.name} threat reduced`, 'event');
-            addLogEntry(state, `🚨 Assassination attempt by ${group.name} FOILED!`, 'event');
+            addLogEntry(state, `🚨 Assassination attempt by ${group.name} FOILED! Intelligence services praised.`, 'event');
+            // Counter-extremism effect: other extremist groups may be emboldened or deterred
+            state.extremism[group.key] = Math.max(0, state.extremism[group.key] - 10); // Extra deterrence
           }
         }
       }

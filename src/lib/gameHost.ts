@@ -183,16 +183,55 @@ function recalculate(state: GameState) {
     state.budget = calculateBudget(state.policies, state.simulation, state.budget.debtTotal ?? 200);
   }
 
-  // Apply situation effects to simulation
+  // Apply situation effects to simulation AND voter satisfaction
   for (const activeSit of state.activeSituations) {
     const sitDef = getSituationById(activeSit.id);
     if (sitDef) {
+      // Simulation effects (scaled by 0.5 per turn — accumulates while active)
       for (const [key, val] of Object.entries(sitDef.effects)) {
         const k = key as keyof typeof state.simulation;
         if (state.simulation[k] !== undefined) {
           (state.simulation as unknown as Record<string, number>)[k] += val * 0.5;
         }
       }
+
+      // Voter satisfaction effects — situations anger/please specific groups
+      if (sitDef.voterEffects) {
+        const ruling = state.players.find(p => p.role === 'ruling');
+        if (ruling && state.voterSatisfaction[ruling.id]) {
+          for (const [groupId, delta] of Object.entries(sitDef.voterEffects)) {
+            const current = state.voterSatisfaction[ruling.id][groupId] ?? 50;
+            // Scale by 0.3 per turn so it accumulates but doesn't overwhelm
+            state.voterSatisfaction[ruling.id][groupId] = Math.max(0, Math.min(100, current + delta * 0.3));
+          }
+        }
+      }
+    }
+  }
+
+  // Budget → Simulation feedback: debt crisis affects GDP and interest rates
+  if (state.budget.debtToGdp > 100) {
+    const debtPenalty = (state.budget.debtToGdp - 100) * 0.01;
+    state.simulation.gdpGrowth -= debtPenalty;
+    state.simulation.inflation += debtPenalty * 0.5;
+  }
+  if (state.budget.creditDowngrade) {
+    state.simulation.gdpGrowth -= 0.5; // Credit downgrade scares investors
+  }
+
+  // Scandal → Simulation feedback: active scandals erode trust and governance
+  if (state.activeScandals && state.activeScandals.length > 0) {
+    const scandalCount = state.activeScandals.filter(s => s.exposed).length;
+    state.simulation.corruption += scandalCount * 2; // Exposed corruption breeds more corruption
+    state.simulation.corruption = Math.min(100, state.simulation.corruption);
+  }
+
+  // Extremism → Simulation feedback: high extremism causes unrest
+  if (state.extremism) {
+    const maxExtremism = Math.max(state.extremism.far_left, state.extremism.far_right, state.extremism.religious, state.extremism.eco);
+    if (maxExtremism > 50) {
+      state.simulation.nationalSecurity -= (maxExtremism - 50) * 0.1;
+      state.simulation.crime += (maxExtremism - 50) * 0.05;
     }
   }
 
