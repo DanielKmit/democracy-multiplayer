@@ -904,7 +904,7 @@ export function applyPolicyChanges(state: GameState, changes: PolicyChange[]): s
     };
     const relevantMinistry = ministryForPolicy[change.policyId];
     if (relevantMinistry && state.cabinet?.ministers) {
-      const ministerId = state.cabinet.ministers[relevantMinistry as import('./types').MinistryId];
+      const ministerId = state.cabinet.ministers[relevantMinistry as MinistryId];
       if (ministerId) {
         const minister = state.cabinet.availablePool?.find(p => p.id === ministerId);
         if (minister) {

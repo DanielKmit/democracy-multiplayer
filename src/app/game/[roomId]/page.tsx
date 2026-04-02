@@ -38,6 +38,44 @@ import { ParliamentVoteModal } from '@/components/ParliamentVoteModal';
 
 type SidebarTab = 'gov' | 'intel' | 'diplo';
 
+type CenterView = 'bills' | 'policy_web' | 'map';
+
+function CenterViewTabs({ centerView, setCenterView, showPolicyWeb, showMap }: {
+  centerView: CenterView; setCenterView: (v: CenterView) => void; showPolicyWeb: boolean; showMap: boolean;
+}) {
+  const views: { id: CenterView; icon: string; label: string }[] = [
+    { id: 'bills', icon: '📋', label: 'Bills' },
+    { id: 'policy_web', icon: '🕸️', label: 'Policy Web' },
+    { id: 'map', icon: '🗺️', label: 'Map' },
+  ];
+  return (
+    <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-game-border bg-game-card/30">
+      {views.map(v => (
+        <button key={v.id} onClick={() => setCenterView(v.id)}
+          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+            (v.id === 'bills' && centerView === 'bills') ||
+            (v.id === 'policy_web' && showPolicyWeb) ||
+            (v.id === 'map' && showMap)
+              ? 'bg-white/[0.06] text-white border border-white/10'
+              : 'text-game-muted hover:text-game-secondary'
+          }`}>
+          {v.icon} {v.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function CenterViewContent({ centerView, showPolicyWeb }: { centerView: string; showPolicyWeb: boolean }) {
+  return (
+    <div className="flex-1 overflow-hidden">
+      {centerView === 'bills' ? (
+        <div className="h-full overflow-y-auto p-4"><BillsPanel /></div>
+      ) : showPolicyWeb ? <PolicyWeb /> : <NovariMap />}
+    </div>
+  );
+}
+
 function RightSidebar() {
   const [tab, setTab] = useState<SidebarTab>('gov');
   const tabs: { id: SidebarTab; label: string; icon: string }[] = [
@@ -379,49 +417,15 @@ export default function GamePage() {
                   End Turn →
                 </button>
               </div>
-              <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-game-border bg-game-card/30">
-                <button onClick={() => setCenterView('bills')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${centerView === 'bills' ? 'bg-white/[0.06] text-white border border-white/10' : 'text-game-muted hover:text-game-secondary'}`}>
-                  📋 Bills
-                </button>
-                <button onClick={() => setCenterView('policy_web')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${showPolicyWeb ? 'bg-white/[0.06] text-white border border-white/10' : 'text-game-muted hover:text-game-secondary'}`}>
-                  🕸️ Policy Web
-                </button>
-                <button onClick={() => setCenterView('map')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${showMap ? 'bg-white/[0.06] text-white border border-white/10' : 'text-game-muted hover:text-game-secondary'}`}>
-                  🗺️ Map
-                </button>
-              </div>
-              <div className="flex-1 overflow-hidden">
-                {centerView === 'bills' ? (
-                  <div className="h-full overflow-y-auto p-4"><BillsPanel /></div>
-                ) : showPolicyWeb ? <PolicyWeb /> : <NovariMap />}
-              </div>
+              <CenterViewTabs centerView={centerView} setCenterView={setCenterView} showPolicyWeb={showPolicyWeb} showMap={showMap} />
+              <CenterViewContent centerView={centerView} showPolicyWeb={showPolicyWeb} />
             </div>
           )}
 
           {!['events', 'dilemma', 'ruling', 'resolution', 'opposition', 'government_formation', 'polling', 'campaigning', 'coalition_negotiation'].includes(gameState.phase) && (
             <div className="flex-1 flex flex-col overflow-hidden">
-              <div className="flex items-center gap-2 p-2 border-b border-game-border bg-game-card/30">
-                <button onClick={() => setCenterView('bills')}
-                  className={`px-3 py-1 rounded text-xs transition-all ${centerView === 'bills' ? 'bg-game-accent text-white' : 'text-game-muted hover:text-game-secondary'}`}>
-                  📋 Bills
-                </button>
-                <button onClick={() => setCenterView('policy_web')}
-                  className={`px-3 py-1 rounded text-xs transition-all ${showPolicyWeb ? 'bg-game-accent text-white' : 'text-game-muted hover:text-game-secondary'}`}>
-                  🕸️ Policy Web
-                </button>
-                <button onClick={() => setCenterView('map')}
-                  className={`px-3 py-1 rounded text-xs transition-all ${showMap ? 'bg-game-accent text-white' : 'text-game-muted hover:text-game-secondary'}`}>
-                  🗺️ Map
-                </button>
-              </div>
-              <div className="flex-1 overflow-hidden">
-                {centerView === 'bills' ? (
-                  <div className="h-full overflow-y-auto p-4"><BillsPanel /></div>
-                ) : showPolicyWeb ? <PolicyWeb /> : <NovariMap />}
-              </div>
+              <CenterViewTabs centerView={centerView} setCenterView={setCenterView} showPolicyWeb={showPolicyWeb} showMap={showMap} />
+              <CenterViewContent centerView={centerView} showPolicyWeb={showPolicyWeb} />
             </div>
           )}
         </div>
