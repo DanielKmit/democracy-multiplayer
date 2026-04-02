@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useGameStore } from '@/lib/store';
 import { useGameActions } from '@/lib/useGameActions';
 import { getDilemmaById } from '@/lib/engine/dilemmas';
+import { motion, MotionButton, springs, PulseIndicator } from './Motion';
 
 const SIM_VAR_LABELS: Record<string, string> = {
   gdpGrowth: 'GDP Growth', unemployment: 'Unemployment', inflation: 'Inflation',
@@ -57,56 +58,81 @@ export function DilemmaModal() {
       });
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center animate-fade-in">
-      <div className="max-w-xl w-full mx-4 glass-card rounded-2xl overflow-hidden border border-amber-800/30 animate-fade-in-scale">
+    <motion.div className="fixed inset-0 z-50 flex items-center justify-center"
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+      <motion.div className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} />
+
+      <motion.div className="relative max-w-xl w-full mx-4 glass-card rounded-2xl overflow-hidden border border-amber-500/20"
+        initial={{ opacity: 0, scale: 0.9, y: 30 }} animate={{ opacity: 1, scale: 1, y: 0 }} transition={springs.gentle}>
+
         {/* Header */}
-        <div className="p-6 pb-4 text-center bg-gradient-to-b from-amber-950/30 to-transparent">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-amber-900/30 border border-amber-800/30 mb-3">
+        <div className="p-6 pb-4 text-center bg-gradient-to-b from-amber-950/20 to-transparent">
+          <motion.div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/15 mb-3"
+            initial={{ scale: 0, rotate: -15 }} animate={{ scale: 1, rotate: 0 }} transition={springs.bouncy}>
             <span className="text-3xl">{dilemma.icon}</span>
-          </div>
-          <h2 className="text-xl font-bold font-display mb-1">{dilemma.title}</h2>
-          <p className="text-sm text-game-secondary leading-relaxed">{dilemma.description}</p>
+          </motion.div>
+          <motion.h2 className="text-xl font-bold font-display mb-1"
+            initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ ...springs.smooth, delay: 0.15 }}>
+            {dilemma.title}
+          </motion.h2>
+          <motion.p className="text-sm text-game-secondary leading-relaxed"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.25 }}>
+            {dilemma.description}
+          </motion.p>
           {canDecide && (
-            <div className={`mt-3 inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-sm font-mono ${
-              timeLeft <= 10 ? 'bg-red-900/30 text-red-400 border border-red-800/30 animate-pulse' : 'bg-game-card text-game-muted border border-game-border'
-            }`}>
+            <motion.div className={`mt-3 inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-sm font-mono ${
+              timeLeft <= 10 ? 'bg-red-500/10 text-red-400 border border-red-500/20' : 'bg-white/[0.03] text-game-muted border border-game-border'
+            }`}
+              key={timeLeft}
+              initial={{ scale: timeLeft <= 10 ? 1.1 : 1 }}
+              animate={{ scale: 1 }}
+              transition={springs.snappy}>
               ⏱ {timeLeft}s
-            </div>
+            </motion.div>
           )}
         </div>
 
         {/* Options */}
         <div className="px-6 pb-6">
           {canDecide ? (
-            <div className="grid grid-cols-2 gap-3">
+            <motion.div className="grid grid-cols-2 gap-3"
+              initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ ...springs.smooth, delay: 0.3 }}>
               {/* Option A */}
-              <button onClick={() => resolveDilemma('a')}
-                className="glass-card p-4 text-left border border-blue-800/30 hover:border-blue-600/50 hover:bg-blue-950/20 transition-all group rounded-xl">
-                <h4 className="font-bold text-blue-300 mb-1.5 group-hover:text-blue-200 transition-colors">{dilemma.optionA.label}</h4>
-                <p className="text-[11px] text-game-muted mb-3 leading-relaxed">{dilemma.optionA.description}</p>
+              <motion.button onClick={() => resolveDilemma('a')}
+                whileHover={{ scale: 1.02, y: -2, boxShadow: '0 8px 30px rgba(0,0,0,0.3), 0 0 30px rgba(59,130,246,0.08)' }}
+                whileTap={{ scale: 0.97 }}
+                transition={springs.snappy}
+                className="glass-card p-4 text-left border border-blue-500/15 hover:border-blue-500/30 group rounded-xl">
+                <h4 className="font-bold text-blue-300 mb-1.5 group-hover:text-blue-200">{dilemma.optionA.label}</h4>
+                <p className="text-xs text-game-muted mb-3 leading-relaxed">{dilemma.optionA.description}</p>
                 <div className="flex flex-wrap gap-1">
                   {renderEffects(dilemma.optionA.effects)}
                 </div>
-              </button>
+              </motion.button>
 
               {/* Option B */}
-              <button onClick={() => resolveDilemma('b')}
-                className="glass-card p-4 text-left border border-red-800/30 hover:border-red-600/50 hover:bg-red-950/20 transition-all group rounded-xl">
-                <h4 className="font-bold text-red-300 mb-1.5 group-hover:text-red-200 transition-colors">{dilemma.optionB.label}</h4>
-                <p className="text-[11px] text-game-muted mb-3 leading-relaxed">{dilemma.optionB.description}</p>
+              <motion.button onClick={() => resolveDilemma('b')}
+                whileHover={{ scale: 1.02, y: -2, boxShadow: '0 8px 30px rgba(0,0,0,0.3), 0 0 30px rgba(239,68,68,0.08)' }}
+                whileTap={{ scale: 0.97 }}
+                transition={springs.snappy}
+                className="glass-card p-4 text-left border border-red-500/15 hover:border-red-500/30 group rounded-xl">
+                <h4 className="font-bold text-red-300 mb-1.5 group-hover:text-red-200">{dilemma.optionB.label}</h4>
+                <p className="text-xs text-game-muted mb-3 leading-relaxed">{dilemma.optionB.description}</p>
                 <div className="flex flex-wrap gap-1">
                   {renderEffects(dilemma.optionB.effects)}
                 </div>
-              </button>
-            </div>
+              </motion.button>
+            </motion.div>
           ) : (
-            <div className="text-center py-6">
-              <div className="text-4xl mb-3 animate-pulse">⏳</div>
+            <motion.div className="text-center py-6"
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={springs.smooth}>
+              <div className="flex justify-center mb-3"><PulseIndicator color="amber" /></div>
               <p className="text-game-secondary">Waiting for the ruling party to decide...</p>
-            </div>
+            </motion.div>
           )}
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 }

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useGameStore } from '@/lib/store';
+import { motion, AnimatePresence, MotionPage, MotionCard, MotionButton, MotionList, MotionListItem, springs } from '@/components/Motion';
 import { createRoom, joinRoom, onMessage, onPeerConnect, onPeerDisconnect, sendMessage } from '@/lib/peer';
 import { initGame, initAIGame, handleClientJoin, handleAction, setOnStateChange, loadPersistedState, restoreGame, clearPersistedState } from '@/lib/gameHost';
 import { GameState, PartyConfig, PartyColor, PartyLogo, MANIFESTO_OPTIONS, ManifestoOption } from '@/lib/engine/types';
@@ -168,58 +169,117 @@ export default function Home() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-game-bg bg-dot-grid bg-gradient-mesh">
-      <div className="max-w-xl w-full mx-4">
+      <div className="max-w-lg w-full mx-4">
         {/* Title */}
-        <div className="text-center mb-10 animate-fade-in">
-          <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-game-accent/10 border border-game-accent/20 mb-5">
-            <span className="text-4xl">🏛️</span>
-          </div>
-          <h1 className="text-5xl font-bold mb-1 font-display tracking-tight">
-            <span className="bg-gradient-to-r from-blue-400 via-purple-400 to-red-400 text-gradient">Democracy</span>
-          </h1>
-          <p className="text-game-secondary text-lg font-display">Republic of Novaria</p>
-          <p className="text-game-muted text-xs mt-2 tracking-wider uppercase">Multiplayer Political Strategy</p>
-        </div>
+        <motion.div
+          className="text-center mb-8"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ ...springs.gentle, delay: 0.1 }}
+        >
+          <motion.div
+            className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500/15 to-purple-500/15 border border-white/[0.08] mb-5"
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ ...springs.bouncy, delay: 0.2 }}
+            style={{ boxShadow: '0 0 40px rgba(59,130,246,0.08), 0 8px 24px rgba(0,0,0,0.3)' }}
+          >
+            <span className="text-3xl">🏛️</span>
+          </motion.div>
+          <motion.h1
+            className="text-5xl font-bold mb-2 font-display tracking-tight"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ ...springs.smooth, delay: 0.3 }}
+          >
+            <span className="bg-gradient-to-r from-blue-300 via-blue-100 to-blue-300 text-gradient">Democracy</span>
+          </motion.h1>
+          <motion.p
+            className="text-game-secondary text-base font-display tracking-wide"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.5, delay: 0.5 }}
+          >Republic of Novaria</motion.p>
+          <motion.div
+            className="flex items-center justify-center gap-3 text-game-muted text-[11px] mt-3 tracking-widest uppercase"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.5, delay: 0.7 }}
+          >
+            <span>Parliament</span><span className="text-white/10">|</span><span>Elections</span><span className="text-white/10">|</span><span>Strategy</span>
+          </motion.div>
+        </motion.div>
 
         {errorMsg && (
-          <div className="mb-4 p-3 glass-card border-red-800/40 bg-red-950/20 text-red-300 text-sm text-center animate-fade-in">
+          <div className="mb-4 p-3 rounded-xl border border-red-500/20 bg-red-500/[0.06] text-red-300 text-sm text-center animate-fade-in">
             {errorMsg}
           </div>
         )}
 
         {/* Main Menu */}
         {mode === 'menu' && (
-          <div className="space-y-3 animate-fade-in">
-            {hasSavedGame && (
-              <button onClick={handleResume} disabled={loading}
-                className="w-full p-4 rounded-xl text-lg font-semibold transition-all hover:scale-[1.01] active:scale-[0.99] btn-success ring-1 ring-emerald-400/30">
-                ▶ Resume Game {savedRoomId ? `(${savedRoomId})` : ''}
-              </button>
-            )}
-            <button onClick={() => setModeLocal('ai_setup')}
-              className="w-full p-4 glass-card rounded-xl text-lg font-semibold transition-all hover:scale-[1.01] active:scale-[0.99] hover:border-purple-500/30 group">
-              <span className="text-purple-400 group-hover:text-purple-300">🤖 Play vs AI</span>
-              <span className="block text-xs text-game-muted mt-0.5 font-normal">Single-player against AI opponent</span>
-            </button>
-            <button onClick={() => setModeLocal('create')}
-              className="w-full p-4 glass-card rounded-xl text-lg font-semibold transition-all hover:scale-[1.01] active:scale-[0.99] hover:border-blue-500/30 group">
-              <span className="text-blue-400 group-hover:text-blue-300">👥 Create Multiplayer</span>
-              <span className="block text-xs text-game-muted mt-0.5 font-normal">Host a room for a friend to join</span>
-            </button>
-            <button onClick={() => setModeLocal('join')}
-              className="w-full p-4 glass-card rounded-xl text-lg font-semibold transition-all hover:scale-[1.01] active:scale-[0.99] hover:border-white/10 group">
-              <span className="text-game-secondary group-hover:text-white">🔗 Join Game</span>
-              <span className="block text-xs text-game-muted mt-0.5 font-normal">Enter a room code to join</span>
-            </button>
-
-            <div className="text-center pt-6 space-y-1.5">
-              <p className="text-game-muted text-xs">Create your party. Govern a nation. Win elections.</p>
-              <div className="flex items-center justify-center gap-3 text-game-muted/50 text-[10px]">
-                <span>Parliament</span><span>•</span><span>6 Parties</span><span>•</span>
-                <span>30 Policies</span><span>•</span><span>7 Regions</span>
-              </div>
+          <MotionList className="hero-card p-2">
+            <div className="space-y-1">
+              {hasSavedGame && (
+                <MotionListItem>
+                  <motion.button onClick={handleResume} disabled={loading}
+                    whileHover={{ scale: 1.01, y: -1 }} whileTap={{ scale: 0.98 }} transition={springs.snappy}
+                    className="menu-item border-emerald-500/20 hover:border-emerald-500/30 group">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-lg">▶</div>
+                      <div>
+                        <span className="text-emerald-400 font-semibold text-[15px] group-hover:text-emerald-300">Resume Game</span>
+                        {savedRoomId && <span className="text-xs text-game-muted ml-2">({savedRoomId})</span>}
+                      </div>
+                    </div>
+                  </motion.button>
+                </MotionListItem>
+              )}
+              <MotionListItem>
+                <motion.button onClick={() => setModeLocal('ai_setup')}
+                  whileHover={{ scale: 1.01, y: -1 }} whileTap={{ scale: 0.98 }} transition={springs.snappy}
+                  className="menu-item hover:border-purple-500/20 group">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-purple-500/10 flex items-center justify-center text-lg">🤖</div>
+                    <div>
+                      <span className="text-white font-semibold text-[15px]">Play vs AI</span>
+                      <span className="block text-xs text-game-muted mt-0.5">Single-player against AI opponent</span>
+                    </div>
+                  </div>
+                </motion.button>
+              </MotionListItem>
+              <MotionListItem>
+                <motion.button onClick={() => setModeLocal('create')}
+                  whileHover={{ scale: 1.01, y: -1 }} whileTap={{ scale: 0.98 }} transition={springs.snappy}
+                  className="menu-item hover:border-blue-500/20 group">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-lg">👥</div>
+                    <div>
+                      <span className="text-white font-semibold text-[15px]">Create Multiplayer</span>
+                      <span className="block text-xs text-game-muted mt-0.5">Host a room for a friend to join</span>
+                    </div>
+                  </div>
+                </motion.button>
+              </MotionListItem>
+              <MotionListItem>
+                <motion.button onClick={() => setModeLocal('join')}
+                  whileHover={{ scale: 1.01, y: -1 }} whileTap={{ scale: 0.98 }} transition={springs.snappy}
+                  className="menu-item hover:border-white/10 group">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-white/[0.04] flex items-center justify-center text-lg">🔗</div>
+                    <div>
+                      <span className="text-white font-semibold text-[15px]">Join Game</span>
+                      <span className="block text-xs text-game-muted mt-0.5">Enter a room code to join</span>
+                    </div>
+                  </div>
+                </motion.button>
+              </MotionListItem>
             </div>
-          </div>
+
+            <div className="text-center py-4">
+              <p className="text-game-muted text-xs">Create your party. Govern a nation. Win elections.</p>
+            </div>
+          </MotionList>
         )}
 
         {/* AI Setup */}
@@ -235,23 +295,23 @@ export default function Home() {
                 {/* Name inputs */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[10px] text-game-muted uppercase tracking-wider mb-1.5 font-bold">Your Name</label>
+                    <label className="block text-label mb-1.5 font-semibold">Your Name</label>
                     <input type="text" value={name} onChange={(e) => setName(e.target.value)}
                       placeholder="Leader name..." autoFocus maxLength={20}
-                      className="w-full p-2.5 bg-game-bg border border-game-border rounded-lg text-white text-sm placeholder:text-game-muted/50 focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/20 transition-all" />
+                      className="input-premium" />
                   </div>
                   <div>
-                    <label className="block text-[10px] text-game-muted uppercase tracking-wider mb-1.5 font-bold">Party Name</label>
+                    <label className="block text-label mb-1.5 font-semibold">Party Name</label>
                     <input type="text" value={partyName} onChange={(e) => setPartyName(e.target.value)}
                       placeholder="Party name..." maxLength={30}
-                      className="w-full p-2.5 bg-game-bg border border-game-border rounded-lg text-white text-sm placeholder:text-game-muted/50 focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/20 transition-all" />
+                      className="input-premium" />
                   </div>
                 </div>
 
                 {/* Color + Logo */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-[10px] text-game-muted uppercase tracking-wider mb-1.5 font-bold">Color</label>
+                    <label className="block text-label mb-1.5 font-semibold">Color</label>
                     <div className="grid grid-cols-4 gap-1.5">
                       {COLORS.map(c => (
                         <button key={c} onClick={() => setPartyColor(c)}
@@ -261,7 +321,7 @@ export default function Home() {
                     </div>
                   </div>
                   <div>
-                    <label className="block text-[10px] text-game-muted uppercase tracking-wider mb-1.5 font-bold">Logo</label>
+                    <label className="block text-label mb-1.5 font-semibold">Logo</label>
                     <div className="grid grid-cols-4 gap-1.5">
                       {LOGOS.map(l => (
                         <button key={l} onClick={() => setPartyLogo(l)}
@@ -323,7 +383,7 @@ export default function Home() {
                 {/* Difficulty + AI */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-[10px] text-game-muted uppercase tracking-wider mb-1.5 font-bold">Difficulty</label>
+                    <label className="block text-label mb-1.5 font-semibold">Difficulty</label>
                     <div className="space-y-1.5">
                       {([
                         { id: 'easy' as const, label: 'Easy', icon: '🌱' },
@@ -343,7 +403,7 @@ export default function Home() {
                     </div>
                   </div>
                   <div>
-                    <label className="block text-[10px] text-game-muted uppercase tracking-wider mb-1.5 font-bold">AI Opponent</label>
+                    <label className="block text-label mb-1.5 font-semibold">AI Opponent</label>
                     <div className="space-y-1.5">
                       {(['left', 'center', 'right'] as AIIdeology[]).map(ideo => {
                         const preset = AI_PARTY_PRESETS[ideo];
@@ -414,7 +474,7 @@ export default function Home() {
             </div>
             <div className="p-5 space-y-4">
               <div>
-                <label className="block text-[10px] text-game-muted uppercase tracking-wider mb-1.5 font-bold">Your Name</label>
+                <label className="block text-label mb-1.5 font-semibold">Your Name</label>
                 <input type="text" value={name} onChange={(e) => setName(e.target.value)}
                   placeholder="Enter your name..." autoFocus maxLength={20}
                   className="w-full p-2.5 bg-game-bg border border-game-border rounded-lg text-white text-sm placeholder:text-game-muted/50 focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/20 transition-all" />
@@ -442,13 +502,13 @@ export default function Home() {
             </div>
             <div className="p-5 space-y-4">
               <div>
-                <label className="block text-[10px] text-game-muted uppercase tracking-wider mb-1.5 font-bold">Your Name</label>
+                <label className="block text-label mb-1.5 font-semibold">Your Name</label>
                 <input type="text" value={name} onChange={(e) => setName(e.target.value)}
                   placeholder="Enter your name..." autoFocus maxLength={20}
                   className="w-full p-2.5 bg-game-bg border border-game-border rounded-lg text-white text-sm placeholder:text-game-muted/50 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 transition-all" />
               </div>
               <div>
-                <label className="block text-[10px] text-game-muted uppercase tracking-wider mb-1.5 font-bold">Room Code</label>
+                <label className="block text-label mb-1.5 font-semibold">Room Code</label>
                 <input type="text" value={joinCode} onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
                   placeholder="ABCDEF" maxLength={6}
                   className="w-full p-3 bg-game-bg border border-game-border rounded-lg text-white placeholder:text-game-muted/30 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 tracking-[0.4em] text-center text-2xl font-mono transition-all" />

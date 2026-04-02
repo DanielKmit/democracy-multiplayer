@@ -7,6 +7,7 @@ import { PARTY_COLORS } from '@/lib/engine/types';
 import { PartyLogoIcon } from './icons/PartyLogos';
 import { GameSettingsPanel } from './GameSettingsPanel';
 import { destroyPeer } from '@/lib/peer';
+import { motion, MotionButton, MotionList, MotionListItem, springs, PulseIndicator } from './Motion';
 
 const BASE_URL = 'https://democracy-game-omega.vercel.app';
 
@@ -79,10 +80,15 @@ export function Lobby({ roomId }: { roomId: string }) {
         </div>
       )}
 
-      <div className="text-center animate-fade-in max-w-lg">
-        <div className="text-6xl mb-6">🏛️</div>
+      <motion.div className="text-center max-w-lg"
+        initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={springs.gentle}>
+        <motion.div className="text-6xl mb-6"
+          initial={{ scale: 0 }} animate={{ scale: 1 }} transition={springs.bouncy}>🏛️</motion.div>
         <h2 className="text-2xl font-bold mb-1">Republic of Novaria</h2>
-        <p className="text-game-secondary mb-8">Waiting for opponent to join</p>
+        <div className="flex items-center justify-center gap-2 mb-8">
+          <PulseIndicator color="blue" />
+          <p className="text-game-secondary">Waiting for opponent to join</p>
+        </div>
 
         {/* Room code + Copy button */}
         <div className="bg-game-card border border-game-border rounded-xl p-6 mb-6 inline-block">
@@ -177,7 +183,7 @@ export function Lobby({ roomId }: { roomId: string }) {
           </span>
           <span>Waiting for Player 2 to join...</span>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }

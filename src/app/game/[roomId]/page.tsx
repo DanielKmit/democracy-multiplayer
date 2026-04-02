@@ -6,6 +6,7 @@ import { useGameStore } from '@/lib/store';
 import { useGameActions } from '@/lib/useGameActions';
 import { loadPersistedState, restoreGame, setOnStateChange, handleAction as hostHandleAction } from '@/lib/gameHost';
 import { GameState } from '@/lib/engine/types';
+import { motion, AnimatePresence, MotionButton, MotionCard, MotionList, MotionListItem, PhaseTransition, PulseIndicator, springs } from '@/components/Motion';
 import { Lobby } from '@/components/Lobby';
 import { PartyCreator } from '@/components/PartyCreator';
 import { TopBar } from '@/components/TopBar';
@@ -289,11 +290,14 @@ export default function GamePage() {
     // Has submitted — show waiting screen
     return (
       <div className="min-h-screen flex items-center justify-center bg-game-bg">
-        <div className="text-center animate-fade-in">
-          <div className="text-5xl mb-4">⏳</div>
+        <motion.div className="text-center"
+          initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={springs.gentle}>
+          <motion.div className="text-5xl mb-4"
+            animate={{ rotate: [0, 10, -10, 0] }} transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}>⏳</motion.div>
           <h2 className="text-xl font-bold mb-2 font-display">Party Created!</h2>
           <p className="text-game-secondary">Waiting for your opponent to create their party...</p>
-        </div>
+          <div className="flex justify-center mt-4"><PulseIndicator color="blue" /></div>
+        </motion.div>
       </div>
     );
   }
@@ -330,7 +334,7 @@ export default function GamePage() {
       <div className="flex-1 flex overflow-hidden">
         {/* LEFT: Events sidebar (Bills moved to center dashboard) */}
         {(isRulingPhase || isOppositionPhase) ? (
-          <div className="w-64 border-r border-game-border bg-game-card/50 overflow-y-auto p-3 space-y-3 flex-shrink-0">
+          <div className="game-sidebar-left w-64 border-r border-game-border bg-game-card/50 overflow-y-auto p-3 space-y-3 flex-shrink-0">
             <EventCards inline />
           </div>
         ) : (
@@ -339,48 +343,64 @@ export default function GamePage() {
 
         {/* CENTER */}
         <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+          <AnimatePresence mode="wait">
           {gameState.phase === 'events' && !gameState.currentEvent && (
-            <div className="flex-1 flex items-center justify-center">
+            <motion.div key="no-events" className="flex-1 flex items-center justify-center"
+              initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={springs.smooth}>
               <div className="text-center">
+                <motion.div className="text-4xl mb-4"
+                  initial={{ scale: 0 }} animate={{ scale: 1 }} transition={springs.bouncy}>📰</motion.div>
                 <p className="text-xl text-game-secondary mb-4">No events this turn</p>
                 {myRole === 'ruling' ? (
-                  <button onClick={endTurnPhase}
-                    className="btn-primary px-6 py-3 rounded-lg font-semibold">
+                  <MotionButton variant="primary" onClick={endTurnPhase} className="px-8 py-3 rounded-xl font-semibold text-sm">
                     Continue →
-                  </button>
+                  </MotionButton>
                 ) : (
-                  <p className="text-sm text-game-muted">Waiting for ruling party to continue...</p>
+                  <div className="flex items-center justify-center gap-2">
+                    <PulseIndicator color="blue" />
+                    <p className="text-sm text-game-muted">Waiting for ruling party to continue...</p>
+                  </div>
                 )}
               </div>
-            </div>
+            </motion.div>
           )}
 
           {gameState.phase === 'government_formation' && (
-            <div className="flex-1 flex items-center justify-center">
+            <motion.div key="gov-form" className="flex-1 flex items-center justify-center"
+              initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} transition={springs.gentle}>
               <div className="text-center">
-                <h2 className="text-2xl font-bold mb-4 font-display">🏛️ Form Your Government</h2>
+                <motion.div className="text-5xl mb-4"
+                  animate={{ y: [0, -6, 0] }} transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}>🏛️</motion.div>
+                <h2 className="text-2xl font-bold mb-4 font-display">Form Your Government</h2>
                 {myRole === 'ruling' ? (
                   <>
                     <p className="text-game-secondary mb-6">Appoint ministers in the sidebar, then continue.</p>
-                    <button onClick={endTurnPhase}
-                      className="btn-primary px-8 py-3 rounded-lg font-semibold">
+                    <MotionButton variant="primary" onClick={endTurnPhase} className="px-8 py-3 rounded-xl font-semibold text-sm">
                       Begin Governing →
-                    </button>
+                    </MotionButton>
                   </>
                 ) : (
-                  <p className="text-game-secondary">Waiting for ruling party to form their government...</p>
+                  <div className="flex items-center justify-center gap-2">
+                    <PulseIndicator color="blue" />
+                    <p className="text-game-secondary">Waiting for ruling party to form their government...</p>
+                  </div>
                 )}
               </div>
-            </div>
+            </motion.div>
           )}
 
           {showWaiting && (
-            <div className="flex-1 flex items-center justify-center">
+            <motion.div key="waiting" className="flex-1 flex items-center justify-center"
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={springs.smooth}>
               <div className="text-center max-w-md">
-                <div className="text-6xl mb-4">{isAIGame && gameState.aiThinking ? '🤖' : '⏳'}</div>
+                <motion.div className="text-6xl mb-4"
+                  animate={{ rotate: isAIGame && gameState.aiThinking ? [0, 5, -5, 0] : 0 }}
+                  transition={{ duration: 1.5, repeat: Infinity }}>
+                  {isAIGame && gameState.aiThinking ? '🤖' : '⏳'}
+                </motion.div>
                 <p className="text-xl text-game-secondary mb-2">
                   {isAIGame && gameState.aiThinking
-                    ? '🤖 AI is thinking...'
+                    ? 'AI is thinking...'
                     : isRulingPhase
                       ? 'Waiting for Ruling Party...'
                       : 'Waiting for Opposition...'}
@@ -391,47 +411,54 @@ export default function GamePage() {
                     : 'Your opponent is planning opposition actions.'}
                 </p>
                 {isAIGame && gameState.aiThinking && (
-                  <div className="mt-4 flex justify-center">
-                    <div className="flex gap-1">
-                      <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                      <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                      <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                    </div>
-                  </div>
-                )}
-                {/* Show recent action log entries during opponent's turn */}
-                {gameState.actionLog.length > 0 && (
-                  <div className="mt-6 space-y-1.5 text-left">
-                    <div className="text-[10px] text-game-muted uppercase tracking-wider font-bold mb-1">Recent Activity</div>
-                    {gameState.actionLog.slice(-5).map((entry, i) => (
-                      <div key={i} className="glass-card p-2 text-[11px] text-game-secondary">
-                        {entry.message}
-                      </div>
+                  <div className="mt-4 flex justify-center gap-1.5">
+                    {[0, 1, 2].map(i => (
+                      <motion.div key={i} className="w-2 h-2 bg-purple-400 rounded-full"
+                        animate={{ y: [0, -8, 0] }}
+                        transition={{ duration: 0.6, repeat: Infinity, delay: i * 0.15, ease: "easeInOut" }} />
                     ))}
                   </div>
                 )}
+                {gameState.actionLog.length > 0 && (
+                  <MotionList className="mt-6 space-y-1.5 text-left">
+                    <div className="text-label mb-1">Recent Activity</div>
+                    {gameState.actionLog.slice(-5).map((entry, i) => (
+                      <MotionListItem key={i}>
+                        <div className="glass-card p-2.5 text-xs text-game-secondary">
+                          {entry.message}
+                        </div>
+                      </MotionListItem>
+                    ))}
+                  </MotionList>
+                )}
               </div>
-            </div>
+            </motion.div>
           )}
+          </AnimatePresence>
 
           {isRulingPhase && myRole === 'ruling' && <RulingDashboard />}
 
           {isOppositionPhase && myRole === 'opposition' && (
-            <div className="flex-1 flex flex-col overflow-hidden">
+            <motion.div className="flex-1 flex flex-col overflow-hidden"
+              initial={{ opacity: 0, x: 15 }} animate={{ opacity: 1, x: 0 }} transition={springs.smooth}>
               {/* Prominent turn banner */}
-              <div className="px-4 py-3 border-b border-red-800/30 bg-gradient-to-r from-red-950/30 via-red-950/10 to-transparent flex items-center justify-between">
-                <div>
-                  <div className="text-sm font-bold text-red-400">⚔️ Your Turn — Opposition Phase</div>
-                  <div className="text-[10px] text-game-muted mt-0.5">Use the action panel on the right to challenge the government, or propose bills below.</div>
+              <motion.div
+                className="px-4 py-3 border-b border-red-800/30 bg-gradient-to-r from-red-950/30 via-red-950/10 to-transparent flex items-center justify-between"
+                initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ ...springs.snappy, delay: 0.1 }}>
+                <div className="flex items-center gap-3">
+                  <PulseIndicator color="red" />
+                  <div>
+                    <div className="text-sm font-bold text-red-400">Your Turn — Opposition Phase</div>
+                    <div className="text-xs text-game-muted mt-0.5">Challenge the government or propose bills.</div>
+                  </div>
                 </div>
-                <button onClick={endTurnPhase}
-                  className="px-5 py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-red-600 to-red-500 text-white hover:shadow-lg hover:shadow-red-600/20 transition-all">
+                <MotionButton variant="danger" onClick={endTurnPhase} className="px-5 py-2 rounded-xl text-xs font-bold">
                   End Turn →
-                </button>
-              </div>
+                </MotionButton>
+              </motion.div>
               <CenterViewTabs centerView={centerView} setCenterView={setCenterView} showPolicyWeb={showPolicyWeb} showMap={showMap} />
               <CenterViewContent centerView={centerView} showPolicyWeb={showPolicyWeb} />
-            </div>
+            </motion.div>
           )}
 
           {!['events', 'dilemma', 'ruling', 'resolution', 'opposition', 'government_formation', 'polling', 'campaigning', 'debate', 'coalition_negotiation'].includes(gameState.phase) && (

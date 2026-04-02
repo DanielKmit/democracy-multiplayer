@@ -1,33 +1,47 @@
 @import "tailwindcss";
 
 :root {
-  /* Political Dark Theme — refined palette */
-  --game-bg: #080c16;
-  --game-card: #0f1729;
-  --game-border: rgba(255, 255, 255, 0.06);
+  /* Political Dark Theme — refined premium palette */
+  --game-bg: #06090f;
+  --game-card: #0c1220;
+  --game-border: rgba(255, 255, 255, 0.07);
   --game-accent: #3b82f6;
   --game-opposition: #ef4444;
   --game-success: #10b981;
   --game-warning: #f59e0b;
-  --game-text: #e2e8f0;
-  --game-secondary: #94a3b8;
-  --game-muted: #64748b;
+  --game-text: #e8ecf4;
+  --game-secondary: #8b9bb8;
+  --game-muted: #5a6a85;
 
   /* Extended palette */
-  --game-accent-glow: rgba(59, 130, 246, 0.15);
-  --game-card-hover: #131d33;
-  --game-highlight: rgba(255, 255, 255, 0.03);
+  --game-accent-glow: rgba(59, 130, 246, 0.12);
+  --game-card-hover: #111b30;
+  --game-highlight: rgba(255, 255, 255, 0.025);
+  --game-surface: #0a1018;
+
+  /* Radius system */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-full: 9999px;
+
+  /* Shadow system */
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.4);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.35), 0 1px 3px rgba(0,0,0,0.3);
+  --shadow-lg: 0 8px 30px rgba(0,0,0,0.4), 0 2px 8px rgba(0,0,0,0.3);
+  --shadow-xl: 0 16px 50px rgba(0,0,0,0.5), 0 4px 16px rgba(0,0,0,0.3);
 
   /* Legacy compat */
   --ruling-blue: #3B82F6;
   --opposition-red: #EF4444;
-  --bg-primary: #080c16;
-  --bg-secondary: #0f1729;
-  --bg-card: #0f1729;
-  --border: rgba(255, 255, 255, 0.06);
-  --text-primary: #e2e8f0;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
+  --bg-primary: #06090f;
+  --bg-secondary: #0c1220;
+  --bg-card: #0c1220;
+  --border: rgba(255, 255, 255, 0.07);
+  --text-primary: #e8ecf4;
+  --text-secondary: #8b9bb8;
+  --text-muted: #5a6a85;
 }
 
 /* Utility classes for design system */
@@ -44,24 +58,27 @@
    Glass morphism cards — premium depth
    ========================================== */
 .glass-card {
-  background: linear-gradient(135deg, rgba(15, 23, 41, 0.9), rgba(15, 23, 41, 0.7));
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 12px;
+  background: linear-gradient(
+    135deg,
+    rgba(12, 18, 32, 0.92),
+    rgba(12, 18, 32, 0.75)
+  );
+  backdrop-filter: blur(24px) saturate(1.2);
+  -webkit-backdrop-filter: blur(24px) saturate(1.2);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: var(--radius-md);
   box-shadow:
-    0 1px 3px rgba(0, 0, 0, 0.4),
-    0 4px 16px rgba(0, 0, 0, 0.2),
-    inset 0 1px 0 rgba(255, 255, 255, 0.04);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    var(--shadow-md),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    inset 0 0 0 0.5px rgba(255, 255, 255, 0.03);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .glass-card:hover {
-  border-color: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.12);
   box-shadow:
-    0 2px 8px rgba(0, 0, 0, 0.45),
-    0 10px 30px rgba(0, 0, 0, 0.25),
-    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    var(--shadow-lg),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
 }
 
 /* Glass card with colored glow on hover */
@@ -112,6 +129,13 @@
   transform: translateY(-1px);
 }
 
+.btn-primary:hover, .btn-success:hover, .btn-danger:hover, .btn-secondary:hover {
+  transform: translateY(-1px);
+}
+.btn-primary:active, .btn-success:active, .btn-danger:active, .btn-secondary:active {
+  transform: translateY(0);
+}
+
 .btn-success {
   background: linear-gradient(135deg, #10b981, #059669);
   color: white;
@@ -122,6 +146,34 @@
   background: linear-gradient(135deg, #ef4444, #dc2626);
   color: white;
   box-shadow: 0 0 20px rgba(239, 68, 68, 0.15), 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* Secondary button — ghost style for less prominent actions */
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--game-text);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  transition: all 0.25s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* Tertiary button — minimal for inline actions */
+.btn-tertiary {
+  background: transparent;
+  color: var(--game-secondary);
+  transition: all 0.2s ease;
+  border-radius: 8px;
+  padding: 4px 8px;
+}
+.btn-tertiary:hover {
+  color: var(--game-text);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 /* ==========================================
@@ -146,7 +198,7 @@
    Background effects
    ========================================== */
 .bg-dot-grid {
-  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
   background-size: 28px 28px;
 }
 
@@ -169,6 +221,131 @@
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   background-repeat: repeat;
   background-size: 256px 256px;
+}
+
+/* ==========================================
+   Premium form inputs
+   ========================================== */
+.input-premium {
+  width: 100%;
+  padding: 10px 14px;
+  background: var(--game-surface);
+  border: 1px solid var(--game-border);
+  border-radius: var(--radius-md);
+  color: var(--game-text);
+  font-size: 14px;
+  transition: all 0.2s ease;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+.input-premium::placeholder { color: var(--game-muted); opacity: 0.6; }
+.input-premium:hover { border-color: rgba(255, 255, 255, 0.12); }
+.input-premium:focus {
+  outline: none;
+  border-color: var(--game-accent);
+  box-shadow:
+    inset 0 1px 3px rgba(0, 0, 0, 0.3),
+    0 0 0 3px rgba(59, 130, 246, 0.12);
+}
+
+/* Premium range slider */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-full);
+  outline: none;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--game-accent);
+  cursor: pointer;
+  box-shadow: 0 0 10px rgba(59, 130, 246, 0.3), 0 2px 6px rgba(0, 0, 0, 0.4);
+  transition: transform 0.15s ease;
+}
+input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+  box-shadow: 0 0 16px rgba(59, 130, 246, 0.5), 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+input[type="range"]::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--game-accent);
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 0 10px rgba(59, 130, 246, 0.3), 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+/* ==========================================
+   Premium hero / menu card
+   ========================================== */
+.hero-card {
+  background: linear-gradient(
+    135deg,
+    rgba(12, 18, 32, 0.95),
+    rgba(12, 18, 32, 0.85)
+  );
+  backdrop-filter: blur(30px) saturate(1.3);
+  -webkit-backdrop-filter: blur(30px) saturate(1.3);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-xl);
+  box-shadow:
+    var(--shadow-xl),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Subtle ambient glow behind hero card */
+.hero-card::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(
+    ellipse at 30% 20%,
+    rgba(59, 130, 246, 0.06) 0%,
+    transparent 50%
+  ), radial-gradient(
+    ellipse at 70% 80%,
+    rgba(168, 85, 247, 0.04) 0%,
+    transparent 50%
+  );
+  pointer-events: none;
+  z-index: 0;
+}
+
+.hero-card > * { position: relative; z-index: 1; }
+
+/* Menu item button — landing page */
+.menu-item {
+  display: block;
+  width: 100%;
+  padding: 16px 20px;
+  border-radius: var(--radius-lg);
+  text-align: left;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+.menu-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+.menu-item:active {
+  transform: translateY(0);
 }
 
 /* Custom scrollbar */
@@ -341,10 +518,10 @@
    Stat card — mini dashboard blocks
    ========================================== */
 .stat-card {
-  background: linear-gradient(135deg, rgba(15, 23, 41, 0.6), rgba(15, 23, 41, 0.4));
-  border: 1px solid rgba(255, 255, 255, 0.04);
-  border-radius: 10px;
-  padding: 8px 12px;
+  background: linear-gradient(135deg, rgba(12, 18, 32, 0.7), rgba(12, 18, 32, 0.5));
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
   text-align: center;
   transition: all 0.2s ease;
 }
@@ -393,7 +570,7 @@
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
 /* ==========================================
-   Global interactions
+   Global interactions & accessibility
    ========================================== */
 button, [role="button"], a[href] {
   cursor: pointer;
@@ -405,6 +582,25 @@ button:not(:disabled):hover, [role="button"]:not(:disabled):hover {
 
 button:disabled {
   cursor: not-allowed;
+  opacity: 0.4;
+}
+
+/* Focus ring for all interactive elements — WCAG AAA */
+button:focus-visible,
+[role="button"]:focus-visible,
+a:focus-visible,
+select:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--game-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Remove default outline to avoid double ring */
+button:focus:not(:focus-visible),
+[role="button"]:focus:not(:focus-visible),
+a:focus:not(:focus-visible) {
+  outline: none;
 }
 
 select {
@@ -494,9 +690,29 @@ svg text { user-select: none; }
 /* ==========================================
    Mobile responsive overrides
    ========================================== */
+/* ==========================================
+   Typography scale — consistent hierarchy
+   ========================================== */
+.text-label { font-size: 11px; line-height: 1.2; text-transform: uppercase; letter-spacing: 0.05em; color: var(--game-muted); }
+.text-caption { font-size: 12px; line-height: 1.4; color: var(--game-secondary); }
+.text-body { font-size: 13px; line-height: 1.5; color: var(--game-text); }
+.text-body-lg { font-size: 14px; line-height: 1.5; color: var(--game-text); }
+.text-heading { font-size: 16px; line-height: 1.3; font-weight: 600; color: white; }
+.text-heading-lg { font-size: 20px; line-height: 1.3; font-weight: 700; color: white; }
+.text-display { font-size: 28px; line-height: 1.2; font-weight: 700; color: white; }
+
+/* ==========================================
+   Responsive layout
+   ========================================== */
 @media (max-width: 768px) {
   .glass-card {
     border-radius: 8px;
+  }
+
+  /* Sidebars collapse on mobile */
+  .game-sidebar-left,
+  .game-sidebar-right {
+    display: none;
   }
 
   .mobile-sidebar {
@@ -504,10 +720,12 @@ svg text { user-select: none; }
     top: 0;
     bottom: 0;
     z-index: 40;
-    width: 80vw;
-    max-width: 320px;
+    width: 85vw;
+    max-width: 340px;
     transform: translateX(-100%);
-    transition: transform 0.3s ease;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    background: var(--game-card);
+    border-right: 1px solid var(--game-border);
   }
 
   .mobile-sidebar.open {
@@ -520,13 +738,33 @@ svg text { user-select: none; }
     bottom: 0;
     right: 0;
     z-index: 40;
-    width: 80vw;
-    max-width: 320px;
+    width: 85vw;
+    max-width: 340px;
     transform: translateX(100%);
-    transition: transform 0.3s ease;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    background: var(--game-card);
+    border-left: 1px solid var(--game-border);
   }
 
   .mobile-sidebar-right.open {
     transform: translateX(0);
   }
+
+  .mobile-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 39;
+    animation: fadeIn 0.2s ease-out;
+  }
+
+  /* Scale down overly small text on mobile */
+  .text-label { font-size: 12px; }
+  .stat-card { padding: 8px 10px; }
+}
+
+@media (min-width: 769px) and (max-width: 1024px) {
+  /* Tablet: narrower sidebars */
+  .game-sidebar-left { width: 220px !important; }
+  .game-sidebar-right { width: 260px !important; }
 }
