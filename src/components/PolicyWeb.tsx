@@ -213,11 +213,11 @@ export function PolicyWeb() {
   return (
     <div className="h-full flex flex-col">
       {/* Filter bar */}
-      <div className="flex items-center gap-2 p-2 border-b border-slate-800/50 bg-slate-900/30">
+      <div className="flex items-center gap-2 p-2 border-b border-game-border bg-game-card/30">
         {(['all', 'policy', 'simvar', 'voter'] as const).map(f => (
           <button key={f} onClick={() => setFilter(f)}
             className={`px-3 py-1 rounded-full text-xs transition-all ${
-              filter === f ? 'bg-slate-700 text-white' : 'text-slate-500 hover:text-slate-300'
+              filter === f ? 'bg-game-border text-white' : 'text-game-muted hover:text-white'
             }`}>
             <span className="inline-block w-2 h-2 rounded-full mr-1" style={{
               backgroundColor: f === 'all' ? '#94a3b8' : TYPE_COLORS[f],
@@ -307,7 +307,7 @@ export function PolicyWeb() {
       </div>
 
       {/* Legend */}
-      <div className="flex items-center justify-center gap-4 p-2 border-t border-slate-800/50 text-[10px] text-slate-500">
+      <div className="flex items-center justify-center gap-4 p-2 border-t border-game-border text-[10px] text-game-muted">
         <span><span className="inline-block w-3 h-0.5 bg-green-500 mr-1" />Positive</span>
         <span><span className="inline-block w-3 h-0.5 bg-red-500 mr-1" />Negative</span>
         <span><span className="inline-block w-2 h-2 rounded-full mr-1" style={{ backgroundColor: TYPE_COLORS.policy }} />Policy</span>

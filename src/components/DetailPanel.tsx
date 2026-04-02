@@ -17,7 +17,7 @@ const CATEGORY_ICONS: Record<string, string> = {
 };
 
 function MiniSparkline({ data, color }: { data: number[]; color: string }) {
-  if (data.length < 2) return <div className="h-6 w-full bg-slate-800 rounded" />;
+  if (data.length < 2) return <div className="h-6 w-full bg-game-card rounded" />;
   const min = Math.min(...data);
   const max = Math.max(...data);
   const range = max - min || 1;
@@ -126,16 +126,16 @@ export function DetailPanel() {
   if (!nodeData) return null;
 
   return (
-    <div className="w-96 h-full border-l border-slate-700/50 bg-slate-900/95 backdrop-blur-sm overflow-y-auto animate-slide-in-right flex-shrink-0">
+    <div className="w-96 h-full border-l border-game-border bg-game-card/95 backdrop-blur-sm overflow-y-auto animate-slide-in-right flex-shrink-0">
       {/* Header */}
-      <div className="sticky top-0 bg-slate-900/95 border-b border-slate-700/50 p-4 flex items-center justify-between z-10">
+      <div className="sticky top-0 bg-game-card/95 border-b border-game-border p-4 flex items-center justify-between z-10">
         <div className="flex items-center gap-2">
           <span className="text-xl">{nodeData.icon}</span>
-          <h3 className="font-bold text-slate-200">{nodeData.name}</h3>
+          <h3 className="font-bold text-white">{nodeData.name}</h3>
         </div>
         <button
           onClick={() => setDetailPanel(null)}
-          className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-slate-700 text-slate-500 hover:text-slate-300 transition-all"
+          className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-game-border text-game-muted hover:text-white transition-all"
         >
           ✕
         </button>
@@ -143,22 +143,22 @@ export function DetailPanel() {
 
       <div className="p-4 space-y-4">
         {/* Description */}
-        <p className="text-sm text-slate-400">{nodeData.description}</p>
+        <p className="text-sm text-game-secondary">{nodeData.description}</p>
 
         {/* Current value */}
         {nodeData.type === 'policy' && (
-          <div className="p-3 bg-slate-800/50 rounded-lg border border-slate-700/50">
-            <div className="text-[10px] text-slate-500 uppercase mb-1">Current Value</div>
-            <div className="text-2xl font-bold text-slate-200">
+          <div className="p-3 bg-game-card/50 rounded-lg border border-game-border">
+            <div className="text-[10px] text-game-muted uppercase mb-1">Current Value</div>
+            <div className="text-2xl font-bold text-white">
               {nodeData.value.toFixed(1)}
-              <span className="text-sm ml-2 text-slate-400">({nodeData.level})</span>
+              <span className="text-sm ml-2 text-game-secondary">({nodeData.level})</span>
             </div>
           </div>
         )}
         {nodeData.type === 'simvar' && (
-          <div className="p-3 bg-slate-800/50 rounded-lg border border-slate-700/50">
-            <div className="text-[10px] text-slate-500 uppercase mb-1">Current Value</div>
-            <div className="text-2xl font-bold text-slate-200">
+          <div className="p-3 bg-game-card/50 rounded-lg border border-game-border">
+            <div className="text-[10px] text-game-muted uppercase mb-1">Current Value</div>
+            <div className="text-2xl font-bold text-white">
               {nodeData.value.toFixed(1)}
             </div>
           </div>
@@ -166,10 +166,10 @@ export function DetailPanel() {
 
         {/* Voter group specific */}
         {nodeData.type === 'voter' && (
-          <div className="p-3 bg-slate-800/50 rounded-lg border border-slate-700/50">
-            <div className="text-[10px] text-slate-500 uppercase mb-1">Avg Satisfaction</div>
+          <div className="p-3 bg-game-card/50 rounded-lg border border-game-border">
+            <div className="text-[10px] text-game-muted uppercase mb-1">Avg Satisfaction</div>
             <div className="flex items-center gap-2">
-              <div className="flex-1 h-3 bg-slate-700 rounded-full overflow-hidden">
+              <div className="flex-1 h-3 bg-game-border rounded-full overflow-hidden">
                 <div
                   className="h-full rounded-full transition-all"
                   style={{
@@ -178,9 +178,9 @@ export function DetailPanel() {
                   }}
                 />
               </div>
-              <span className="text-sm font-bold text-slate-200">{nodeData.satisfaction}%</span>
+              <span className="text-sm font-bold text-white">{nodeData.satisfaction}%</span>
             </div>
-            <div className="text-xs text-slate-500 mt-1">
+            <div className="text-xs text-game-muted mt-1">
               {(nodeData.populationShare * 100).toFixed(0)}% of population
             </div>
           </div>
@@ -189,11 +189,11 @@ export function DetailPanel() {
         {/* Incoming effects */}
         {nodeData.incoming.length > 0 && (
           <div>
-            <div className="text-[10px] text-slate-500 uppercase mb-2">Incoming Effects</div>
+            <div className="text-[10px] text-game-muted uppercase mb-2">Incoming Effects</div>
             <div className="space-y-1">
               {nodeData.incoming.slice(0, 10).map((eff, i) => (
-                <div key={i} className="flex items-center justify-between text-xs py-1 px-2 bg-slate-800/30 rounded">
-                  <span className="text-slate-400">{eff.source}</span>
+                <div key={i} className="flex items-center justify-between text-xs py-1 px-2 bg-game-card/30 rounded">
+                  <span className="text-game-secondary">{eff.source}</span>
                   <span className={eff.positive ? 'text-green-400' : 'text-red-400'}>
                     {eff.value > 0 ? '+' : ''}{typeof eff.value === 'number' ? eff.value.toFixed(2) : eff.value}
                   </span>
@@ -206,11 +206,11 @@ export function DetailPanel() {
         {/* Outgoing effects */}
         {nodeData.outgoing.length > 0 && (
           <div>
-            <div className="text-[10px] text-slate-500 uppercase mb-2">Outgoing Effects</div>
+            <div className="text-[10px] text-game-muted uppercase mb-2">Outgoing Effects</div>
             <div className="space-y-1">
               {nodeData.outgoing.slice(0, 10).map((eff, i) => (
-                <div key={i} className="flex items-center justify-between text-xs py-1 px-2 bg-slate-800/30 rounded">
-                  <span className="text-slate-400">{eff.target}</span>
+                <div key={i} className="flex items-center justify-between text-xs py-1 px-2 bg-game-card/30 rounded">
+                  <span className="text-game-secondary">{eff.target}</span>
                   <span className={eff.positive ? 'text-green-400' : 'text-red-400'}>
                     {eff.value > 0 ? '+' : ''}{typeof eff.value === 'number' ? eff.value.toFixed(2) : eff.value}
                   </span>
@@ -223,14 +223,14 @@ export function DetailPanel() {
         {/* Policy preferences for voter groups */}
         {nodeData.type === 'voter' && nodeData.policyPrefs && (
           <div>
-            <div className="text-[10px] text-slate-500 uppercase mb-2">Policy Preferences</div>
+            <div className="text-[10px] text-game-muted uppercase mb-2">Policy Preferences</div>
             <div className="space-y-1">
               {Object.entries(nodeData.policyPrefs).slice(0, 8).map(([pId, ideal]) => {
                 const policy = POLICY_MAP.get(pId);
                 return (
-                  <div key={pId} className="flex items-center justify-between text-xs py-1 px-2 bg-slate-800/30 rounded">
-                    <span className="text-slate-400">{policy?.name ?? pId}</span>
-                    <span className="text-slate-300">{ideal}</span>
+                  <div key={pId} className="flex items-center justify-between text-xs py-1 px-2 bg-game-card/30 rounded">
+                    <span className="text-game-secondary">{policy?.name ?? pId}</span>
+                    <span className="text-white">{ideal}</span>
                   </div>
                 );
               })}
@@ -240,8 +240,8 @@ export function DetailPanel() {
 
         {/* Budget cost for policies */}
         {nodeData.type === 'policy' && (
-          <div className="p-3 bg-slate-800/50 rounded-lg border border-slate-700/50">
-            <div className="text-[10px] text-slate-500 uppercase mb-1">Budget Impact</div>
+          <div className="p-3 bg-game-card/50 rounded-lg border border-game-border">
+            <div className="text-[10px] text-game-muted uppercase mb-1">Budget Impact</div>
             <span className={`text-sm font-bold ${nodeData.budgetCost < 0 ? 'text-green-400' : 'text-red-400'}`}>
               {nodeData.budgetCost < 0 ? 'Revenue' : 'Cost'}: {Math.abs(nodeData.budgetCost).toFixed(1)} per point
             </span>

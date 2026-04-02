@@ -16,7 +16,7 @@ export function SituationsPanel() {
 
   return (
     <div className="space-y-2">
-      <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Active Crises</h4>
+      <h4 className="text-xs font-semibold text-game-muted uppercase tracking-wider">Active Crises</h4>
       {gameState.activeSituations.map(activeSit => {
         const def = getSituationById(activeSit.id);
         if (!def) return null;
@@ -24,13 +24,13 @@ export function SituationsPanel() {
         return (
           <div
             key={activeSit.id}
-            className={`p-2 rounded-lg border bg-slate-800/30 ${severityColors[def.severity]}`}
+            className={`p-2 rounded-lg border bg-game-card/30 ${severityColors[def.severity]}`}
           >
             <div className="flex items-center gap-2">
               <span className="text-sm">{def.icon}</span>
               <div className="flex-1 min-w-0">
                 <div className="text-xs font-medium truncate">{def.name}</div>
-                <div className="text-[10px] text-slate-500">
+                <div className="text-[10px] text-game-muted">
                   {def.severity.toUpperCase()} • {activeSit.turnsActive} turns
                 </div>
               </div>

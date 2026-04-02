@@ -54,18 +54,18 @@ export default function JoinPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-950">
+    <div className="min-h-screen flex items-center justify-center bg-game-bg">
       <div className="max-w-lg w-full mx-4">
         <div className="text-center mb-8 animate-fade-in">
           <div className="text-6xl mb-4">🏛️</div>
           <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-blue-400 via-purple-400 to-red-400 bg-clip-text text-transparent">
             Democracy
           </h1>
-          <p className="text-slate-400 text-lg">You&apos;ve been invited to a game!</p>
+          <p className="text-game-secondary text-lg">You&apos;ve been invited to a game!</p>
         </div>
 
-        <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 mb-6 text-center">
-          <div className="text-xs text-slate-500 uppercase tracking-wider mb-2">Room Code</div>
+        <div className="bg-game-card border border-game-border rounded-xl p-6 mb-6 text-center">
+          <div className="text-xs text-game-muted uppercase tracking-wider mb-2">Room Code</div>
           <span className="text-3xl font-mono font-bold tracking-[0.4em] text-blue-400">
             {code}
           </span>
@@ -81,18 +81,18 @@ export default function JoinPage() {
 
         <div className="space-y-4 animate-fade-in">
           <div>
-            <label className="block text-sm text-slate-400 mb-1">Your Name</label>
+            <label className="block text-sm text-game-secondary mb-1">Your Name</label>
             <input
               type="text" value={name} onChange={(e) => setName(e.target.value)}
               placeholder="Enter your name..." autoFocus maxLength={20}
               onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
-              className="w-full p-3 bg-slate-800 border border-slate-700 rounded-lg text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-blue-500"
+              className="w-full p-3 bg-game-card border border-game-border rounded-lg text-white placeholder:text-game-muted focus:outline-none focus:border-blue-500"
             />
           </div>
           <button
             onClick={handleJoin}
             disabled={loading}
-            className="w-full p-4 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:cursor-not-allowed rounded-xl text-lg font-semibold transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+            className="w-full p-4 bg-blue-600 hover:bg-blue-500 disabled:bg-game-border disabled:cursor-not-allowed rounded-xl text-lg font-semibold transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
           >
             {loading ? (
               <span className="inline-flex items-center gap-2">
@@ -101,7 +101,7 @@ export default function JoinPage() {
               </span>
             ) : '🔗 Join Game'}
           </button>
-          <a href="/" className="block text-center p-2 text-slate-400 hover:text-slate-300 text-sm cursor-pointer">
+          <a href="/" className="block text-center p-2 text-game-secondary hover:text-white text-sm cursor-pointer">
             ← Back to Menu
           </a>
         </div>

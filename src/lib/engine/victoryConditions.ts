@@ -85,7 +85,7 @@ export const VICTORY_CONDITIONS: VictoryCondition[] = [
       let leadingRegions = 0;
       for (const regionId of Object.keys(state.regionalSatisfaction)) {
         const mySat = state.regionalSatisfaction[regionId]?.[playerId] ?? 0;
-        const otherMax = Math.max(...state.players.filter(p => p.id !== playerId).map(p => state.regionalSatisfaction[regionId]?.[p.id] ?? 0));
+        const otherMax = Math.max(0, ...state.players.filter(p => p.id !== playerId).map(p => state.regionalSatisfaction[regionId]?.[p.id] ?? 0));
         if (mySat > otherMax) leadingRegions++;
       }
       const progress = (seats >= 65 && leadingRegions >= 5) ? 1 : 0;

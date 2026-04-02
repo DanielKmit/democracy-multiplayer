@@ -116,9 +116,9 @@ export function PollingSummary() {
                 <div className="text-[10px] text-game-accent font-bold uppercase tracking-wider mb-2">📋 This Turn</div>
                 <div className="space-y-1.5 text-xs">
                   {/* Delayed policies that took effect */}
-                  {gameState.delayedPolicies.filter(dp => dp.turnsRemaining <= 1).length > 0 && (
+                  {gameState.delayedPolicies.filter(dp => dp.turnsRemaining === 0).length > 0 && (
                     <div className="text-emerald-400">
-                      ✅ {gameState.delayedPolicies.filter(dp => dp.turnsRemaining <= 1).length} policy change{gameState.delayedPolicies.filter(dp => dp.turnsRemaining <= 1).length !== 1 ? 's' : ''} taking effect
+                      ✅ {gameState.delayedPolicies.filter(dp => dp.turnsRemaining === 0).length} policy change{gameState.delayedPolicies.filter(dp => dp.turnsRemaining === 0).length !== 1 ? 's' : ''} taking effect
                     </div>
                   )}
                   {/* Budget status */}

@@ -2183,6 +2183,9 @@ function handleEndTurnPhase(playerId?: string) {
       );
       gameState.electionHistory.push(result);
 
+      // C1 fix: Reset debate so it triggers again next election
+      gameState.debate = null;
+
       // Update parliament seats with ALL parties
       const regionVoteShares: Record<string, Record<string, number>> = {};
       for (const region of Object.keys(result.voteShares)) {

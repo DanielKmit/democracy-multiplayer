@@ -42,7 +42,7 @@ export default function FAQPage() {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
 
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-game-bg flex items-center justify-center p-4">
       <div className="max-w-2xl w-full">
         <div className="text-center mb-10 animate-fade-in">
           <Link href="/" className="text-6xl mb-4 block cursor-pointer">🏛️</Link>
@@ -56,14 +56,14 @@ export default function FAQPage() {
           {faqs.map((faq, i) => (
             <div
               key={i}
-              className="bg-slate-800/50 border border-slate-700 rounded-xl overflow-hidden transition-all"
+              className="bg-game-card/50 border border-game-border rounded-xl overflow-hidden transition-all"
             >
               <button
                 onClick={() => setOpenIndex(openIndex === i ? null : i)}
-                className="w-full p-4 text-left flex items-center justify-between gap-4 cursor-pointer hover:bg-slate-800 transition-all"
+                className="w-full p-4 text-left flex items-center justify-between gap-4 cursor-pointer hover:bg-game-card transition-all"
               >
                 <span className="font-medium text-white">{faq.q}</span>
-                <span className={`text-slate-400 transition-transform ${openIndex === i ? 'rotate-180' : ''}`}>
+                <span className={`text-game-secondary transition-transform ${openIndex === i ? 'rotate-180' : ''}`}>
                   ▼
                 </span>
               </button>

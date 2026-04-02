@@ -256,7 +256,7 @@ export default function GamePage() {
             </a>
             <button
               onClick={() => window.location.reload()}
-              className="block w-full px-6 py-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg font-medium transition-all cursor-pointer text-[#9CA3AF]"
+              className="block w-full px-6 py-3 bg-game-card hover:bg-game-border border border-game-border rounded-lg font-medium transition-all cursor-pointer text-[#9CA3AF]"
             >
               🔄 Try Reconnecting
             </button>

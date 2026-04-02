@@ -24,7 +24,7 @@ function getRarity(cost: number): { label: string; class: string; textClass: str
   if (cost >= 4) return { label: '★ LEGENDARY', class: 'bill-rarity-legendary', textClass: 'text-amber-400' };
   if (cost >= 3) return { label: '◆ RARE', class: 'bill-rarity-rare', textClass: 'text-purple-400' };
   if (cost >= 2) return { label: '● UNCOMMON', class: 'bill-rarity-uncommon', textClass: 'text-blue-400' };
-  return { label: '○ COMMON', class: 'bill-rarity-common', textClass: 'text-slate-500' };
+  return { label: '○ COMMON', class: 'bill-rarity-common', textClass: 'text-game-muted' };
 }
 
 const STATUS_BADGES: Record<string, { label: string; color: string; bg: string; border: string }> = {

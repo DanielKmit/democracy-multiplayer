@@ -76,14 +76,14 @@ export function ElectionShareCard({ onClose }: { onClose: () => void }) {
         {/* The shareable card */}
         <div
           ref={cardRef}
-          className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl p-6 border border-slate-600"
+          className="bg-gradient-to-br from-game-card via-game-card to-game-bg rounded-2xl p-6 border border-game-border"
         >
           <div className="text-center mb-4">
             <div className="text-3xl mb-1">🏛️</div>
             <h2 className="text-xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-red-400 bg-clip-text text-transparent">
               Democracy
             </h2>
-            <p className="text-xs text-slate-400">Election {gameState.electionHistory.length} • Republic of Novaria</p>
+            <p className="text-xs text-game-secondary">Election {gameState.electionHistory.length} • Republic of Novaria</p>
           </div>
 
           {/* Seat bar visualization */}
@@ -115,15 +115,15 @@ export function ElectionShareCard({ onClose }: { onClose: () => void }) {
                   </div>
                   <div className="text-sm">
                     <span className="font-bold text-white">{seats}</span>
-                    <span className="text-slate-400 ml-1">seats ({pct}%)</span>
+                    <span className="text-game-secondary ml-1">seats ({pct}%)</span>
                   </div>
                 </div>
               );
             })}
           </div>
 
-          <div className="mt-4 pt-3 border-t border-slate-700 text-center">
-            <p className="text-[10px] text-slate-500">democracy-game-omega.vercel.app</p>
+          <div className="mt-4 pt-3 border-t border-game-border text-center">
+            <p className="text-[10px] text-game-muted">democracy-game-omega.vercel.app</p>
           </div>
         </div>
 
@@ -131,14 +131,14 @@ export function ElectionShareCard({ onClose }: { onClose: () => void }) {
         <div className="flex gap-3 mt-4">
           <button
             onClick={onClose}
-            className="flex-1 py-2.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm font-medium transition-all cursor-pointer"
+            className="flex-1 py-2.5 bg-game-border hover:bg-game-muted/30 rounded-lg text-sm font-medium transition-all cursor-pointer"
           >
             Close
           </button>
           <button
             onClick={handleDownload}
             disabled={downloading}
-            className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-medium transition-all cursor-pointer disabled:bg-slate-700"
+            className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-medium transition-all cursor-pointer disabled:bg-game-border"
           >
             {downloading ? '⏳ Generating...' : '📸 Share Results'}
           </button>

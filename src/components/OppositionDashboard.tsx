@@ -69,7 +69,7 @@ export function OppositionDashboard() {
     <div className="flex gap-4 h-full p-4">
       {/* Left: Action Cards */}
       <div className="w-64 flex-shrink-0 space-y-2">
-        <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Actions</h3>
+        <h3 className="text-xs font-semibold text-game-muted uppercase tracking-wider mb-2">Actions</h3>
         {ACTION_DEFS.map(action => {
           const canAfford = remainingPC >= action.cost;
           return (
@@ -81,31 +81,31 @@ export function OppositionDashboard() {
                 selectedAction?.type === action.type
                   ? 'bg-red-900/30 border-red-700'
                   : canAfford
-                  ? 'bg-slate-800/50 border-slate-700 hover:border-red-700'
-                  : 'bg-slate-800/20 border-slate-800 opacity-50'
+                  ? 'bg-game-card/50 border-game-border hover:border-red-700'
+                  : 'bg-game-card/20 border-game-border opacity-50'
               }`}
             >
               <div className="flex items-center justify-between mb-0.5">
                 <span className="font-medium text-sm">{action.emoji} {action.name}</span>
-                <span className="text-xs bg-slate-700 px-2 py-0.5 rounded text-yellow-400">{action.cost}</span>
+                <span className="text-xs bg-game-border px-2 py-0.5 rounded text-yellow-400">{action.cost}</span>
               </div>
-              <p className="text-xs text-slate-500">{action.description}</p>
+              <p className="text-xs text-game-muted">{action.description}</p>
             </button>
           );
         })}
 
-        <div className="mt-4 space-y-2 pt-4 border-t border-slate-700">
+        <div className="mt-4 space-y-2 pt-4 border-t border-game-border">
           <div className="text-center text-sm">
-            <span className="text-slate-400">PC: </span>
+            <span className="text-game-secondary">PC: </span>
             <span className={`font-bold ${remainingPC < 0 ? 'text-red-400' : 'text-yellow-400'}`}>
               ⚡{remainingPC}/{pc}
             </span>
           </div>
           <button onClick={handleSubmit} disabled={pendingOppositionActions.length === 0}
-            className="w-full py-2 bg-red-600 hover:bg-red-500 disabled:bg-slate-700 disabled:text-slate-500 rounded-lg text-sm font-semibold transition-all">
+            className="w-full py-2 bg-red-600 hover:bg-red-500 disabled:bg-game-border disabled:text-game-muted rounded-lg text-sm font-semibold transition-all">
             Execute ({pendingCost} PC)
           </button>
-          <button onClick={handlePass} className="w-full py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm text-slate-300 transition-all">
+          <button onClick={handlePass} className="w-full py-2 bg-game-border hover:bg-game-muted/30 rounded-lg text-sm text-white transition-all">
             Pass Turn
           </button>
         </div>
@@ -114,37 +114,37 @@ export function OppositionDashboard() {
       {/* Center: Config + Queue */}
       <div className="flex-1 space-y-4 overflow-y-auto">
         {selectedAction && (
-          <div className="p-4 bg-slate-800/50 border border-red-800 rounded-lg animate-fade-in">
+          <div className="p-4 bg-game-card/50 border border-red-800 rounded-lg animate-fade-in">
             <h4 className="font-medium mb-3">{selectedAction.emoji} {selectedAction.name}</h4>
             {selectedAction.needsTarget === 'policy' && (
               <select value={targetPolicy} onChange={(e) => setTargetPolicy(e.target.value)}
-                className="w-full p-2 bg-slate-700 border border-slate-600 rounded text-sm">
+                className="w-full p-2 bg-game-border border border-game-border rounded text-sm">
                 <option value="">Select policy...</option>
                 {POLICIES.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             )}
             {selectedAction.needsTarget === 'group' && (
               <select value={targetGroup} onChange={(e) => setTargetGroup(e.target.value)}
-                className="w-full p-2 bg-slate-700 border border-slate-600 rounded text-sm">
+                className="w-full p-2 bg-game-border border border-game-border rounded text-sm">
                 <option value="">Select group...</option>
                 {VOTER_GROUPS.map(g => <option key={g.id} value={g.id}>{g.name} ({(g.populationShare * 100).toFixed(0)}%)</option>)}
               </select>
             )}
             {selectedAction.needsTarget === 'simvar' && (
               <select value={targetSimVar} onChange={(e) => setTargetSimVar(e.target.value as SimVarKey)}
-                className="w-full p-2 bg-slate-700 border border-slate-600 rounded text-sm">
+                className="w-full p-2 bg-game-border border border-game-border rounded text-sm">
                 {SIM_VARS.map(v => <option key={v.key} value={v.key}>{v.label}</option>)}
               </select>
             )}
             {selectedAction.needsTarget === 'policy_value' && (
               <div className="space-y-2">
                 <select value={targetPolicy} onChange={(e) => setTargetPolicy(e.target.value)}
-                  className="w-full p-2 bg-slate-700 border border-slate-600 rounded text-sm">
+                  className="w-full p-2 bg-game-border border border-game-border rounded text-sm">
                   <option value="">Select policy...</option>
                   {POLICIES.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
                 <div>
-                  <label className="text-sm text-slate-400">Proposed: {proposedValue}</label>
+                  <label className="text-sm text-game-secondary">Proposed: {proposedValue}</label>
                   <input type="range" min={0} max={100} value={proposedValue}
                     onChange={(e) => setProposedValue(parseInt(e.target.value))} className="w-full" />
                 </div>
@@ -152,16 +152,16 @@ export function OppositionDashboard() {
             )}
             <button onClick={handleAddAction}
               disabled={(selectedAction.needsTarget === 'policy' && !targetPolicy) || (selectedAction.needsTarget === 'group' && !targetGroup) || (selectedAction.needsTarget === 'policy_value' && !targetPolicy)}
-              className="mt-3 w-full py-2 bg-red-600 hover:bg-red-500 disabled:bg-slate-700 rounded text-sm font-medium transition-all">
+              className="mt-3 w-full py-2 bg-red-600 hover:bg-red-500 disabled:bg-game-border rounded text-sm font-medium transition-all">
               Add to Queue
             </button>
           </div>
         )}
 
         <div>
-          <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Queue</h3>
+          <h3 className="text-xs font-semibold text-game-muted uppercase tracking-wider mb-2">Queue</h3>
           {pendingOppositionActions.length === 0 ? (
-            <div className="p-8 text-center text-slate-500 border border-dashed border-slate-700 rounded-lg">
+            <div className="p-8 text-center text-game-muted border border-dashed border-game-border rounded-lg">
               Select actions to build your strategy
             </div>
           ) : (
@@ -169,11 +169,11 @@ export function OppositionDashboard() {
               {pendingOppositionActions.map((action, i) => {
                 const def = ACTION_DEFS.find(a => a.type === action.type);
                 return (
-                  <div key={i} className="flex items-center justify-between p-3 bg-slate-800/50 border border-slate-700 rounded-lg">
+                  <div key={i} className="flex items-center justify-between p-3 bg-game-card/50 border border-game-border rounded-lg">
                     <div>
                       <span className="text-sm font-medium">{def?.emoji} {def?.name}</span>
-                      {action.targetGroupId && <span className="text-xs text-slate-400 ml-2">→ {VOTER_GROUPS.find(g => g.id === action.targetGroupId)?.name}</span>}
-                      {action.targetPolicyId && <span className="text-xs text-slate-400 ml-2">→ {POLICIES.find(p => p.id === action.targetPolicyId)?.name}</span>}
+                      {action.targetGroupId && <span className="text-xs text-game-secondary ml-2">→ {VOTER_GROUPS.find(g => g.id === action.targetGroupId)?.name}</span>}
+                      {action.targetPolicyId && <span className="text-xs text-game-secondary ml-2">→ {POLICIES.find(p => p.id === action.targetPolicyId)?.name}</span>}
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-yellow-400">{action.cost} PC</span>

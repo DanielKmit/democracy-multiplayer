@@ -157,9 +157,9 @@ export function ParliamentHemicycle({ compact = false }: Props) {
         const totalCoalitionSeats = rulingSeats + gameState.coalitionPartners.reduce((s, cp) => s + cp.seats, 0);
 
         return (
-          <div className={`${compact ? 'mt-2' : 'mt-3'} p-2 rounded-lg bg-slate-800/50 border border-slate-700/50`}>
+          <div className={`${compact ? 'mt-2' : 'mt-3'} p-2 rounded-lg bg-game-card/50 border border-game-border`}>
             <div className="flex items-center justify-between mb-1.5">
-              <span className="text-[10px] font-bold text-slate-400 uppercase">Ruling Coalition</span>
+              <span className="text-[10px] font-bold text-game-secondary uppercase">Ruling Coalition</span>
               <span className={`text-[10px] font-bold ${totalCoalitionSeats >= 51 ? 'text-emerald-400' : 'text-red-400'}`}>
                 {totalCoalitionSeats}/100 seats
               </span>
@@ -169,7 +169,7 @@ export function ParliamentHemicycle({ compact = false }: Props) {
               <div className="flex items-center gap-1.5 text-[10px]">
                 <div className="w-2 h-2 rounded-full" style={{ backgroundColor: PARTY_COLORS[ruling.party.partyColor] }} />
                 <span className="text-white font-medium flex-1">{ruling.party.partyName}</span>
-                <span className="text-slate-400">{rulingSeats} seats</span>
+                <span className="text-game-secondary">{rulingSeats} seats</span>
                 <span className="text-indigo-400 text-[9px]">👑 You</span>
               </div>
               {/* Coalition partners */}
@@ -183,7 +183,7 @@ export function ParliamentHemicycle({ compact = false }: Props) {
                   <div key={cp.botPartyId} className="flex items-center gap-1.5 text-[10px]">
                     <div className="w-2 h-2 rounded-full" style={{ backgroundColor: bot.color }} />
                     <span className="text-white font-medium flex-1 truncate">{bot.name}</span>
-                    <span className="text-slate-400">{cp.seats}</span>
+                    <span className="text-game-secondary">{cp.seats}</span>
                     <span className={`${loyaltyColor} text-[8px] tracking-tighter`} title={`Loyalty: ${loyalty}/10`}>
                       {compact ? hearts.slice(0, 5) : hearts}
                     </span>
