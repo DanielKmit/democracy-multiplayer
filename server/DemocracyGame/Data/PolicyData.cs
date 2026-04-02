@@ -1,0 +1,143 @@
+using DemocracyGame.Models;
+
+namespace DemocracyGame.Data;
+
+public static class PolicyData
+{
+    public static readonly PolicyDefinition[] All = new PolicyDefinition[]
+    {
+        // ===== ECONOMY =====
+        new() { Id = "income_tax", Name = "Income Tax", Category = PolicyCategory.Economy,
+            Description = "Tax rate on personal income. Funds government but hurts growth.",
+            DefaultValue = 40, BudgetCostPerPoint = -0.8,
+            Effects = new() { [SimVar.GdpGrowth] = -0.04, [SimVar.Unemployment] = 0.015, [SimVar.Equality] = 0.03, [SimVar.Inflation] = -0.01 } },
+        new() { Id = "corporate_tax", Name = "Corporate Tax", Category = PolicyCategory.Economy,
+            Description = "Tax on business profits. Revenue source but hurts investment.",
+            DefaultValue = 30, BudgetCostPerPoint = -0.6,
+            Effects = new() { [SimVar.GdpGrowth] = -0.05, [SimVar.Unemployment] = 0.025, [SimVar.Equality] = 0.02, [SimVar.Corruption] = 0.01 } },
+        new() { Id = "trade_openness", Name = "Trade Openness", Category = PolicyCategory.Economy,
+            Description = "How open the economy is to global trade.",
+            DefaultValue = 60, BudgetCostPerPoint = 0.1,
+            Effects = new() { [SimVar.GdpGrowth] = 0.03, [SimVar.Unemployment] = 0.01, [SimVar.Equality] = -0.03, [SimVar.Inflation] = -0.01 } },
+        new() { Id = "govt_spending", Name = "Government Spending", Category = PolicyCategory.Economy,
+            Description = "Overall state expenditure. Stimulates economy but risks inflation.",
+            DefaultValue = 50, BudgetCostPerPoint = 0.8,
+            Effects = new() { [SimVar.GdpGrowth] = 0.02, [SimVar.Unemployment] = -0.02, [SimVar.Inflation] = 0.04, [SimVar.Corruption] = 0.02, [SimVar.Equality] = 0.01 } },
+        new() { Id = "minimum_wage", Name = "Minimum Wage", Category = PolicyCategory.Economy,
+            Description = "Mandatory minimum pay. Helps low earners but increases costs.",
+            DefaultValue = 40, BudgetCostPerPoint = 0.1,
+            Effects = new() { [SimVar.Equality] = 0.05, [SimVar.Unemployment] = 0.03, [SimVar.GdpGrowth] = -0.02, [SimVar.Inflation] = 0.01 } },
+        new() { Id = "tech_research", Name = "Technology & Research", Category = PolicyCategory.Economy,
+            Description = "Investment in R&D. Long-term growth but expensive.",
+            DefaultValue = 35, BudgetCostPerPoint = 0.5,
+            Effects = new() { [SimVar.GdpGrowth] = 0.04, [SimVar.EducationIndex] = 0.02, [SimVar.Equality] = -0.02, [SimVar.Pollution] = -0.01 } },
+
+        // ===== WELFARE =====
+        new() { Id = "healthcare", Name = "Healthcare", Category = PolicyCategory.Welfare,
+            Description = "Public healthcare funding. Saves lives but costs a fortune.",
+            DefaultValue = 50, BudgetCostPerPoint = 0.7,
+            Effects = new() { [SimVar.HealthIndex] = 0.08, [SimVar.GdpGrowth] = -0.015, [SimVar.Equality] = 0.02, [SimVar.Inflation] = 0.01 } },
+        new() { Id = "education", Name = "Education", Category = PolicyCategory.Welfare,
+            Description = "Schools and universities. Long-term investment.",
+            DefaultValue = 50, BudgetCostPerPoint = 0.5,
+            Effects = new() { [SimVar.EducationIndex] = 0.08, [SimVar.GdpGrowth] = 0.01, [SimVar.Equality] = 0.02, [SimVar.Corruption] = -0.01 } },
+        new() { Id = "housing_subsidies", Name = "Housing Subsidies", Category = PolicyCategory.Welfare,
+            Description = "Government support for affordable housing.",
+            DefaultValue = 30, BudgetCostPerPoint = 0.4,
+            Effects = new() { [SimVar.Equality] = 0.03, [SimVar.HealthIndex] = 0.01, [SimVar.GdpGrowth] = -0.01, [SimVar.Inflation] = 0.01 } },
+        new() { Id = "unemployment_benefits", Name = "Unemployment Benefits", Category = PolicyCategory.Welfare,
+            Description = "Safety net for jobless. Prevents poverty.",
+            DefaultValue = 40, BudgetCostPerPoint = 0.5,
+            Effects = new() { [SimVar.Equality] = 0.03, [SimVar.Crime] = -0.03, [SimVar.Unemployment] = 0.01, [SimVar.GdpGrowth] = -0.01 } },
+        new() { Id = "pensions", Name = "Pensions", Category = PolicyCategory.Welfare,
+            Description = "State pensions for retirees. Essential but expensive.",
+            DefaultValue = 45, BudgetCostPerPoint = 0.7,
+            Effects = new() { [SimVar.Equality] = 0.02, [SimVar.HealthIndex] = 0.01, [SimVar.GdpGrowth] = -0.02, [SimVar.Inflation] = 0.01 } },
+
+        // ===== SOCIETY =====
+        new() { Id = "civil_rights", Name = "Civil Rights", Category = PolicyCategory.Society,
+            Description = "Individual freedoms. Beloved by liberals, feared by conservatives.",
+            DefaultValue = 60, BudgetCostPerPoint = 0.15,
+            Effects = new() { [SimVar.FreedomIndex] = 0.08, [SimVar.Equality] = 0.02, [SimVar.Crime] = 0.01, [SimVar.NationalSecurity] = -0.01 } },
+        new() { Id = "press_freedom", Name = "Press Freedom", Category = PolicyCategory.Society,
+            Description = "Media independence. Exposes corruption but also failures.",
+            DefaultValue = 65, BudgetCostPerPoint = 0.05,
+            Effects = new() { [SimVar.FreedomIndex] = 0.06, [SimVar.Corruption] = -0.04, [SimVar.NationalSecurity] = -0.02 } },
+        new() { Id = "immigration", Name = "Immigration Policy", Category = PolicyCategory.Society,
+            Description = "Border openness. Cheap labor vs cultural tension.",
+            DefaultValue = 50, BudgetCostPerPoint = 0.2,
+            Effects = new() { [SimVar.GdpGrowth] = 0.02, [SimVar.Crime] = 0.015, [SimVar.FreedomIndex] = 0.02, [SimVar.Equality] = -0.02, [SimVar.Unemployment] = 0.01 } },
+        new() { Id = "drug_policy", Name = "Drug Policy", Category = PolicyCategory.Society,
+            Description = "Prohibition (0) to legalization (100).",
+            DefaultValue = 30, BudgetCostPerPoint = 0.1,
+            Effects = new() { [SimVar.FreedomIndex] = 0.03, [SimVar.Crime] = -0.03, [SimVar.PropertyCrime] = -0.02, [SimVar.HealthIndex] = -0.02, [SimVar.Corruption] = -0.01 } },
+        new() { Id = "religious_freedom", Name = "Religious Freedom", Category = PolicyCategory.Society,
+            Description = "Protection of religious practice.",
+            DefaultValue = 70, BudgetCostPerPoint = 0.05,
+            Effects = new() { [SimVar.FreedomIndex] = 0.03, [SimVar.Equality] = -0.01 } },
+        new() { Id = "gun_control", Name = "Gun Control", Category = PolicyCategory.Society,
+            Description = "Firearms restrictions. Reduces violence but infuriates gun owners.",
+            DefaultValue = 60, BudgetCostPerPoint = 0.1,
+            Effects = new() { [SimVar.Crime] = -0.03, [SimVar.ViolentCrime] = -0.03, [SimVar.FreedomIndex] = -0.03, [SimVar.NationalSecurity] = 0.01 } },
+
+        // ===== ENVIRONMENT =====
+        new() { Id = "env_regulations", Name = "Environmental Regulations", Category = PolicyCategory.Environment,
+            Description = "Pollution rules. Saves planet but kills jobs.",
+            DefaultValue = 40, BudgetCostPerPoint = 0.3,
+            Effects = new() { [SimVar.Pollution] = -0.07, [SimVar.GdpGrowth] = -0.03, [SimVar.Unemployment] = 0.015, [SimVar.HealthIndex] = 0.02 } },
+        new() { Id = "renewables", Name = "Renewable Energy", Category = PolicyCategory.Environment,
+            Description = "Solar, wind, clean energy. Expensive upfront.",
+            DefaultValue = 30, BudgetCostPerPoint = 0.5,
+            Effects = new() { [SimVar.Pollution] = -0.04, [SimVar.GdpGrowth] = -0.01, [SimVar.Inflation] = 0.01 } },
+        new() { Id = "carbon_tax", Name = "Carbon Tax", Category = PolicyCategory.Environment,
+            Description = "Tax on emissions. Revenue but raises prices.",
+            DefaultValue = 20, BudgetCostPerPoint = -0.3,
+            Effects = new() { [SimVar.Pollution] = -0.05, [SimVar.GdpGrowth] = -0.03, [SimVar.Inflation] = 0.02, [SimVar.Equality] = -0.01 } },
+        new() { Id = "agriculture", Name = "Agriculture Policy", Category = PolicyCategory.Environment,
+            Description = "Farm subsidies and rural support.",
+            DefaultValue = 35, BudgetCostPerPoint = 0.3,
+            Effects = new() { [SimVar.Pollution] = 0.02, [SimVar.GdpGrowth] = 0.005, [SimVar.Equality] = 0.01, [SimVar.HealthIndex] = 0.01 } },
+
+        // ===== SECURITY =====
+        new() { Id = "police", Name = "Police Funding", Category = PolicyCategory.Security,
+            Description = "Law enforcement. Reduces crime but risks over-policing.",
+            DefaultValue = 50, BudgetCostPerPoint = 0.5,
+            Effects = new() { [SimVar.Crime] = -0.06, [SimVar.ViolentCrime] = -0.04, [SimVar.PropertyCrime] = -0.04, [SimVar.FreedomIndex] = -0.03, [SimVar.NationalSecurity] = 0.02, [SimVar.Corruption] = 0.01 } },
+        new() { Id = "military", Name = "Military", Category = PolicyCategory.Security,
+            Description = "National defense. Essential but massive money drain.",
+            DefaultValue = 40, BudgetCostPerPoint = 0.8,
+            Effects = new() { [SimVar.NationalSecurity] = 0.06, [SimVar.GdpGrowth] = -0.02, [SimVar.FreedomIndex] = -0.01 } },
+        new() { Id = "intelligence", Name = "Intelligence Services", Category = PolicyCategory.Security,
+            Description = "Spying and surveillance. Prevents threats but erodes privacy.",
+            DefaultValue = 30, BudgetCostPerPoint = 0.4,
+            Effects = new() { [SimVar.NationalSecurity] = 0.04, [SimVar.FreedomIndex] = -0.04, [SimVar.Corruption] = -0.02, [SimVar.Crime] = -0.01, [SimVar.WhiteCollarCrime] = -0.03 } },
+        new() { Id = "border_security", Name = "Border Security", Category = PolicyCategory.Security,
+            Description = "Border patrol and customs.",
+            DefaultValue = 45, BudgetCostPerPoint = 0.3,
+            Effects = new() { [SimVar.NationalSecurity] = 0.03, [SimVar.Crime] = -0.02, [SimVar.ViolentCrime] = -0.01, [SimVar.PropertyCrime] = -0.01, [SimVar.FreedomIndex] = -0.02, [SimVar.GdpGrowth] = -0.01 } },
+
+        // ===== INFRASTRUCTURE =====
+        new() { Id = "public_transport", Name = "Public Transport", Category = PolicyCategory.Infrastructure,
+            Description = "Buses, trains, metro. Helps workers commute.",
+            DefaultValue = 40, BudgetCostPerPoint = 0.5,
+            Effects = new() { [SimVar.Pollution] = -0.02, [SimVar.GdpGrowth] = 0.01, [SimVar.Equality] = 0.02, [SimVar.HealthIndex] = 0.005 } },
+        new() { Id = "roads_rail", Name = "Roads & Rail", Category = PolicyCategory.Infrastructure,
+            Description = "National road and rail network.",
+            DefaultValue = 50, BudgetCostPerPoint = 0.6,
+            Effects = new() { [SimVar.GdpGrowth] = 0.02, [SimVar.Pollution] = 0.015 } },
+        new() { Id = "urban_dev", Name = "Urban Development", Category = PolicyCategory.Infrastructure,
+            Description = "City planning and renewal.",
+            DefaultValue = 40, BudgetCostPerPoint = 0.4,
+            Effects = new() { [SimVar.GdpGrowth] = 0.01, [SimVar.Pollution] = 0.01, [SimVar.HealthIndex] = 0.01, [SimVar.Equality] = -0.01 } },
+        new() { Id = "foreign_aid", Name = "Foreign Aid", Category = PolicyCategory.Infrastructure,
+            Description = "International aid. Builds goodwill abroad.",
+            DefaultValue = 25, BudgetCostPerPoint = 0.3,
+            Effects = new() { [SimVar.NationalSecurity] = 0.015, [SimVar.GdpGrowth] = -0.015, [SimVar.Corruption] = 0.005 } },
+    };
+
+    public static readonly Dictionary<string, PolicyDefinition> ById =
+        All.ToDictionary(p => p.Id);
+
+    public static readonly Dictionary<PolicyCategory, PolicyDefinition[]> ByCategory =
+        All.GroupBy(p => p.Category).ToDictionary(g => g.Key, g => g.ToArray());
+}
