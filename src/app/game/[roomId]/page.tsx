@@ -343,10 +343,14 @@ export default function GamePage() {
             <div className="flex-1 flex items-center justify-center">
               <div className="text-center">
                 <p className="text-xl text-game-secondary mb-4">No events this turn</p>
-                <button onClick={endTurnPhase}
-                  className="btn-primary px-6 py-3 rounded-lg font-semibold">
-                  Continue →
-                </button>
+                {myRole === 'ruling' ? (
+                  <button onClick={endTurnPhase}
+                    className="btn-primary px-6 py-3 rounded-lg font-semibold">
+                    Continue →
+                  </button>
+                ) : (
+                  <p className="text-sm text-game-muted">Waiting for ruling party to continue...</p>
+                )}
               </div>
             </div>
           )}
@@ -355,11 +359,17 @@ export default function GamePage() {
             <div className="flex-1 flex items-center justify-center">
               <div className="text-center">
                 <h2 className="text-2xl font-bold mb-4 font-display">🏛️ Form Your Government</h2>
-                <p className="text-game-secondary mb-6">Appoint ministers in the sidebar, then continue.</p>
-                <button onClick={endTurnPhase}
-                  className="btn-primary px-8 py-3 rounded-lg font-semibold">
-                  Begin Governing →
-                </button>
+                {myRole === 'ruling' ? (
+                  <>
+                    <p className="text-game-secondary mb-6">Appoint ministers in the sidebar, then continue.</p>
+                    <button onClick={endTurnPhase}
+                      className="btn-primary px-8 py-3 rounded-lg font-semibold">
+                      Begin Governing →
+                    </button>
+                  </>
+                ) : (
+                  <p className="text-game-secondary">Waiting for ruling party to form their government...</p>
+                )}
               </div>
             </div>
           )}
