@@ -138,20 +138,22 @@ function computeSinglePartySatisfaction(
   simulation: SimulationState,
   activeEffects: ActiveEffect[],
   ngoAlliances: NGOAlliance[],
+  perception?: Record<string, number>,
 ): Record<string, number> {
   const satisfaction: Record<string, number> = {};
 
   for (const group of VOTER_GROUPS) {
     let score = 50;
 
-    // 1. Simulation variable concerns (everyone affected by reality)
+    // 1. Simulation variable concerns — voters react to PERCEPTION, not reality
+    // D4: Media attacks distort perception, so voters may think things are worse than they are
     for (const [varKey, weight] of Object.entries(group.concerns)) {
-      const simVal = simulation[varKey as SimVarKey];
+      const actualVal = simulation[varKey as SimVarKey];
+      // Use perceived value if available, otherwise raw value
+      const simVal = perception?.[varKey] ?? actualVal;
       if (weight! > 0) {
-        // Positive concern: higher is better (e.g., gdpGrowth, healthIndex)
         score += (simVal - 50) * weight! * 0.4;
       } else {
-        // Negative concern: lower is better (e.g., unemployment, crime)
         score += (50 - simVal) * Math.abs(weight!) * 0.4;
       }
     }
@@ -262,6 +264,7 @@ export function computeAllVoterSatisfaction(
   ngoAlliances: NGOAlliance[],
   botParties?: BotParty[],
   campaignBonuses?: Record<string, Record<string, number>>,
+  perception?: Record<string, number>,
 ): Record<string, Record<string, number>> {
   const allSatisfaction: Record<string, Record<string, number>> = {};
 
@@ -274,6 +277,7 @@ export function computeAllVoterSatisfaction(
       simulation,
       activeEffects,
       player.role === 'ruling' ? [] : ngoAlliances,
+      perception,
     );
 
     // Apply campaign bonuses to voter satisfaction (visible during campaign)
@@ -311,7 +315,7 @@ export function computeAllVoterSatisfaction(
     }
   }
 
-  // Bot parties
+  // Bot parties — they also compete for votes based on ideology alignment
   for (const bot of (botParties ?? [])) {
     allSatisfaction[bot.id] = computeSinglePartySatisfaction(
       bot.id,
@@ -319,8 +323,9 @@ export function computeAllVoterSatisfaction(
       false, // bots are never ruling
       policyValues,
       simulation,
+      activeEffects,
       [],
-      [],
+      perception,
     );
   }
 
@@ -525,11 +530,14 @@ export function computePoliticalCapital(
   cabinet?: CabinetState
 ): number {
   if (player.role === 'ruling') {
-    let pc = 6;
-    if (partyApproval > 60) pc += 1;
-    if (partyApproval < 30) pc -= 1;
+    let pc = 5; // Base reduced from 6 — now governance quality matters more
+    // Approval-based scaling (wider range: +2 to -2)
+    if (partyApproval > 70) pc += 2;
+    else if (partyApproval > 55) pc += 1;
+    if (partyApproval < 25) pc -= 2;
+    else if (partyApproval < 35) pc -= 1;
 
-    // Cabinet competence bonus
+    // Cabinet competence bonus (wider range)
     if (cabinet) {
       let totalCompetence = 0;
       let filledCount = 0;
@@ -544,19 +552,26 @@ export function computePoliticalCapital(
       }
       if (filledCount > 0) {
         const avgComp = totalCompetence / filledCount;
-        if (avgComp > 7) pc += 1;
-        if (avgComp < 4) pc -= 1;
+        if (avgComp > 8) pc += 2;
+        else if (avgComp > 6) pc += 1;
+        if (avgComp < 3) pc -= 2;
+        else if (avgComp < 5) pc -= 1;
       }
+      // Penalty for empty ministries
+      const emptyMinistries = Object.values(cabinet.ministers).filter(m => !m).length;
+      if (emptyMinistries >= 4) pc -= 1;
     }
 
-    return Math.max(1, pc);
+    return Math.max(1, pc); // Range: 1-9 (was 5-7)
   } else {
     let pc = 4;
-    // Opposition gets more PC when ruling party is unpopular
-    if (rulingApproval < 40) pc += 1;
+    // Opposition gets more PC when ruling party is unpopular (wider)
+    if (rulingApproval < 30) pc += 2;
+    else if (rulingApproval < 45) pc += 1;
     // And when their own support is strong
-    if (partyApproval > 35) pc += 1;
-    return Math.max(1, pc);
+    if (partyApproval > 45) pc += 2;
+    else if (partyApproval > 30) pc += 1;
+    return Math.max(1, pc); // Range: 1-8 (was 4-6)
   }
 }
 
@@ -1056,12 +1071,27 @@ export function applyOppositionActions(state: GameState, actions: OppositionActi
         break;
       }
       case 'lobby_votes': {
-        log.push('Lobbying parliament members to rebel on next vote.');
+        // Lobby parliament members — increases rebel chance on next bill vote
+        // This weakens coalition discipline, making ruling party bills harder to pass
+        for (const bill of state.activeBills.filter(b => b.status === 'pending' || b.status === 'voting')) {
+          bill.publicPressure = Math.max(-20, (bill.publicPressure ?? 0) - 3);
+        }
+        // Also reduce ruling credibility slightly
+        modifyRulingApproval(state, -2);
+        log.push('🏛️ Lobbying parliament — coalition discipline weakened, ruling approval -2%');
         break;
       }
       case 'propose_amendment': {
         if (action.targetBillId) {
-          log.push(`Amendment proposed for bill ${action.targetBillId}`);
+          const bill = state.activeBills.find(b => b.id === action.targetBillId);
+          if (bill && (bill.status === 'pending' || bill.status === 'voting')) {
+            // Amendment reduces the bill's effectiveness and public support
+            bill.publicPressure = Math.max(-20, (bill.publicPressure ?? 0) - 5);
+            bill.constitutionalScore = Math.max(20, (bill.constitutionalScore ?? 70) - 10);
+            log.push(`📝 Amendment proposed for "${bill.title}" — public pressure -5, constitutional risk increased`);
+          } else {
+            log.push(`No active bill found for amendment`);
+          }
         }
         break;
       }
@@ -1715,7 +1745,7 @@ export function recalculateAfterPolicyChange(
     state.voterSatisfaction = computeAllVoterSatisfaction(
       state.players, state.policies, state.simulation,
       state.activeEffects, state.ngoAlliances ?? [], state.botParties,
-      state.campaignBonuses,
+      state.campaignBonuses, state.perception,
     );
     state.approvalRating = computeAllApprovalRatings(state.voterSatisfaction, state.activeEffects);
     state.voteShares = computeVoteShares(state.voterSatisfaction, state.voterCynicism);
@@ -2282,7 +2312,7 @@ export function advancePhase(state: GameState): void {
       state.voterSatisfaction = computeAllVoterSatisfaction(
         state.players, state.policies, state.simulation,
         state.activeEffects, state.ngoAlliances ?? [], state.botParties,
-        state.campaignBonuses,
+        state.campaignBonuses, state.perception,
       );
       state.approvalRating = computeAllApprovalRatings(state.voterSatisfaction, state.activeEffects);
       state.voteShares = computeVoteShares(state.voterSatisfaction, state.voterCynicism);

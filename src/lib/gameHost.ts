@@ -205,6 +205,7 @@ function recalculate(state: GameState) {
       state.ngoAlliances ?? [],
       state.botParties,
       state.campaignBonuses,
+      state.perception,
     );
 
     // Per-party approval ratings
@@ -245,6 +246,21 @@ function recalculate(state: GameState) {
         // Reduce approval by flip-flop penalty (max -15)
         const effectivePenalty = Math.min(15, penalty * 0.5);
         state.approvalRating[ruling.id] = Math.max(0, (state.approvalRating[ruling.id] ?? 50) - effectivePenalty);
+        state.rulingApproval = state.approvalRating[ruling.id] ?? 50;
+      }
+    }
+
+    // === D4: POLICY STABILITY BONUS ===
+    // Stable policies (unchanged for 4+ turns) give a small approval boost
+    if (ruling && state.policyStability) {
+      let stableCount = 0;
+      for (const turns of Object.values(state.policyStability)) {
+        if ((turns as number) >= 4) stableCount++;
+      }
+      // Each stable policy gives +0.15 approval (up to +4.5 for all 30 stable)
+      if (stableCount > 10) {
+        const stabilityBonus = Math.min(5, (stableCount - 10) * 0.25);
+        state.approvalRating[ruling.id] = Math.min(100, (state.approvalRating[ruling.id] ?? 50) + stabilityBonus);
         state.rulingApproval = state.approvalRating[ruling.id] ?? 50;
       }
     }
@@ -976,7 +992,14 @@ export function handleAction(playerId: string, action: string, payload?: unknown
             break;
           }
           case 'state_position': {
-            addLogEntry(gameState, `📢 ${player.party.partyName} takes a public stance`, 'info');
+            // Taking a position gives broad +2 support across all groups
+            const bonuses = gameState.campaignBonuses[player.id] ?? {};
+            for (const group of VOTER_GROUPS) {
+              bonuses[group.id] = (bonuses[group.id] ?? 0) + 2;
+            }
+            gameState.campaignBonuses[player.id] = bonuses;
+            addLogEntry(gameState, `📢 ${player.party.partyName} takes a public stance — +2% across all voter groups`, 'info');
+            addNewsItem(gameState, `${player.party.partyName} makes bold policy statement on the campaign trail`, 'election');
             break;
           }
           case 'attack_ad': {
