@@ -162,8 +162,8 @@ export function TopBar() {
               { onClick: () => fileInputRef.current?.click(), icon: '📂', title: 'Load Game' },
               { onClick: () => setShowHelp(true), icon: '❓', title: 'Help' },
             ].map((btn, i) => (
-              <button key={i} onClick={btn.onClick} title={btn.title}
-                className="w-7 h-7 flex items-center justify-center rounded-md text-[11px] text-game-muted hover:text-white hover:bg-white/5 transition-all">
+              <button key={i} onClick={btn.onClick} title={btn.title} aria-label={btn.title}
+                className="w-7 h-7 flex items-center justify-center rounded-lg text-xs text-game-muted hover:text-white hover:bg-white/[0.06] transition-all">
                 {btn.icon}
               </button>
             ))}

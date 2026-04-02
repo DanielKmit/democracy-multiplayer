@@ -330,7 +330,7 @@ export default function GamePage() {
       <div className="flex-1 flex overflow-hidden">
         {/* LEFT: Events sidebar (Bills moved to center dashboard) */}
         {(isRulingPhase || isOppositionPhase) ? (
-          <div className="w-64 border-r border-game-border bg-game-card/50 overflow-y-auto p-3 space-y-3 flex-shrink-0">
+          <div className="game-sidebar-left w-64 border-r border-game-border bg-game-card/50 overflow-y-auto p-3 space-y-3 flex-shrink-0">
             <EventCards inline />
           </div>
         ) : (
