@@ -1976,6 +1976,29 @@ export function handleAction(playerId: string, action: string, payload?: unknown
       break;
     }
 
+    case 'influenceMedia': {
+      // D4: Spend 2 PC to influence a newspaper — shifts stance +10 for 3 turns
+      const player = gameState.players.find(p => p.id === playerId);
+      if (!player) return;
+      if (player.politicalCapital < 2) {
+        addLogEntry(gameState, 'Not enough PC to influence media (need 2)', 'info');
+        broadcastState();
+        return;
+      }
+      const { outletId } = payload as { outletId: string };
+      const outlet = gameState.mediaLandscape?.find(m => m.id === outletId);
+      if (!outlet) return;
+
+      player.politicalCapital -= 2;
+      outlet.currentStance = Math.min(50, outlet.currentStance + 10);
+      outlet.influencedUntil = gameState.turn + 3;
+
+      addLogEntry(gameState, `📰 ${player.party.partyName} launches PR campaign with ${outlet.name} (2 PC)`, 'info');
+      addNewsItem(gameState, `${outlet.name} runs favorable coverage of ${player.party.partyName} after exclusive interview`, 'general');
+      broadcastState();
+      break;
+    }
+
     case 'submitDebateChoice': {
       if (gameState.phase !== 'debate' || !gameState.debate || gameState.debate.resolved) return;
       const choices = payload as Record<string, import('./engine/types').DebateChoice>;

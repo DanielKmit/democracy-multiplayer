@@ -86,6 +86,14 @@ export function SparklinePanel() {
     { label: 'Health', value: sim.healthIndex.toFixed(0), good: sim.healthIndex > 55 },
     { label: 'Education', value: sim.educationIndex.toFixed(0), good: sim.educationIndex > 55 },
     { label: 'Pollution', value: sim.pollution.toFixed(0), good: sim.pollution < 45 },
+    { label: 'Freedom', value: sim.freedomIndex.toFixed(0), good: sim.freedomIndex > 55 },
+  ];
+
+  // D4: Crime breakdown
+  const crimeStats = [
+    { label: 'Violent', value: (sim.violentCrime ?? 35).toFixed(0), good: (sim.violentCrime ?? 35) < 35 },
+    { label: 'Property', value: (sim.propertyCrime ?? 40).toFixed(0), good: (sim.propertyCrime ?? 40) < 40 },
+    { label: 'White-Col', value: (sim.whiteCollarCrime ?? 30).toFixed(0), good: (sim.whiteCollarCrime ?? 30) < 30 },
   ];
 
   // Flip-flop penalty display
@@ -119,6 +127,19 @@ export function SparklinePanel() {
             <div className="text-[8px] text-game-muted">{s.label}</div>
           </div>
         ))}
+      </div>
+
+      {/* D4: Crime breakdown */}
+      <div className="glass-card p-2.5">
+        <div className="text-[10px] text-game-muted uppercase tracking-wider font-bold mb-1.5">🔒 Crime Breakdown</div>
+        <div className="grid grid-cols-3 gap-1.5">
+          {crimeStats.map(s => (
+            <div key={s.label} className="stat-card !p-1.5">
+              <div className={`text-xs font-bold ${s.good ? 'text-emerald-400' : 'text-red-400'}`}>{s.value}</div>
+              <div className="text-[8px] text-game-muted">{s.label}</div>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Flip-flop warning */}

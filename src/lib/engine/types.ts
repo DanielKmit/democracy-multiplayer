@@ -133,6 +133,9 @@ export type SimVarKey =
   | 'unemployment'
   | 'inflation'
   | 'crime'
+  | 'violentCrime'
+  | 'propertyCrime'
+  | 'whiteCollarCrime'
   | 'pollution'
   | 'equality'
   | 'healthIndex'
@@ -146,6 +149,10 @@ export interface SimulationState {
   unemployment: number;
   inflation: number;
   crime: number;
+  // D4: Crime breakdown — different types respond to different policies
+  violentCrime: number;    // Affected by police, gun control, inequality
+  propertyCrime: number;   // Affected by police, unemployment, drug policy
+  whiteCollarCrime: number; // Affected by intelligence, corruption, regulations
   pollution: number;
   equality: number;
   healthIndex: number;
@@ -411,6 +418,15 @@ export interface DebateTopic {
   name: string;
   icon: string;
   simVar: SimVarKey;
+}
+
+export interface MediaOutlet {
+  id: string;
+  name: string;
+  bias: 'left' | 'center' | 'right';
+  influence: number;       // 0-100, how much they affect perception
+  currentStance: number;   // -50 to +50, negative = hostile to ruling party
+  influencedUntil: number; // turn when PR influence expires (0 = not influenced)
 }
 
 export interface DebateState {
@@ -968,6 +984,8 @@ export interface GameState {
   focusGroupResult: { policyId: string; predictedImpact: Record<string, number> } | null;
   // D4: Pre-election debate
   debate: DebateState | null;
+  // D4: Newspaper/media landscape
+  mediaLandscape: MediaOutlet[];
   // D4: Perception vs reality — media/opposition can distort what voters think
   perception: Record<string, number>;  // simVarKey -> perceived value (diverges from actual)
   // D4: Policy momentum — tracks how long each policy has been stable
