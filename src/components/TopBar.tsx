@@ -7,6 +7,7 @@ import { PARTY_COLORS, GameState } from '@/lib/engine/types';
 import { restoreGame } from '@/lib/gameHost';
 import { HelpModal } from './HelpModal';
 import { useAudio } from './AudioManager';
+import { motion, springs, MotionNumber } from './Motion';
 
 
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -87,10 +88,15 @@ export function TopBar() {
           </div>
 
           {/* Phase badge */}
-          <div className={`text-[10px] px-2.5 py-1 rounded-lg border font-medium ${phase.color}`}
-            style={{ borderColor: 'currentColor', opacity: 0.8, backgroundColor: 'rgba(255,255,255,0.02)' }}>
+          <motion.div
+            key={phase.label}
+            className={`text-xs px-2.5 py-1 rounded-lg border font-medium ${phase.color}`}
+            style={{ borderColor: 'currentColor', opacity: 0.8, backgroundColor: 'rgba(255,255,255,0.03)' }}
+            initial={{ opacity: 0, scale: 0.9, x: -5 }}
+            animate={{ opacity: 1, scale: 1, x: 0 }}
+            transition={springs.snappy}>
             {phase.label}
-          </div>
+          </motion.div>
 
           {/* Coalition info */}
           {ruling && !gameState.isPreElection && (() => {
