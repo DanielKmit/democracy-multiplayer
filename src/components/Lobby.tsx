@@ -46,11 +46,11 @@ export function Lobby({ roomId }: { roomId: string }) {
   const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(`Join my Democracy game! 🏛️ ${joinUrl}`)}`;
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-950 relative">
+    <div className="min-h-screen flex items-center justify-center bg-game-bg relative">
       {/* Back / Leave button */}
       <button
         onClick={() => setShowLeaveConfirm(true)}
-        className="absolute top-4 left-4 px-3 py-2 text-sm text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-all cursor-pointer"
+        className="absolute top-4 left-4 px-3 py-2 text-sm text-game-secondary hover:text-white hover:bg-game-card rounded-lg transition-all cursor-pointer"
       >
         ← Back to Menu
       </button>
@@ -58,13 +58,13 @@ export function Lobby({ roomId }: { roomId: string }) {
       {/* Leave confirmation modal */}
       {showLeaveConfirm && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 max-w-sm mx-4 animate-fade-in">
+          <div className="bg-game-card border border-game-border rounded-xl p-6 max-w-sm mx-4 animate-fade-in">
             <h3 className="text-lg font-bold mb-2">Leave this game?</h3>
-            <p className="text-slate-400 text-sm mb-6">You'll disconnect from the room and return to the menu.</p>
+            <p className="text-game-secondary text-sm mb-6">You'll disconnect from the room and return to the menu.</p>
             <div className="flex gap-3">
               <button
                 onClick={() => setShowLeaveConfirm(false)}
-                className="flex-1 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm font-medium transition-all cursor-pointer"
+                className="flex-1 py-2 bg-game-border hover:bg-game-muted/30 rounded-lg text-sm font-medium transition-all cursor-pointer"
               >
                 Cancel
               </button>
@@ -82,11 +82,11 @@ export function Lobby({ roomId }: { roomId: string }) {
       <div className="text-center animate-fade-in max-w-lg">
         <div className="text-6xl mb-6">🏛️</div>
         <h2 className="text-2xl font-bold mb-1">Republic of Novaria</h2>
-        <p className="text-slate-400 mb-8">Waiting for opponent to join</p>
+        <p className="text-game-secondary mb-8">Waiting for opponent to join</p>
 
         {/* Room code + Copy button */}
-        <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 mb-6 inline-block">
-          <div className="text-xs text-slate-500 uppercase tracking-wider mb-2">Room Code</div>
+        <div className="bg-game-card border border-game-border rounded-xl p-6 mb-6 inline-block">
+          <div className="text-xs text-game-muted uppercase tracking-wider mb-2">Room Code</div>
           <div className="flex items-center gap-3 justify-center">
             <span className="text-4xl font-mono font-bold tracking-[0.4em] text-blue-400">
               {roomId}
@@ -105,7 +105,7 @@ export function Lobby({ roomId }: { roomId: string }) {
 
         {/* Share buttons */}
         <div className="mb-8">
-          <p className="text-xs text-slate-500 uppercase tracking-wider mb-3">📤 Invite Friend</p>
+          <p className="text-xs text-game-muted uppercase tracking-wider mb-3">📤 Invite Friend</p>
           <div className="flex gap-3 justify-center flex-wrap">
             <a
               href={whatsappUrl}
@@ -119,13 +119,13 @@ export function Lobby({ roomId }: { roomId: string }) {
               href={twitterUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm font-medium transition-all hover:scale-[1.02] cursor-pointer"
+              className="px-4 py-2 bg-game-border hover:bg-game-muted/30 rounded-lg text-sm font-medium transition-all hover:scale-[1.02] cursor-pointer"
             >
               🐦 Twitter
             </a>
             <button
               onClick={handleCopy}
-              className="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm font-medium transition-all hover:scale-[1.02] cursor-pointer"
+              className="px-4 py-2 bg-game-border hover:bg-game-muted/30 rounded-lg text-sm font-medium transition-all hover:scale-[1.02] cursor-pointer"
             >
               🔗 Copy Link
             </button>
@@ -138,7 +138,7 @@ export function Lobby({ roomId }: { roomId: string }) {
             {gameState.players.map(player => (
               <div
                 key={player.id}
-                className="flex items-center gap-3 p-3 bg-slate-800/50 rounded-lg border border-slate-700"
+                className="flex items-center gap-3 p-3 bg-game-card/50 rounded-lg border border-game-border"
               >
                 <div
                   className="w-10 h-10 rounded-lg flex items-center justify-center"
@@ -153,7 +153,7 @@ export function Lobby({ roomId }: { roomId: string }) {
                   <div className="text-sm font-medium" style={{ color: PARTY_COLORS[player.party.partyColor] }}>
                     {player.party.partyName !== 'Default Party' ? player.party.partyName : player.name}
                   </div>
-                  <div className="text-xs text-slate-500">{player.role === 'ruling' ? '🏛️ Ruling' : '⚔️ Opposition'}</div>
+                  <div className="text-xs text-game-muted">{player.role === 'ruling' ? '🏛️ Ruling' : '⚔️ Opposition'}</div>
                 </div>
                 <div className="ml-auto w-2 h-2 bg-green-500 rounded-full" />
               </div>
@@ -169,7 +169,7 @@ export function Lobby({ roomId }: { roomId: string }) {
         )}
 
         {/* Waiting animation with pulsing dots */}
-        <div className="flex items-center justify-center gap-2 text-slate-500">
+        <div className="flex items-center justify-center gap-2 text-game-muted">
           <span className="flex gap-1">
             <span className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
             <span className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />

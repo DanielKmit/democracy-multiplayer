@@ -69,6 +69,9 @@ export function computeSimulation(policyValues: Record<string, number>, activeEf
     unemployment: 8,
     inflation: 3,
     crime: 40,
+    violentCrime: 35,
+    propertyCrime: 40,
+    whiteCollarCrime: 30,
     pollution: 50,
     equality: 50,
     healthIndex: 50,
@@ -102,10 +105,30 @@ export function computeSimulation(policyValues: Record<string, number>, activeEf
     }
   }
 
+  // D4: Compute crime subtypes from policies
+  const police = policyValues.police ?? 50;
+  const gunControl = policyValues.gun_control ?? 50;
+  const drugPolicy = policyValues.drug_policy ?? 50;
+  const intelligence = policyValues.intelligence ?? 40;
+  const inequality = 100 - sim.equality;
+
+  // Violent crime: driven by inequality, reduced by police + gun control
+  sim.violentCrime = 35 + (inequality * 0.3) - (police - 50) * 0.3 - (gunControl - 50) * 0.2 + (sim.unemployment - 8) * 0.5;
+  // Property crime: driven by unemployment + inequality, reduced by police, affected by drug policy
+  sim.propertyCrime = 40 + (sim.unemployment - 8) * 0.8 + (inequality * 0.2) - (police - 50) * 0.25 - (drugPolicy - 50) * 0.1;
+  // White-collar crime: driven by corruption + low regulation, reduced by intelligence
+  sim.whiteCollarCrime = 30 + (sim.corruption * 0.3) - (intelligence - 40) * 0.3;
+
+  // Overall crime is weighted average of subtypes
+  sim.crime = sim.violentCrime * 0.4 + sim.propertyCrime * 0.35 + sim.whiteCollarCrime * 0.25;
+
   // Clamp
   sim.gdpGrowth = clamp(sim.gdpGrowth, -5, 8);
   sim.unemployment = clamp(sim.unemployment, 0, 30);
   sim.inflation = clamp(sim.inflation, 0, 20);
+  sim.violentCrime = clamp(sim.violentCrime, 0, 100);
+  sim.propertyCrime = clamp(sim.propertyCrime, 0, 100);
+  sim.whiteCollarCrime = clamp(sim.whiteCollarCrime, 0, 100);
   sim.crime = clamp(sim.crime, 0, 100);
   sim.pollution = clamp(sim.pollution, 0, 100);
   sim.equality = clamp(sim.equality, 0, 100);
@@ -486,7 +509,13 @@ export function computeVoteShares(
     // Convert to proportional share for this group, weighted by population and turnout
     if (totalSat > 0) {
       for (const pid of partyIds) {
-        voteShares[pid] += (partySats[pid] / totalSat) * group.populationShare * 100 * turnoutMultiplier;
+        // D4: Voter complacency — very satisfied voters are less motivated to turn out
+        // This prevents runaway victories and creates natural swing dynamics
+        const sat = partySats[pid] ?? 50;
+        const complacencyPenalty = sat > 70 ? (sat - 70) * 0.005 : 0; // max ~15% reduction at sat=100
+        const effectiveTurnout = turnoutMultiplier * (1 - complacencyPenalty);
+
+        voteShares[pid] += (partySats[pid] / totalSat) * group.populationShare * 100 * effectiveTurnout;
       }
     }
   }
@@ -869,6 +898,12 @@ export function createInitialGameState(roomId: string): GameState {
     policyChangeHistory: {},
     flipFlopPenalty: {},
     focusGroupResult: null,
+    debate: null,
+    mediaLandscape: [
+      { id: 'novaria_times', name: 'Novaria Times', bias: 'center', influence: 40, currentStance: 0, influencedUntil: 0 },
+      { id: 'workers_herald', name: "Workers' Herald", bias: 'left', influence: 30, currentStance: 5, influencedUntil: 0 },
+      { id: 'free_enterprise', name: 'Free Enterprise Journal', bias: 'right', influence: 30, currentStance: -5, influencedUntil: 0 },
+    ],
     perception: {},
     policyStability: {},
   };
@@ -1863,6 +1898,53 @@ export function advancePhase(state: GameState): void {
       // Reset stability for policies that changed this turn
       for (const change of (state.lastTurnPolicyChanges ?? [])) {
         state.policyStability[change.policyId] = 0;
+      }
+
+      // D4: Newspaper stance drift — papers react to policies each turn
+      if (state.mediaLandscape) {
+        const ruling = state.players.find(p => p.role === 'ruling');
+        for (const paper of state.mediaLandscape) {
+          // Expire PR influence
+          if (paper.influencedUntil > 0 && state.turn >= paper.influencedUntil) {
+            paper.influencedUntil = 0;
+          }
+
+          if (ruling) {
+            // Papers drift based on how well policies align with their editorial bias
+            const leftPolicies = (state.policies.healthcare ?? 50) + (state.policies.education ?? 50) + (state.policies.unemployment_benefits ?? 50);
+            const rightPolicies = (state.policies.corporate_tax ? 100 - state.policies.corporate_tax : 50) + (state.policies.trade_openness ?? 50) + (state.policies.military ?? 50);
+            const leftScore = leftPolicies / 3;
+            const rightScore = rightPolicies / 3;
+
+            if (paper.bias === 'left') {
+              paper.currentStance += (leftScore > 55 ? 2 : leftScore < 40 ? -3 : -0.5);
+            } else if (paper.bias === 'right') {
+              paper.currentStance += (rightScore > 55 ? 2 : rightScore < 40 ? -3 : -0.5);
+            } else {
+              // Center paper: drifts toward ruling party if economy good, away if bad
+              paper.currentStance += state.simulation.gdpGrowth > 2 ? 1 : state.simulation.gdpGrowth < 0 ? -2 : 0;
+            }
+
+            // PR influence pushes stance positive
+            if (paper.influencedUntil > 0) {
+              paper.currentStance += 3;
+            }
+
+            paper.currentStance = Math.max(-50, Math.min(50, paper.currentStance));
+          }
+
+          // Hostile papers amplify negative perception
+          if (paper.currentStance < -15) {
+            const distortionPower = (Math.abs(paper.currentStance) / 50) * (paper.influence / 100) * 3;
+            // Push perception of worst stat further negative
+            const worstVar = state.simulation.unemployment > 10 ? 'unemployment' :
+              state.simulation.crime > 50 ? 'crime' :
+              state.simulation.pollution > 55 ? 'pollution' : 'corruption';
+            if (state.perception) {
+              state.perception[worstVar] = (state.perception[worstVar] ?? state.simulation[worstVar as keyof typeof state.simulation] as number) + distortionPower;
+            }
+          }
+        }
       }
 
       // D4: Save voter memory at end of each turn for honeymoon tracking

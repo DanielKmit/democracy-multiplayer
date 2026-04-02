@@ -46,6 +46,7 @@ export const VOTER_GROUPS: VoterGroupDefinition[] = [
     concerns: {
       gdpGrowth: 0.9,       // Economy is everything
       inflation: -0.4,      // Hurts planning
+      whiteCollarCrime: -0.6, // Corporate crime hurts business trust
       corruption: -0.5,     // Want clean markets
       unemployment: -0.2,   // Need workers, but not too worried
     },
@@ -94,7 +95,7 @@ export const VOTER_GROUPS: VoterGroupDefinition[] = [
     populationShare: 0.15,
     concerns: {
       healthIndex: 0.9,      // Health is #1
-      crime: -0.6,           // Fear crime
+      violentCrime: -0.7,    // Fear violent crime specifically
       inflation: -0.7,       // Fixed income destroyed by inflation
       nationalSecurity: 0.3, // Want stability
     },
@@ -118,6 +119,7 @@ export const VOTER_GROUPS: VoterGroupDefinition[] = [
     populationShare: 0.11,
     concerns: {
       gdpGrowth: 0.5,        // Career and income
+      propertyCrime: -0.5,   // Property theft in cities
       pollution: -0.5,       // Quality of life in cities
       freedomIndex: 0.4,     // Value liberties
       educationIndex: 0.4,   // Educated themselves, value it
@@ -239,7 +241,9 @@ export const VOTER_GROUPS: VoterGroupDefinition[] = [
     populationShare: 0.04,
     concerns: {
       nationalSecurity: 0.95, // #1: protect the nation
-      crime: -0.7,            // Law and order
+      violentCrime: -0.6,     // All crime types matter
+      propertyCrime: -0.4,
+      crime: -0.3,            // General law and order
     },
     policyPreferences: {
       military: 90,               // Strong military
