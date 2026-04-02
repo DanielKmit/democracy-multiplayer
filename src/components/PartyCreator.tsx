@@ -16,6 +16,21 @@ import { PartyLogoIcon } from './icons/PartyLogos';
 const COLOR_OPTIONS: PartyColor[] = ['red', 'blue', 'green', 'yellow', 'orange', 'purple', 'cyan', 'pink'];
 const LOGO_OPTIONS: PartyLogo[] = ['eagle', 'rose', 'star', 'tree', 'fist', 'dove', 'shield', 'flame', 'scales', 'gear', 'wheat', 'sun'];
 
+const getAxisLabel = (value: number, type: 'econ' | 'social') => {
+  if (type === 'econ') {
+    if (value < 25) return 'Far Left';
+    if (value < 40) return 'Left';
+    if (value < 60) return 'Center';
+    if (value < 75) return 'Center-Right';
+    return 'Right';
+  }
+  if (value < 25) return 'Authoritarian';
+  if (value < 40) return 'Conservative';
+  if (value < 60) return 'Moderate';
+  if (value < 75) return 'Progressive';
+  return 'Libertarian';
+};
+
 export function PartyCreator() {
   const { playerId } = useGameStore();
   const { submitPartyConfig } = useGameActions();
@@ -53,204 +68,166 @@ export function PartyCreator() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-game-bg bg-dot-grid bg-gradient-mesh flex items-center justify-center p-4">
       <div className="max-w-3xl w-full">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold mb-2">Create Your Party</h1>
-          <p className="text-slate-400">Define your political identity for the Republic of Novaria</p>
+        <div className="text-center mb-6">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-game-accent/10 border border-game-accent/20 mb-4">
+            <span className="text-3xl">🏛️</span>
+          </div>
+          <h1 className="text-3xl font-bold mb-1 font-display">Create Your Party</h1>
+          <p className="text-game-secondary text-sm">Define your political identity for the Republic of Novaria</p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Left Column */}
-          <div className="space-y-5">
-            {/* Party Name */}
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Party Name</label>
-              <input
-                type="text"
-                value={partyName}
-                onChange={(e) => setPartyName(e.target.value)}
-                placeholder="e.g., Progressive Alliance"
-                className="w-full p-3 bg-slate-800 border border-slate-700 rounded-lg text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-blue-500"
-                maxLength={30}
-              />
-            </div>
-
-            {/* Leader Name */}
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Leader Name</label>
-              <input
-                type="text"
-                value={leaderName}
-                onChange={(e) => setLeaderName(e.target.value)}
-                placeholder="Your character name"
-                className="w-full p-3 bg-slate-800 border border-slate-700 rounded-lg text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-blue-500"
-                maxLength={25}
-              />
-            </div>
-
-            {/* Party Color */}
-            <div>
-              <label className="block text-sm text-slate-400 mb-2">Party Color</label>
-              <div className="flex gap-2 flex-wrap">
-                {COLOR_OPTIONS.map(color => (
-                  <button
-                    key={color}
-                    onClick={() => setPartyColor(color)}
-                    className={`w-10 h-10 rounded-full border-2 transition-all ${
-                      partyColor === color ? 'border-white scale-110' : 'border-slate-600 hover:border-slate-400'
-                    }`}
-                    style={{ backgroundColor: PARTY_COLORS[color] }}
-                  />
-                ))}
+        <div className="glass-card rounded-2xl overflow-hidden">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-0 md:divide-x divide-game-border">
+            {/* Left Column */}
+            <div className="p-5 space-y-5">
+              {/* Party Name */}
+              <div>
+                <label className="block text-[10px] text-game-muted uppercase tracking-wider mb-1.5 font-bold">Party Name</label>
+                <input type="text" value={partyName} onChange={(e) => setPartyName(e.target.value)}
+                  placeholder="e.g., Progressive Alliance" maxLength={30}
+                  className="w-full p-2.5 bg-game-bg border border-game-border rounded-lg text-white text-sm placeholder:text-game-muted/50 focus:outline-none focus:border-game-accent/50 focus:ring-1 focus:ring-game-accent/20 transition-all" />
               </div>
-            </div>
 
-            {/* Party Logo */}
-            <div>
-              <label className="block text-sm text-slate-400 mb-2">Party Logo</label>
-              <div className="grid grid-cols-6 gap-2">
-                {LOGO_OPTIONS.map(l => (
-                  <button
-                    key={l}
-                    onClick={() => setLogo(l)}
-                    className={`w-12 h-12 rounded-lg flex items-center justify-center border transition-all ${
-                      logo === l
-                        ? 'border-white bg-slate-700'
-                        : 'border-slate-700 bg-slate-800 hover:border-slate-500'
-                    }`}
-                  >
-                    <PartyLogoIcon name={l} color={PARTY_COLORS[partyColor]} size={28} />
-                  </button>
-                ))}
+              {/* Leader Name */}
+              <div>
+                <label className="block text-[10px] text-game-muted uppercase tracking-wider mb-1.5 font-bold">Leader Name</label>
+                <input type="text" value={leaderName} onChange={(e) => setLeaderName(e.target.value)}
+                  placeholder="Your character name" maxLength={25}
+                  className="w-full p-2.5 bg-game-bg border border-game-border rounded-lg text-white text-sm placeholder:text-game-muted/50 focus:outline-none focus:border-game-accent/50 focus:ring-1 focus:ring-game-accent/20 transition-all" />
               </div>
-            </div>
-          </div>
 
-          {/* Right Column */}
-          <div className="space-y-5">
-            {/* Political Compass */}
-            <div>
-              <label className="block text-sm text-slate-400 mb-2">Political Ideology</label>
-              <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
-                <div className="mb-4">
-                  <div className="flex justify-between text-xs text-slate-500 mb-1">
-                    <span>State Control</span>
-                    <span>Economic: {economicAxis}</span>
-                    <span>Free Market</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={0}
-                    max={100}
-                    value={economicAxis}
-                    onChange={(e) => setEconomicAxis(parseInt(e.target.value))}
-                    className="w-full"
-                  />
+              {/* Party Color */}
+              <div>
+                <label className="block text-[10px] text-game-muted uppercase tracking-wider mb-1.5 font-bold">Color</label>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {COLOR_OPTIONS.map(color => (
+                    <button key={color} onClick={() => setPartyColor(color)}
+                      className={`h-9 rounded-lg border-2 transition-all ${
+                        partyColor === color ? 'border-white scale-105 shadow-lg' : 'border-transparent hover:border-white/20'
+                      }`}
+                      style={{ backgroundColor: PARTY_COLORS[color] }} />
+                  ))}
                 </div>
-                <div>
-                  <div className="flex justify-between text-xs text-slate-500 mb-1">
-                    <span>Authoritarian</span>
-                    <span>Social: {socialAxis}</span>
-                    <span>Liberal</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={0}
-                    max={100}
-                    value={socialAxis}
-                    onChange={(e) => setSocialAxis(parseInt(e.target.value))}
-                    className="w-full"
-                  />
-                </div>
+              </div>
 
-                {/* Mini compass visualization */}
-                <div className="mt-3 relative w-full aspect-square max-w-[140px] mx-auto bg-slate-900 rounded border border-slate-700">
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="w-px h-full bg-slate-700 absolute" />
-                    <div className="h-px w-full bg-slate-700 absolute" />
-                  </div>
-                  <div
-                    className="absolute w-4 h-4 rounded-full border-2 border-white transform -translate-x-1/2 -translate-y-1/2 transition-all"
-                    style={{
-                      left: `${economicAxis}%`,
-                      top: `${100 - socialAxis}%`,
-                      backgroundColor: PARTY_COLORS[partyColor],
-                    }}
-                  />
-                  <div className="absolute top-1 left-1/2 -translate-x-1/2 text-[10px] text-slate-600">Liberal</div>
-                  <div className="absolute bottom-1 left-1/2 -translate-x-1/2 text-[10px] text-slate-600">Auth</div>
-                  <div className="absolute left-1 top-1/2 -translate-y-1/2 text-[10px] text-slate-600">Left</div>
-                  <div className="absolute right-1 top-1/2 -translate-y-1/2 text-[10px] text-slate-600">Right</div>
+              {/* Party Logo */}
+              <div>
+                <label className="block text-[10px] text-game-muted uppercase tracking-wider mb-1.5 font-bold">Logo</label>
+                <div className="grid grid-cols-6 gap-1.5">
+                  {LOGO_OPTIONS.map(l => (
+                    <button key={l} onClick={() => setLogo(l)}
+                      className={`h-10 rounded-lg flex items-center justify-center border transition-all ${
+                        logo === l ? 'border-white bg-white/10' : 'border-game-border bg-game-bg hover:border-white/20'
+                      }`}>
+                      <PartyLogoIcon name={l} color={PARTY_COLORS[partyColor]} size={24} />
+                    </button>
+                  ))}
                 </div>
               </div>
             </div>
 
-            {/* Manifesto */}
-            <div>
-              <label className="block text-sm text-slate-400 mb-2">
-                Key Promises ({manifesto.length}/3)
-              </label>
-              <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto">
-                {MANIFESTO_OPTIONS.map(option => (
-                  <button
-                    key={option}
-                    onClick={() => toggleManifesto(option)}
-                    className={`px-3 py-1.5 rounded-full text-xs border transition-all ${
-                      manifesto.includes(option)
-                        ? 'border-white bg-slate-700 text-white'
-                        : manifesto.length >= 3
-                        ? 'border-slate-800 text-slate-600 cursor-not-allowed'
-                        : 'border-slate-700 text-slate-400 hover:border-slate-500'
-                    }`}
-                  >
-                    {option}
-                  </button>
-                ))}
+            {/* Right Column */}
+            <div className="p-5 space-y-5">
+              {/* Political Ideology */}
+              <div>
+                <label className="block text-[10px] text-game-muted uppercase tracking-wider mb-1.5 font-bold">Ideology</label>
+                <div className="glass-card p-4 space-y-4">
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[10px] text-red-400">Left</span>
+                      <span className="text-[10px] text-game-secondary font-medium">{getAxisLabel(economicAxis, 'econ')}</span>
+                      <span className="text-[10px] text-blue-400">Right</span>
+                    </div>
+                    <input type="range" min={0} max={100} value={economicAxis}
+                      onChange={(e) => setEconomicAxis(parseInt(e.target.value))}
+                      className="w-full accent-game-accent h-1.5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[10px] text-orange-400">Authoritarian</span>
+                      <span className="text-[10px] text-game-secondary font-medium">{getAxisLabel(socialAxis, 'social')}</span>
+                      <span className="text-[10px] text-green-400">Liberal</span>
+                    </div>
+                    <input type="range" min={0} max={100} value={socialAxis}
+                      onChange={(e) => setSocialAxis(parseInt(e.target.value))}
+                      className="w-full accent-game-accent h-1.5" />
+                  </div>
+
+                  {/* Mini compass */}
+                  <div className="relative w-full aspect-square max-w-[120px] mx-auto bg-game-bg rounded-lg border border-game-border">
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="w-px h-full bg-game-border absolute" />
+                      <div className="h-px w-full bg-game-border absolute" />
+                    </div>
+                    <div className="absolute w-3.5 h-3.5 rounded-full border-2 border-white transform -translate-x-1/2 -translate-y-1/2 transition-all shadow-lg"
+                      style={{ left: `${economicAxis}%`, top: `${100 - socialAxis}%`, backgroundColor: PARTY_COLORS[partyColor] }} />
+                    <div className="absolute top-0.5 left-1/2 -translate-x-1/2 text-[8px] text-game-muted">Lib</div>
+                    <div className="absolute bottom-0.5 left-1/2 -translate-x-1/2 text-[8px] text-game-muted">Auth</div>
+                    <div className="absolute left-0.5 top-1/2 -translate-y-1/2 text-[8px] text-game-muted">L</div>
+                    <div className="absolute right-0.5 top-1/2 -translate-y-1/2 text-[8px] text-game-muted">R</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Manifesto */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-[10px] text-game-muted uppercase tracking-wider font-bold">Key Promises</label>
+                  <span className="text-[10px] text-game-muted">{manifesto.length}/3</span>
+                </div>
+                <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto">
+                  {MANIFESTO_OPTIONS.map(option => (
+                    <button key={option} onClick={() => toggleManifesto(option)}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all border ${
+                        manifesto.includes(option)
+                          ? 'bg-game-accent/20 text-game-accent border-game-accent/30'
+                          : manifesto.length >= 3
+                            ? 'bg-game-bg text-game-muted/40 border-game-border/50 cursor-not-allowed'
+                            : 'bg-game-bg text-game-secondary border-game-border hover:border-white/10 hover:text-white'
+                      }`}>
+                      {option}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Preview Card */}
-        <div className="mt-8 p-4 bg-slate-800/50 rounded-xl border border-slate-700">
-          <div className="flex items-center gap-4">
-            <div
-              className="w-16 h-16 rounded-lg flex items-center justify-center"
-              style={{ backgroundColor: PARTY_COLORS[partyColor] + '30', border: `2px solid ${PARTY_COLORS[partyColor]}` }}
-            >
-              <PartyLogoIcon name={logo} color={PARTY_COLORS[partyColor]} size={36} />
-            </div>
-            <div className="flex-1">
-              <h3 className="text-lg font-bold" style={{ color: PARTY_COLORS[partyColor] }}>
-                {partyName || 'Party Name'}
-              </h3>
-              <p className="text-sm text-slate-400">Led by {leaderName || 'Leader Name'}</p>
-              <div className="flex gap-2 mt-1 flex-wrap">
-                {manifesto.map(m => (
-                  <span key={m} className="text-xs px-2 py-0.5 rounded bg-slate-700 text-slate-300">{m}</span>
-                ))}
+          {/* Preview + Submit */}
+          <div className="border-t border-game-border p-5 bg-game-card/30">
+            <div className="flex items-center gap-4 mb-4">
+              <div className="w-14 h-14 rounded-xl flex items-center justify-center shrink-0"
+                style={{ backgroundColor: PARTY_COLORS[partyColor] + '20', border: `2px solid ${PARTY_COLORS[partyColor]}40` }}>
+                <PartyLogoIcon name={logo} color={PARTY_COLORS[partyColor]} size={32} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-lg font-bold font-display truncate" style={{ color: PARTY_COLORS[partyColor] }}>
+                  {partyName || 'Party Name'}
+                </h3>
+                <p className="text-xs text-game-muted">
+                  Led by {leaderName || 'Leader Name'} • {getAxisLabel(economicAxis, 'econ')}-{getAxisLabel(socialAxis, 'social')}
+                </p>
+                <div className="flex gap-1.5 mt-1 flex-wrap">
+                  {manifesto.map(m => (
+                    <span key={m} className="text-[10px] px-2 py-0.5 rounded-md bg-game-accent/10 text-game-accent border border-game-accent/20">{m}</span>
+                  ))}
+                </div>
               </div>
             </div>
-            <div className="text-right text-xs text-slate-500">
-              <div>Econ: {economicAxis < 40 ? 'Left' : economicAxis > 60 ? 'Right' : 'Center'}</div>
-              <div>Social: {socialAxis < 40 ? 'Auth' : socialAxis > 60 ? 'Liberal' : 'Moderate'}</div>
-            </div>
+
+            <button onClick={handleSubmit} disabled={!canSubmit}
+              className="w-full py-3 rounded-xl text-sm font-bold transition-all"
+              style={{
+                background: canSubmit ? `linear-gradient(135deg, ${PARTY_COLORS[partyColor]}, ${PARTY_COLORS[partyColor]}CC)` : 'rgba(255,255,255,0.03)',
+                color: canSubmit ? 'white' : 'var(--game-muted)',
+                boxShadow: canSubmit ? `0 0 20px ${PARTY_COLORS[partyColor]}25` : 'none',
+              }}>
+              {canSubmit ? '🏛️ Found Your Party' : 'Fill in all fields & pick 3 promises'}
+            </button>
           </div>
         </div>
-
-        {/* Submit */}
-        <button
-          onClick={handleSubmit}
-          disabled={!canSubmit}
-          className="w-full mt-6 py-4 rounded-xl text-lg font-semibold transition-all"
-          style={{
-            backgroundColor: canSubmit ? PARTY_COLORS[partyColor] : '#334155',
-            opacity: canSubmit ? 1 : 0.5,
-          }}
-        >
-          {canSubmit ? '🏛️ Found Your Party' : 'Fill in all fields & pick 3 promises'}
-        </button>
       </div>
     </div>
   );
