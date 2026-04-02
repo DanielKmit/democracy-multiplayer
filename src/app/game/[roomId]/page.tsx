@@ -37,6 +37,7 @@ import { VictoryProgress } from '@/components/VictoryProgress';
 import { DiplomacyPanel } from '@/components/DiplomacyPanel';
 import { PromisesPanel } from '@/components/PromisesPanel';
 import { ParliamentVoteModal } from '@/components/ParliamentVoteModal';
+import { PhaseOverlay } from '@/components/PhaseOverlay';
 
 type SidebarTab = 'gov' | 'intel' | 'diplo';
 
@@ -137,6 +138,23 @@ export default function GamePage() {
   const { endTurnPhase } = useGameActions();
   const [disconnected, setDisconnected] = useState(false);
   const recoveryAttempted = useRef(false);
+  const [showPhaseOverlay, setShowPhaseOverlay] = useState(false);
+  const lastPhaseRef = useRef<string>('');
+
+  // Show cinematic overlay on phase changes
+  useEffect(() => {
+    if (!gameState) return;
+    const phase = gameState.phase;
+    if (phase !== lastPhaseRef.current && lastPhaseRef.current !== '') {
+      // Don't show for transient phases
+      const cinematicPhases = ['ruling', 'opposition', 'events', 'polling', 'election', 'campaigning', 'debate', 'coalition_negotiation', 'government_formation', 'dilemma'];
+      if (cinematicPhases.includes(phase)) {
+        setShowPhaseOverlay(true);
+        setTimeout(() => setShowPhaseOverlay(false), 2200);
+      }
+    }
+    lastPhaseRef.current = phase;
+  }, [gameState?.phase]);
 
   // Restore game from localStorage on page refresh (mode resets to 'none')
   useEffect(() => {
@@ -323,6 +341,9 @@ export default function GamePage() {
   return (
     <div className="h-screen flex flex-col bg-game-bg text-white overflow-hidden">
       <TopBar />
+
+      {/* Cinematic phase transition */}
+      {showPhaseOverlay && <PhaseOverlay phase={gameState.phase} turn={gameState.turn} />}
 
       {/* Modals */}
       {gameState.phase === 'events' && gameState.currentEvent && <EventModal />}
