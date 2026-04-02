@@ -236,27 +236,14 @@ export default function Home() {
                 </MotionListItem>
               )}
               <MotionListItem>
-                <motion.button onClick={() => setModeLocal('ai_setup')}
-                  whileHover={{ scale: 1.01, y: -1 }} whileTap={{ scale: 0.98 }} transition={springs.snappy}
-                  className="menu-item hover:border-purple-500/20 group">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-purple-500/10 flex items-center justify-center text-lg">🤖</div>
-                    <div>
-                      <span className="text-white font-semibold text-[15px]">Play vs AI</span>
-                      <span className="block text-xs text-game-muted mt-0.5">Single-player against AI opponent</span>
-                    </div>
-                  </div>
-                </motion.button>
-              </MotionListItem>
-              <MotionListItem>
                 <motion.button onClick={() => setModeLocal('create')}
                   whileHover={{ scale: 1.01, y: -1 }} whileTap={{ scale: 0.98 }} transition={springs.snappy}
                   className="menu-item hover:border-blue-500/20 group">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-lg">👥</div>
+                    <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-lg">🏛️</div>
                     <div>
-                      <span className="text-white font-semibold text-[15px]">Create Multiplayer</span>
-                      <span className="block text-xs text-game-muted mt-0.5">Host a room for a friend to join</span>
+                      <span className="text-white font-semibold text-[15px]">Create Game</span>
+                      <span className="block text-xs text-game-muted mt-0.5">Host a multiplayer room with AI bot parties</span>
                     </div>
                   </div>
                 </motion.button>
@@ -269,7 +256,7 @@ export default function Home() {
                     <div className="w-10 h-10 rounded-xl bg-white/[0.04] flex items-center justify-center text-lg">🔗</div>
                     <div>
                       <span className="text-white font-semibold text-[15px]">Join Game</span>
-                      <span className="block text-xs text-game-muted mt-0.5">Enter a room code to join</span>
+                      <span className="block text-xs text-game-muted mt-0.5">Enter a room code to join a friend</span>
                     </div>
                   </div>
                 </motion.button>
@@ -277,7 +264,7 @@ export default function Home() {
             </div>
 
             <div className="text-center py-4">
-              <p className="text-game-muted text-xs">Create your party. Govern a nation. Win elections.</p>
+              <p className="text-game-muted text-xs">2-player multiplayer with 6 AI bot parties in parliament</p>
             </div>
           </MotionList>
         )}
@@ -467,36 +454,40 @@ export default function Home() {
 
         {/* Create Room */}
         {mode === 'create' && (
-          <div className="glass-card rounded-2xl overflow-hidden animate-fade-in">
-            <div className="p-5 border-b border-game-border bg-gradient-to-r from-blue-950/30 to-transparent">
-              <h2 className="text-xl font-bold font-display text-blue-300">Create Multiplayer Room</h2>
-              <p className="text-xs text-game-muted mt-1">Your friend will join using the room code</p>
+          <motion.div className="hero-card rounded-2xl overflow-hidden"
+            initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
+            <div className="p-5 border-b border-game-border bg-gradient-to-r from-blue-950/20 to-transparent">
+              <h2 className="text-xl font-bold font-display text-blue-300">Create Game</h2>
+              <p className="text-xs text-game-muted mt-1">Your opponent will join using the room code</p>
             </div>
             <div className="p-5 space-y-4">
               <div>
                 <label className="block text-label mb-1.5 font-semibold">Your Name</label>
                 <input type="text" value={name} onChange={(e) => setName(e.target.value)}
                   placeholder="Enter your name..." autoFocus maxLength={20}
-                  className="w-full p-2.5 bg-game-bg border border-game-border rounded-lg text-white text-sm placeholder:text-game-muted/50 focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/20 transition-all" />
+                  className="input-premium" />
               </div>
             </div>
-            <div className="p-4 border-t border-game-border bg-game-card/50 flex gap-2">
-              <button onClick={() => { setModeLocal('menu'); setErrorMsg(''); }}
-                className="px-4 py-2.5 rounded-lg text-sm text-game-muted hover:text-white transition-all hover:bg-white/[0.03]">
+            <div className="p-4 border-t border-game-border flex gap-2">
+              <motion.button onClick={() => { setModeLocal('menu'); setErrorMsg(''); }}
+                whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} transition={springs.snappy}
+                className="btn-secondary px-4 py-2.5 text-sm">
                 ← Back
-              </button>
-              <button onClick={handleCreate} disabled={loading}
-                className="flex-1 py-2.5 rounded-xl text-sm font-bold btn-primary disabled:opacity-50">
+              </motion.button>
+              <motion.button onClick={handleCreate} disabled={loading}
+                whileHover={loading ? {} : { scale: 1.02, y: -1 }} whileTap={loading ? {} : { scale: 0.98 }} transition={springs.snappy}
+                className="flex-1 py-2.5 rounded-xl text-sm font-bold btn-primary disabled:opacity-40">
                 {loading ? 'Creating...' : 'Create Room'}
-              </button>
+              </motion.button>
             </div>
-          </div>
+          </motion.div>
         )}
 
         {/* Join Room */}
         {mode === 'join' && (
-          <div className="glass-card rounded-2xl overflow-hidden animate-fade-in">
-            <div className="p-5 border-b border-game-border bg-gradient-to-r from-amber-950/30 to-transparent">
+          <motion.div className="hero-card rounded-2xl overflow-hidden"
+            initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
+            <div className="p-5 border-b border-game-border bg-gradient-to-r from-amber-950/20 to-transparent">
               <h2 className="text-xl font-bold font-display text-amber-300">Join Game</h2>
               <p className="text-xs text-game-muted mt-1">Enter the room code shared by the host</p>
             </div>
@@ -505,27 +496,30 @@ export default function Home() {
                 <label className="block text-label mb-1.5 font-semibold">Your Name</label>
                 <input type="text" value={name} onChange={(e) => setName(e.target.value)}
                   placeholder="Enter your name..." autoFocus maxLength={20}
-                  className="w-full p-2.5 bg-game-bg border border-game-border rounded-lg text-white text-sm placeholder:text-game-muted/50 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 transition-all" />
+                  className="input-premium" />
               </div>
               <div>
                 <label className="block text-label mb-1.5 font-semibold">Room Code</label>
                 <input type="text" value={joinCode} onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
                   placeholder="ABCDEF" maxLength={6}
-                  className="w-full p-3 bg-game-bg border border-game-border rounded-lg text-white placeholder:text-game-muted/30 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 tracking-[0.4em] text-center text-2xl font-mono transition-all" />
+                  className="input-premium !tracking-[0.3em] !text-center !text-2xl !font-mono" />
               </div>
             </div>
-            <div className="p-4 border-t border-game-border bg-game-card/50 flex gap-2">
-              <button onClick={() => { setModeLocal('menu'); setErrorMsg(''); }}
-                className="px-4 py-2.5 rounded-lg text-sm text-game-muted hover:text-white transition-all hover:bg-white/[0.03]">
+            <div className="p-4 border-t border-game-border flex gap-2">
+              <motion.button onClick={() => { setModeLocal('menu'); setErrorMsg(''); }}
+                whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} transition={springs.snappy}
+                className="btn-secondary px-4 py-2.5 text-sm">
                 ← Back
-              </button>
-              <button onClick={handleJoin} disabled={loading}
-                className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-gradient-to-r from-amber-600 to-amber-500 text-white disabled:opacity-50">
+              </motion.button>
+              <motion.button onClick={handleJoin} disabled={loading}
+                whileHover={loading ? {} : { scale: 1.02, y: -1 }} whileTap={loading ? {} : { scale: 0.98 }} transition={springs.snappy}
+                className="flex-1 py-2.5 rounded-xl text-sm font-bold btn-primary disabled:opacity-40">
                 {loading ? 'Joining...' : 'Join Game'}
-              </button>
+              </motion.button>
             </div>
-          </div>
+          </motion.div>
         )}
+
       </div>
     </div>
   );
