@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useGameStore } from '@/lib/store';
 import { motion, AnimatePresence, MotionPage, MotionCard, MotionButton, MotionList, MotionListItem, springs } from '@/components/Motion';
-import { createRoom, joinRoom, onGameState, onPlayerJoined, onPlayerDisconnected } from '@/lib/signalr';
+import { createRoom, joinRoom, onMessage, onPeerConnect, onPeerDisconnect, sendMessage } from '@/lib/peer';
+import { initGame, handleClientJoin, handleAction, setOnStateChange } from '@/lib/gameHost';
 import { GameState } from '@/lib/engine/types';
 
 type PageMode = 'menu' | 'create' | 'join';
@@ -17,33 +18,28 @@ export default function Home() {
   const [mode, setModeLocal] = useState<PageMode>('menu');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-  // AI-related state removed — multiplayer only
-  // difficulty/AI state removed
-
-  // Wire up SignalR state handler on mount
-  useEffect(() => {
-    onGameState((state) => {
-      useGameStore.getState().setGameState(state as GameState);
-    });
-    onPlayerJoined(() => {
-      useGameStore.getState().setConnected(true);
-    });
-    onPlayerDisconnected(() => {
-      useGameStore.getState().setConnected(false);
-    });
-  }, []);
-
   const handleCreate = async () => {
     if (!name.trim()) { setErrorMsg('Enter your name'); return; }
     setLoading(true);
     setErrorMsg('');
     try {
-      const roomCode = await createRoom(name.trim());
+      const roomCode = await createRoom();
       setPlayerName(name.trim());
       setPlayerId('host');
       setRoomId(roomCode);
-      setMode('connected');
+      setMode('host');
       setConnected(true);
+      const state = initGame(roomCode, name.trim());
+      setGameState(state);
+      setOnStateChange((newState: GameState) => {
+        useGameStore.getState().setGameState(newState);
+      });
+      onPeerConnect(() => { useGameStore.getState().setConnected(true); });
+      onPeerDisconnect(() => {});
+      onMessage((msg) => {
+        if (msg.type === 'playerInfo') { handleClientJoin(msg.name); }
+        else if (msg.type === 'action') { handleAction('client', msg.action, msg.payload); }
+      });
       router.push(`/game/${roomCode}`);
     } catch {
       setErrorMsg('Failed to create room. Please try again.');
@@ -58,20 +54,24 @@ export default function Home() {
     setErrorMsg('');
     try {
       const code = joinCode.trim().toUpperCase();
-      await joinRoom(code, name.trim());
+      await joinRoom(code);
       setPlayerName(name.trim());
       setPlayerId('client');
       setRoomId(code);
-      setMode('connected');
+      setMode('client');
       setConnected(true);
+      sendMessage({ type: 'playerInfo', name: name.trim() });
+      onMessage((msg) => {
+        if (msg.type === 'state') { useGameStore.getState().setGameState(msg.state as GameState); }
+        else if (msg.type === 'error') { useGameStore.getState().setError(msg.message); }
+      });
+      onPeerDisconnect(() => {});
       router.push(`/game/${code}`);
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : 'Failed to join room');
       setLoading(false);
     }
   };
-
-  // AI setup code removed — multiplayer only with C# server
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-game-bg bg-dot-grid bg-gradient-mesh">
