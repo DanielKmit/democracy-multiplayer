@@ -68,7 +68,69 @@ public static class SimulationEngine
         // Overall crime is weighted average
         sim.Crime = sim.ViolentCrime * 0.4 + sim.PropertyCrime * 0.35 + sim.WhiteCollarCrime * 0.25;
 
-        // Clamp all values
+        // Clamp all values (pre-feedback)
+        sim.GdpGrowth = Clamp(sim.GdpGrowth, -5, 8);
+        sim.Unemployment = Clamp(sim.Unemployment, 0, 30);
+        sim.Inflation = Clamp(sim.Inflation, 0, 20);
+        sim.ViolentCrime = Clamp(sim.ViolentCrime, 0, 100);
+        sim.PropertyCrime = Clamp(sim.PropertyCrime, 0, 100);
+        sim.WhiteCollarCrime = Clamp(sim.WhiteCollarCrime, 0, 100);
+        sim.Crime = Clamp(sim.Crime, 0, 100);
+        sim.Pollution = Clamp(sim.Pollution, 0, 100);
+        sim.Equality = Clamp(sim.Equality, 0, 100);
+        sim.HealthIndex = Clamp(sim.HealthIndex, 0, 100);
+        sim.EducationIndex = Clamp(sim.EducationIndex, 0, 100);
+        sim.FreedomIndex = Clamp(sim.FreedomIndex, 0, 100);
+        sim.NationalSecurity = Clamp(sim.NationalSecurity, 0, 100);
+        sim.Corruption = Clamp(sim.Corruption, 0, 100);
+
+        // ---- Feedback loops (matching TypeScript simulation) ----
+
+        // 1. GDP <-> Unemployment
+        sim.Unemployment += (2 - sim.GdpGrowth) * 0.5;
+        sim.GdpGrowth -= Math.Max(0, sim.Unemployment - 8) * 0.15;
+
+        // 2. Crime -> GDP
+        sim.GdpGrowth -= Math.Max(0, sim.Crime - 40) * 0.03;
+
+        // 3. Pollution -> Health
+        sim.HealthIndex -= Math.Max(0, sim.Pollution - 50) * 0.15;
+
+        // 4. Education -> GDP
+        sim.GdpGrowth += Math.Max(0, sim.EducationIndex - 50) * 0.02;
+
+        // 5. Corruption -> GDP
+        sim.GdpGrowth -= Math.Max(0, sim.Corruption - 30) * 0.04;
+
+        // 6. Inequality -> Crime
+        var ineq = 100 - sim.Equality;
+        sim.Crime += Math.Max(0, ineq - 50) * 0.1;
+        sim.PropertyCrime += Math.Max(0, ineq - 50) * 0.15;
+
+        // 7. Unemployment -> Crime
+        sim.PropertyCrime += Math.Max(0, sim.Unemployment - 8) * 0.3;
+        sim.ViolentCrime += Math.Max(0, sim.Unemployment - 12) * 0.2;
+
+        // 8. Freedom -> Corruption
+        sim.Corruption -= Math.Max(0, sim.FreedomIndex - 50) * 0.05;
+
+        // 9. Health -> GDP
+        sim.GdpGrowth -= Math.Max(0, 50 - sim.HealthIndex) * 0.03;
+
+        // 10. National Security -> GDP
+        sim.GdpGrowth -= Math.Max(0, 50 - sim.NationalSecurity) * 0.02;
+
+        // 11. Inflation -> Equality
+        sim.Equality -= Math.Max(0, sim.Inflation - 3) * 0.5;
+
+        // 12. Crime -> Freedom
+        if (sim.Crime > 60)
+            sim.FreedomIndex -= (sim.Crime - 60) * 0.05;
+
+        // 13. GDP -> Health
+        sim.HealthIndex += Math.Max(0, sim.GdpGrowth - 2) * 1;
+
+        // ---- Re-clamp all values after feedback loops ----
         sim.GdpGrowth = Clamp(sim.GdpGrowth, -5, 8);
         sim.Unemployment = Clamp(sim.Unemployment, 0, 30);
         sim.Inflation = Clamp(sim.Inflation, 0, 20);
@@ -242,11 +304,111 @@ public static class SimulationEngine
         // 1. Recompute simulation from policies
         state.Simulation = ComputeSimulation(state.Policies, state.ActiveEffects);
 
+        var sim = state.Simulation;
+
+        // ---- Debt feedback ----
+        if (state.Budget.DebtToGdp > 100)
+        {
+            var debtPenalty = (state.Budget.DebtToGdp - 100) / 100.0;
+            sim.GdpGrowth -= debtPenalty * 0.5;
+            sim.Inflation += debtPenalty * 0.3;
+        }
+
+        // ---- Credit downgrade penalty ----
+        if (state.Budget.CreditDowngrade)
+        {
+            sim.GdpGrowth -= 0.5;
+        }
+
+        // ---- Scandal feedback: exposed scandals increase corruption ----
+        foreach (var scandal in state.ActiveScandals)
+        {
+            if (scandal.Exposed)
+            {
+                sim.Corruption += 2;
+            }
+        }
+
+        // ---- Extremism feedback ----
+        var maxExtremism = Math.Max(
+            Math.Max(state.Extremism.FarLeft, state.Extremism.FarRight),
+            Math.Max(state.Extremism.Religious, state.Extremism.Eco));
+        if (maxExtremism > 50)
+        {
+            var extremismPenalty = (maxExtremism - 50) * 0.1;
+            sim.NationalSecurity -= extremismPenalty;
+            sim.Crime += extremismPenalty;
+        }
+
+        // ---- Situation voter effects (0.3x per turn) ----
+        foreach (var activeSit in state.ActiveSituations)
+        {
+            var sitDef = SituationData.All.FirstOrDefault(s => s.Id == activeSit.Id);
+            if (sitDef == null) continue;
+            foreach (var (simVar, effect) in sitDef.Effects)
+            {
+                sim[simVar] += effect * 0.3;
+            }
+        }
+
+        // ---- Debt visibility: high debt penalizes business and retirees ----
+        // (applied later in voter satisfaction adjustments)
+        var debtVisibilityPenalty = 0.0;
+        if (state.Budget.DebtToGdp > 80)
+        {
+            debtVisibilityPenalty = (state.Budget.DebtToGdp - 80) * 0.1;
+        }
+
+        // ---- Inequality -> extremism ----
+        if (sim.Equality < 35)
+        {
+            var ineqFactor = (35 - sim.Equality) * 0.3;
+            state.Extremism.FarLeft += ineqFactor;
+            state.Extremism.FarRight += ineqFactor;
+        }
+
+        // Re-clamp simulation values after Recalculate feedback
+        sim.GdpGrowth = Clamp(sim.GdpGrowth, -5, 8);
+        sim.Unemployment = Clamp(sim.Unemployment, 0, 30);
+        sim.Inflation = Clamp(sim.Inflation, 0, 20);
+        sim.Crime = Clamp(sim.Crime, 0, 100);
+        sim.Corruption = Clamp(sim.Corruption, 0, 100);
+        sim.NationalSecurity = Clamp(sim.NationalSecurity, 0, 100);
+        sim.HealthIndex = Clamp(sim.HealthIndex, 0, 100);
+        sim.Equality = Clamp(sim.Equality, 0, 100);
+
         // 2. Recompute voter satisfaction for all parties
         state.VoterSatisfaction = ComputeAllVoterSatisfaction(
             state.Players, state.Policies, state.Simulation,
             state.ActiveEffects, state.NgoAlliances, state.BotParties,
             state.CampaignBonuses, state.Perception);
+
+        // Apply debt visibility penalty to business and retirees satisfaction
+        if (debtVisibilityPenalty > 0)
+        {
+            foreach (var (partyId, groupSats) in state.VoterSatisfaction)
+            {
+                if (groupSats.ContainsKey("business"))
+                    groupSats["business"] = Clamp(groupSats["business"] - debtVisibilityPenalty, 0, 100);
+                if (groupSats.ContainsKey("retirees"))
+                    groupSats["retirees"] = Clamp(groupSats["retirees"] - debtVisibilityPenalty, 0, 100);
+            }
+        }
+
+        // Apply situation voter effects to satisfaction (0.3x per turn)
+        foreach (var activeSit in state.ActiveSituations)
+        {
+            var sitDef = SituationData.All.FirstOrDefault(s => s.Id == activeSit.Id);
+            if (sitDef == null) continue;
+            foreach (var (groupId, effect) in sitDef.VoterEffects)
+            {
+                foreach (var (partyId, groupSats) in state.VoterSatisfaction)
+                {
+                    if (groupSats.ContainsKey(groupId))
+                        groupSats[groupId] = Clamp(groupSats[groupId] + effect * 0.3, 0, 100);
+                }
+            }
+        }
 
         // 3. Compute approval ratings
         state.ApprovalRating = ComputeApprovalRatings(state.VoterSatisfaction);

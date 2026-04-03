@@ -1,20 +1,16 @@
 'use client';
 
 import { useGameStore } from './store';
-import { handleAction } from './gameHost';
-import { sendMessage } from './peer';
-import { PolicyChange, OppositionAction, PartyConfig, MinistryId, CoalitionOffer, CampaignAction, GameSettings, ScandalType } from './engine/types';
+import { sendAction } from './signalr';
+import { PolicyChange, OppositionAction, PartyConfig, MinistryId, CoalitionOffer, CampaignAction, GameSettings } from './engine/types';
 
+/**
+ * Game actions hook — ALL actions go to the C# server via SignalR.
+ * No more host/client distinction. Server is authoritative.
+ */
 export function useGameActions() {
-  const mode = useGameStore((s) => s.mode);
-  const playerId = useGameStore((s) => s.playerId);
-
   function dispatch(action: string, payload?: unknown) {
-    if (mode === 'host' || mode === 'ai_host') {
-      handleAction(playerId ?? 'host', action, payload);
-    } else if (mode === 'client') {
-      sendMessage({ type: 'action', action, payload });
-    }
+    sendAction(action, payload);
   }
 
   return {
@@ -52,7 +48,6 @@ export function useGameActions() {
       dispatch('proposeBillFromLibrary', { templateId }),
     callBillVote: (billId: string) =>
       dispatch('callBillVote', { billId }),
-    // Live vote actions
     startLiveVote: (billId: string) =>
       dispatch('startLiveVote', { billId }),
     lobbyLiveVote: (targetPartyId: string, pcSpent: number, direction: 'support' | 'oppose') =>

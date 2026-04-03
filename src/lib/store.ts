@@ -1,7 +1,9 @@
 import { create } from 'zustand';
 import { GameState, PolicyChange, OppositionAction, PartyConfig, MinistryId, CampaignAction, CoalitionOffer } from './engine/types';
 
-export type ConnectionMode = 'none' | 'host' | 'client' | 'ai_host';
+// 'connected' = connected to C# server via SignalR
+// Legacy modes kept for backward compat during migration
+export type ConnectionMode = 'none' | 'connected' | 'host' | 'client' | 'ai_host';
 
 interface GameStore {
   // Connection
