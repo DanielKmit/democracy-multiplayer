@@ -1,5 +1,11 @@
 @import "tailwindcss";
 
+/* Force dark background on all surfaces — prevents Tailwind reset flash */
+html, body {
+  background-color: #06090f !important;
+  color: #e8ecf4;
+}
+
 :root {
   /* Political Dark Theme — refined premium palette */
   --game-bg: #06090f;
@@ -203,7 +209,7 @@
 }
 
 .bg-gradient-mesh {
-  background:
+  background-image:
     linear-gradient(135deg, rgba(30,58,138,0.08) 0%, transparent 25%, rgba(88,28,135,0.05) 50%, transparent 75%, rgba(59,130,246,0.04) 100%),
     radial-gradient(ellipse at 20% 50%, rgba(59,130,246,0.06) 0%, transparent 50%),
     radial-gradient(ellipse at 80% 80%, rgba(139,92,246,0.05) 0%, transparent 50%);

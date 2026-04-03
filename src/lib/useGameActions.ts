@@ -1,16 +1,26 @@
 'use client';
 
 import { useGameStore } from './store';
+import { handleAction } from './gameHost';
+import { sendMessage } from './peer';
 import { sendAction } from './signalr';
 import { PolicyChange, OppositionAction, PartyConfig, MinistryId, CoalitionOffer, CampaignAction, GameSettings } from './engine/types';
 
-/**
- * Game actions hook — ALL actions go to the C# server via SignalR.
- * No more host/client distinction. Server is authoritative.
- */
 export function useGameActions() {
+  const mode = useGameStore((s) => s.mode);
+  const playerId = useGameStore((s) => s.playerId);
+
   function dispatch(action: string, payload?: unknown) {
-    sendAction(action, payload);
+    if (mode === 'connected') {
+      // C# server via SignalR — authoritative
+      sendAction(action, payload);
+    } else if (mode === 'host' || mode === 'ai_host') {
+      // Local TypeScript engine — host runs game logic
+      handleAction(playerId ?? 'host', action, payload);
+    } else if (mode === 'client') {
+      // Remote peer via Socket.IO
+      sendMessage({ type: 'action', action, payload });
+    }
   }
 
   return {
